@@ -22,6 +22,10 @@ Core is the only place that touches git. Its API is plain serde request and resp
 - Status: `git status --porcelain=v2 -z`.
 - No libgit2. Floor is git 2.39.
 
+## One screen
+
+`overview::load(repo)` returns every local branch with its worktree (if any), status, port, and commits ahead of the base, plus remote-only branches. The desktop's home screen is that list. Clicking a row opens `detail::load` for that worktree.
+
 ## Core model
 
 ```
@@ -31,7 +35,8 @@ Worktree  { path, branch, base, kind: Main | Linked, locked }
 Status     { staged, unstaged, untracked, ahead, behind, conflicts }
 Runtime    { ports, env, processes, agent }
 Overlap    { a, b, files: [{ path, hunks }] }
-Operation  { kind: Rebase | Merge | CherryPick, applied, remaining, conflicted, backup_ref }
+Operation  { kind: Rebase | Merge | CherryPick, applied, total, conflicted, resolved }
+Overview   { repo, base, branches: [BranchRow { branch, worktree?, status?, port?, ahead_of_base, stale }], remote_only }
 ```
 
 ## Config
@@ -44,10 +49,10 @@ User prefs in `~/.config/pando/config.toml`.
 
 - Backup ref under `refs/pando/backup/<branch>` before every mutation.
 - Every action is logged so Recent actions can undo it.
-- Land and Clean always run a preflight first.
+- Merge always runs a preflight first: clean tree, ahead/behind, `merge-tree` conflict prediction, base worktree state.
+- Merge and Sync leave a conflicted rebase paused for the conflict screen; they never auto-abort.
 
 ## Targets
 
 - Board for a 100k-file repo in under 1 s.
 - Status update in under 200 ms.
-- Overlap check for 30 worktrees in under 500 ms.

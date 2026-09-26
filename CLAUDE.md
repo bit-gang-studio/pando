@@ -6,7 +6,7 @@ Read `docs/architecture.md` first. The plan and status are the Crunchy board (pr
 
 - `crates/core` — `pando-core`. All git and worktree logic. Typed serde API.
 - `crates/cli` — `pando` binary. Thin over core.
-- `apps/desktop` — Tauri 2 shell + React 19 UI. Thin over core.
+- `apps/desktop` — Tauri 2 shell + React 19 UI. Thin over core. `src/screens` (Overview, Detail, Settings), `src/dialogs`, `src/ui`.
 
 ## Rules
 
@@ -16,6 +16,8 @@ Read `docs/architecture.md` first. The plan and status are the Crunchy board (pr
 - Write a backup ref under `refs/pando/backup/` before any mutation.
 - Git floor is 2.39. Feature-detect newer flags.
 - Keep docs minimal. Plain language. No filler.
+- Use git's words in the UI and CLI: "add worktree", "remove worktree", "merge", "branch". Never invent verbs (no land, open, close, workspace).
+- One screen per repo: the branch list. Don't add sidebars, filters, or rails without Chris asking.
 
 ## Commands
 
