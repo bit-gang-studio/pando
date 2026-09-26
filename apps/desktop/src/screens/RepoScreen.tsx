@@ -9,7 +9,7 @@ import { SplitHandle, useSplit } from "../ui/Split";
 export function RepoScreen({ root, commit, onError }: { root: string; commit: string | null; onError: (m: string) => void }) {
   const [data, setData] = useState<OverviewData | null>(null);
   const [tick, setTick] = useState(0);
-  const split = useSplit("pando.split.repo", 40, "y", 15, 80);
+  const split = useSplit("pando.split.repo.px", 320, "y", 120, 4000);
 
   const refresh = useCallback(async () => {
     try { setData(await api.overview(root)); setTick((t) => t + 1); }
@@ -30,7 +30,7 @@ export function RepoScreen({ root, commit, onError }: { root: string; commit: st
 
   return (
     <div ref={split.box} className="flex min-h-0 min-w-0 grow flex-col">
-      <div style={{ height: `${split.size}%` }} className="flex min-h-0 flex-col">
+      <div style={{ height: split.size, flex: "0 0 auto" }} className="flex min-h-0 flex-col">
         <CommitLog
           root={root}
           branches={branches}

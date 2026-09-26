@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 type Axis = "x" | "y";
 
-/// A remembered, draggable size. `size` is px for "x" or percent for "y".
+/// A remembered, draggable size in layout pixels along `axis`.
 /// The handle follows the mouse: size = mouse position inside the box, minus
 /// where on the handle the press happened. Everything is measured in the
 /// same client coordinates, so it cannot drift.
@@ -23,8 +23,9 @@ export function useSplit(key: string, initial: number, axis: Axis, min: number, 
       // Convert client px to layout px via the box's own ratio (1 unless zoomed).
       const layout = axis === "x" ? box.current.clientWidth : box.current.clientHeight;
       const scale = layout > 0 && extent > 0 ? extent / layout : 1;
-      const next = axis === "x" ? posClient / scale : (posClient / extent) * 100;
-      setSize(Math.min(max, Math.max(min, next)));
+      const next = posClient / scale;
+      const hardMax = Math.min(max, layout - 120); // keep the other pane usable
+      setSize(Math.min(hardMax, Math.max(min, next)));
     };
     const up = () => {
       if (grab.current === null) return;
