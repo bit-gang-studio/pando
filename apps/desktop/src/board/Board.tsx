@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { api, repoName, type Board as BoardData } from "../lib/api";
+import { Branches } from "../branches/Branches";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
 import { RightRail } from "./RightRail";
 import { WorkspaceRow } from "./WorkspaceRow";
@@ -16,7 +17,8 @@ export function Board() {
   const [view, setView] = useState<ViewId>("all");
   const [scope, setScope] = useState<string | null>(null);
   const [version, setVersion] = useState("");
-  const [creating, setCreating] = useState(false);
+  const [creating, setCreating] = useState<false | { branch?: string }>(false);
+  const [screen, setScreen] = useState<"workspaces" | "branches">("workspaces");
 
   const refresh = useCallback(async () => {
     const cfg = await api.reposList();
@@ -40,7 +42,7 @@ export function Board() {
     const t = setInterval(() => { if (document.hasFocus()) refresh(); }, REFRESH_MS);
     const onFocus = () => refresh();
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") { e.preventDefault(); setCreating(true); }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "n") { e.preventDefault(); setCreating({}); }
     };
     window.addEventListener("focus", onFocus);
     window.addEventListener("keydown", onKey);
@@ -105,12 +107,12 @@ export function Board() {
         <button onClick={addRepo} className="h-8 rounded-lg border border-stone-300 bg-white px-3 dark:border-stone-600 dark:bg-stone-700">
           Add repository
         </button>
-        <button onClick={() => setCreating(true)} disabled={repos.length === 0} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800 disabled:opacity-50">
+        <button onClick={() => setCreating({})} disabled={repos.length === 0} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800 disabled:opacity-50">
           New workspace<span className="ml-2 text-xs opacity-70">⌘N</span>
         </button>
       </header>
       {creating && (
-        <NewWorkspaceDialog repos={repos} initialRepo={scope} onClose={() => setCreating(false)} onCreated={refresh} />
+        <NewWorkspaceDialog repos={repos} initialRepo={scope} initialBranch={creating.branch ?? null} onClose={() => setCreating(false)} onCreated={refresh} />
       )}
 
       <div className="flex min-h-0 grow">
@@ -126,12 +128,20 @@ export function Board() {
           </nav>
           <nav className="flex flex-col gap-0.5">
             <div className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-stone-500">REPOSITORIES</div>
-            <button onClick={() => setScope(null)} className={`rounded-md px-2 py-1.5 text-left ${scope === null ? "bg-white font-medium dark:bg-stone-700" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>All</button>
+            <button onClick={() => { setScope(null); setScreen("workspaces"); }} className={`rounded-md px-2 py-1.5 text-left ${scope === null ? "bg-white font-medium dark:bg-stone-700" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>All</button>
             {repos.map((r) => (
-              <button key={r} onClick={() => setScope(r)} className={`flex justify-between rounded-md px-2 py-1.5 text-left ${scope === r ? "bg-white font-medium dark:bg-stone-700" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>
-                <span className="truncate font-mono text-xs">{repoName(r)}</span>
-                <span className="text-stone-500">{boards[r]?.rows.length ?? (errors[r] ? "!" : "…")}</span>
-              </button>
+              <div key={r} className={`flex flex-col rounded-md ${scope === r ? "bg-white dark:bg-stone-700" : ""}`}>
+                <button onClick={() => { setScope(r); if (scope !== r) setScreen("workspaces"); }} className={`flex justify-between rounded-md px-2 py-1.5 text-left ${scope === r ? "font-medium" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>
+                  <span className="truncate font-mono text-xs">{repoName(r)}</span>
+                  <span className="text-stone-500">{boards[r]?.rows.length ?? (errors[r] ? "!" : "…")}</span>
+                </button>
+                {scope === r && (
+                  <>
+                    <button onClick={() => setScreen("workspaces")} className={`px-2 py-1 pl-5 text-left text-xs ${screen === "workspaces" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Workspaces</button>
+                    <button onClick={() => setScreen("branches")} className={`px-2 py-1 pl-5 text-left text-xs ${screen === "branches" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Branches</button>
+                  </>
+                )}
+              </div>
             ))}
             <button onClick={addRepo} className="mt-1 rounded-md border border-dashed border-stone-400 px-2 py-1.5 text-left text-stone-500 hover:bg-white/60 dark:hover:bg-stone-800">
               + Add repository
@@ -139,6 +149,10 @@ export function Board() {
           </nav>
         </aside>
 
+        {screen === "branches" && scope ? (
+          <Branches root={scope} onOpenAsWorkspace={(branch) => setCreating({ branch })} onChanged={refresh} />
+        ) : (
+        <>
         <main className="flex min-w-0 grow flex-col gap-4 overflow-y-auto p-6">
           <div className="flex items-baseline gap-3">
             <h1 className="text-lg font-semibold">{VIEWS.find((v) => v.id === view)?.label}</h1>
@@ -172,7 +186,7 @@ export function Board() {
                     onRemove={() => removeWorkspace(b.repo.root, r.workspace.path, r.workspace.branch)}
                   />
                 ))}
-                {rows.length === 0 && <div className="px-1 text-xs text-stone-500">Only the main worktree. <button onClick={() => { setScope(b.repo.root); setCreating(true); }} className="text-teal-700 underline">New workspace</button></div>}
+                {rows.length === 0 && <div className="px-1 text-xs text-stone-500">Only the main worktree. <button onClick={() => { setScope(b.repo.root); setCreating({}); }} className="text-teal-700 underline">New workspace</button></div>}
               </section>
             );
           })}
@@ -184,6 +198,8 @@ export function Board() {
         </main>
 
         <RightRail boards={visible} />
+        </>
+        )}
       </div>
     </div>
   );

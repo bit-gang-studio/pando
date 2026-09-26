@@ -4,6 +4,8 @@ import { api, repoName, type CreateDefaults, type Created } from "../lib/api";
 type Props = {
   repos: string[];
   initialRepo: string | null;
+  /// Preselect an existing branch (opens in "Existing branch" mode).
+  initialBranch?: string | null;
   onClose: () => void;
   onCreated: () => void;
 };
@@ -11,11 +13,11 @@ type Props = {
 type Mode = "new" | "existing";
 const PREFIXES = ["feat/", "fix/", "chore/", "spike/"];
 
-export function NewWorkspaceDialog({ repos, initialRepo, onClose, onCreated }: Props) {
+export function NewWorkspaceDialog({ repos, initialRepo, initialBranch, onClose, onCreated }: Props) {
   const [repo, setRepo] = useState(initialRepo ?? repos[0] ?? "");
-  const [mode, setMode] = useState<Mode>("new");
+  const [mode, setMode] = useState<Mode>(initialBranch ? "existing" : "new");
   const [defaults, setDefaults] = useState<CreateDefaults | null>(null);
-  const [branch, setBranch] = useState("");
+  const [branch, setBranch] = useState(initialBranch ?? "");
   const [base, setBase] = useState("");
   const [path, setPath] = useState("");
   const [pathEdited, setPathEdited] = useState(false);

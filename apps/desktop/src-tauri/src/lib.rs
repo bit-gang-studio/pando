@@ -1,8 +1,9 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
 use pando_core::{
-    board, branch, launch, runtime, user_config, workspace, Board, Branch, CreateWorkspace,
-    Created, Repo, RepoConfig, UserConfig,
+    board, branch, history, launch, runtime, stash, tag, user_config, workspace, Board, Branch,
+    CommitDiff, CreateWorkspace, Created, History, RemoteBranch, Repo, RepoConfig, Stash, Tag,
+    UserConfig,
 };
 use std::path::PathBuf;
 
@@ -102,6 +103,112 @@ fn workspace_create(root: PathBuf, req: CreateWorkspace) -> R<Created> {
 }
 
 #[tauri::command]
+fn branches_remote(root: PathBuf) -> R<Vec<RemoteBranch>> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    branch::list_remote(&repo).map_err(err)
+}
+
+#[tauri::command]
+fn history_linear(root: PathBuf, rev: String, limit: usize) -> R<History> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    history::linear(&repo, &rev, limit).map_err(err)
+}
+
+#[tauri::command]
+fn commit_diff(root: PathBuf, id: String) -> R<CommitDiff> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    history::commit_diff(&repo, &id).map_err(err)
+}
+
+#[tauri::command]
+fn stashes_list(root: PathBuf) -> R<Vec<Stash>> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    stash::list(&repo).map_err(err)
+}
+
+#[tauri::command]
+fn stash_apply(worktree: PathBuf, index: u32, pop: bool) -> R<()> {
+    if pop {
+        stash::pop(&worktree, index).map_err(err)
+    } else {
+        stash::apply(&worktree, index).map_err(err)
+    }
+}
+
+#[tauri::command]
+fn stash_drop(root: PathBuf, index: u32) -> R<()> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    stash::drop(&repo, index).map_err(err)
+}
+
+#[tauri::command]
+fn tags_list(root: PathBuf) -> R<Vec<Tag>> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    tag::list(&repo).map_err(err)
+}
+
+/// Switch the main worktree. With `stash_first`, dirty changes are stashed and re-applied.
+#[tauri::command]
+fn branch_switch_main(root: PathBuf, name: String, stash_first: bool) -> R<()> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    let stashed = if stash_first {
+        stash::save(&repo.root, Some(&format!("pando: switch to {name}"))).map_err(err)?
+    } else {
+        false
+    };
+    branch::switch_in_main(&repo, &name).map_err(err)?;
+    if stashed {
+        stash::pop(&repo.root, 0).map_err(err)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn branch_create(root: PathBuf, name: String, base: Option<String>) -> R<()> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    branch::create(&repo, &name, base.as_deref()).map_err(err)
+}
+
+#[tauri::command]
+fn branch_track_remote(root: PathBuf, remote_branch: String, local: String) -> R<()> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    branch::track_remote(&repo, &remote_branch, &local).map_err(err)
+}
+
+#[tauri::command]
+fn branch_rename(root: PathBuf, old: String, new: String) -> R<()> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    branch::rename(&repo, &old, &new).map_err(err)
+}
+
+#[tauri::command]
+fn branch_delete(root: PathBuf, name: String, force: bool, remote: Option<String>) -> R<()> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    branch::delete(&repo, &name, force).map_err(err)?;
+    if let Some(r) = remote {
+        branch::delete_remote(&repo, &r, &name).map_err(err)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+fn fetch_all(root: PathBuf) -> R<()> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    branch::fetch_all(&repo).map_err(err)
+}
+
+#[tauri::command]
+fn branch_push(root: PathBuf, name: String, force_with_lease: bool) -> R<()> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    branch::push(&repo, &name, "origin", force_with_lease).map_err(err)
+}
+
+#[tauri::command]
+fn branch_pull(worktree: PathBuf, rebase: bool) -> R<()> {
+    branch::pull(&worktree, rebase).map_err(err)
+}
+
+#[tauri::command]
 fn open_in_editor(path: PathBuf) -> R<()> {
     let editor = user_config::load().ok().and_then(|c| c.editor);
     launch::open_in_editor(&path, editor.as_deref()).map_err(err)
@@ -123,6 +230,21 @@ pub fn run() {
             workspace_path_preview,
             workspace_create,
             workspace_remove,
+            branches_remote,
+            history_linear,
+            commit_diff,
+            stashes_list,
+            stash_apply,
+            stash_drop,
+            tags_list,
+            branch_switch_main,
+            branch_create,
+            branch_track_remote,
+            branch_rename,
+            branch_delete,
+            fetch_all,
+            branch_push,
+            branch_pull,
             open_in_editor
         ])
         .run(tauri::generate_context!())

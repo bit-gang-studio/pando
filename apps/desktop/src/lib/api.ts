@@ -13,6 +13,8 @@ export type Workspace = {
   prunable: string | null;
 };
 
+export type CommitInfo = { id: string; summary: string; author: string; time: number };
+
 export type Branch = {
   name: string;
   tip: string;
@@ -20,7 +22,23 @@ export type Branch = {
   ahead: number | null;
   behind: number | null;
   checked_out_in: string | null;
+  last_commit: CommitInfo | null;
 };
+
+export type RemoteBranch = {
+  name: string;
+  remote: string;
+  short: string;
+  tip: string;
+  tracked: boolean;
+  last_commit: CommitInfo | null;
+};
+
+export type History = { commits: CommitInfo[]; base_index: number | null; base_branch: string | null };
+export type FileChange = { path: string; added: number; deleted: number };
+export type CommitDiff = { commit: CommitInfo; files: FileChange[]; patch: string };
+export type Stash = { index: number; message: string; branch: string | null; time: number };
+export type Tag = { name: string; target: string };
 
 export type Summary = {
   staged: number;
@@ -94,6 +112,25 @@ export const api = {
   workspaceRemove: (root: string, path: string, force: boolean) =>
     invoke<void>("workspace_remove", { root, path, force }),
   openInEditor: (path: string) => invoke<void>("open_in_editor", { path }),
+  branchesRemote: (root: string) => invoke<RemoteBranch[]>("branches_remote", { root }),
+  history: (root: string, rev: string, limit = 100) => invoke<History>("history_linear", { root, rev, limit }),
+  commitDiff: (root: string, id: string) => invoke<CommitDiff>("commit_diff", { root, id }),
+  stashes: (root: string) => invoke<Stash[]>("stashes_list", { root }),
+  stashApply: (worktree: string, index: number, pop: boolean) => invoke<void>("stash_apply", { worktree, index, pop }),
+  stashDrop: (root: string, index: number) => invoke<void>("stash_drop", { root, index }),
+  tags: (root: string) => invoke<Tag[]>("tags_list", { root }),
+  branchSwitchMain: (root: string, name: string, stashFirst: boolean) =>
+    invoke<void>("branch_switch_main", { root, name, stashFirst }),
+  branchCreate: (root: string, name: string, base: string | null) => invoke<void>("branch_create", { root, name, base }),
+  branchTrackRemote: (root: string, remoteBranch: string, local: string) =>
+    invoke<void>("branch_track_remote", { root, remoteBranch, local }),
+  branchRename: (root: string, old: string, new_: string) => invoke<void>("branch_rename", { root, old, new: new_ }),
+  branchDelete: (root: string, name: string, force: boolean, remote: string | null) =>
+    invoke<void>("branch_delete", { root, name, force, remote }),
+  fetchAll: (root: string) => invoke<void>("fetch_all", { root }),
+  branchPush: (root: string, name: string, forceWithLease: boolean) =>
+    invoke<void>("branch_push", { root, name, forceWithLease }),
+  branchPull: (worktree: string, rebase: boolean) => invoke<void>("branch_pull", { worktree, rebase }),
 };
 
 export function changed(s: Summary | null): number {
