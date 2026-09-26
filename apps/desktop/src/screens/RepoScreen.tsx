@@ -34,7 +34,13 @@ export function RepoScreen({ root, commit, onError }: { root: string; commit: st
       const pct = Math.min(80, Math.max(15, ((e.clientY - r.top) / r.height) * 100));
       setTop(pct);
     };
-    const up = () => { if (dragging.current) { dragging.current = false; try { localStorage.setItem(SPLIT_KEY, String(top)); } catch { /* ignore */ } } };
+    const up = () => {
+      if (!dragging.current) return;
+      dragging.current = false;
+      document.body.style.userSelect = "";
+      document.body.style.cursor = "";
+      try { localStorage.setItem(SPLIT_KEY, String(top)); } catch { /* ignore */ }
+    };
     window.addEventListener("mousemove", move);
     window.addEventListener("mouseup", up);
     return () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
@@ -58,11 +64,14 @@ export function RepoScreen({ root, commit, onError }: { root: string; commit: st
         />
       </div>
       <div
-        onMouseDown={() => { dragging.current = true; }}
+        onMouseDown={(e) => { e.preventDefault(); dragging.current = true; document.body.style.userSelect = "none"; document.body.style.cursor = "row-resize"; }}
         role="separator"
         aria-orientation="horizontal"
-        className="h-1.5 shrink-0 cursor-row-resize border-y border-stone-300 bg-stone-200 hover:bg-teal-200 dark:border-stone-700 dark:bg-stone-700"
-      />
+        title="Drag to resize"
+        className="group flex h-3 shrink-0 cursor-row-resize items-center justify-center bg-stone-200 dark:bg-stone-700"
+      >
+        <div className="h-1 w-10 rounded-full bg-stone-400 group-hover:bg-teal-600" />
+      </div>
       <div className="flex min-h-0 grow">
         {commit ? (
           <CommitDetail root={root} id={commit} onBack={() => navigate({ kind: "repo", root })} />
