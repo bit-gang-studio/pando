@@ -1,0 +1,16 @@
+[package]
+name = "pando-cli"
+description = "Pando: the worktree-native git client (CLI)"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "pando"
+path = "src/main.rs"
+
+[dependencies]
+pando-core = { path = "../core" }
+clap.workspace = true
+serde_json.workspace = true

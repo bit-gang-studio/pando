@@ -1,0 +1,11 @@
+[package]
+name = "pando-core"
+description = "Pando core: all git and worktree logic behind a typed API"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+thiserror.workspace = true

@@ -1,0 +1,9 @@
+{
+  "name": "pando",
+  "private": true,
+  "packageManager": "pnpm@10.19.0",
+  "scripts": {
+    "dev": "pnpm --filter @pando/desktop tauri dev",
+    "build": "pnpm --filter @pando/desktop tauri build"
+  }
+}

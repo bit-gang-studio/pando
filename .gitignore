@@ -1,0 +1,17 @@
+# Local planning notes
+.planning/
+
+# Rust
+target/
+
+# Node
+node_modules/
+dist/
+
+# Tauri generated
+apps/desktop/src-tauri/gen/schemas/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
