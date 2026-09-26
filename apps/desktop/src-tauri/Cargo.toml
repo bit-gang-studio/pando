@@ -5,6 +5,7 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
+homepage.workspace = true
 
 [lib]
 name = "pando_desktop_lib"
@@ -19,3 +20,6 @@ tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 serde.workspace = true
 serde_json.workspace = true
+
+[package.metadata.dist]
+dist = false

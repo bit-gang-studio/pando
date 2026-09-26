@@ -3,10 +3,11 @@ resolver = "2"
 members = ["crates/core", "crates/cli", "apps/desktop/src-tauri"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.0.1"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/bit-gang-studio/pando"
+homepage = "https://github.com/bit-gang-studio/pando"
 
 [workspace.dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -14,3 +15,8 @@ serde_json = "1"
 thiserror = "2"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
+
+# The profile that 'dist' will build with
+[profile.dist]
+inherits = "release"
+lto = "thin"
