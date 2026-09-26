@@ -2,7 +2,6 @@ import { useEffect, useState } from "react";
 
 import { fromHash, navigate, type Route } from "./lib/routes";
 import { openInNewWindow, setWindowTitle } from "./lib/windows";
-import { Detail } from "./screens/Detail";
 import { RepoScreen } from "./screens/RepoScreen";
 import { Repos } from "./screens/Repos";
 import { Settings } from "./screens/Settings";
@@ -46,7 +45,7 @@ export default function App() {
         {route.kind === "repos" && <Repos onError={setFatal} />}
         {route.kind === "repo" && <RepoScreen key={route.root} root={route.root} commit={null} onError={setFatal} />}
         {route.kind === "commit" && <RepoScreen key={route.root} root={route.root} commit={route.id} onError={setFatal} />}
-        {route.kind === "worktree" && <Detail root={route.root} path={route.path} onBack={() => navigate({ kind: "repo", root: route.root })} onChanged={() => {}} />}
+        {route.kind === "worktree" && <RepoScreen key={`${route.root}:${route.path}`} root={route.root} commit={null} worktree={route.path} onError={setFatal} />}
         {route.kind === "settings" && <Settings root={route.root} />}
       </div>
     </div>

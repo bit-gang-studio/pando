@@ -7,7 +7,10 @@ import { useMemo } from "react";
 type Props = {
   root: string;
   branches: string[];
+  /// Branch to show at first. Empty means all branches.
+  defaultScope?: string;
   dirtyWorktrees: number;
+  uncommittedLabel?: string;
   selected: string | null;
   onSelect: (id: string | null) => void;
   onUncommitted: () => void;
@@ -16,8 +19,9 @@ type Props = {
 
 const PAGE = 200;
 
-export function CommitLog({ root, branches, dirtyWorktrees, selected, onSelect, onUncommitted, refreshKey }: Props) {
-  const [scope, setScope] = useState<string>("");
+export function CommitLog({ root, branches, defaultScope, dirtyWorktrees, uncommittedLabel, selected, onSelect, onUncommitted, refreshKey }: Props) {
+  const [scope, setScope] = useState<string>(defaultScope ?? "");
+  useEffect(() => { if (defaultScope !== undefined) setScope(defaultScope); }, [defaultScope]);
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,10 +55,10 @@ export function CommitLog({ root, branches, dirtyWorktrees, selected, onSelect, 
       </div>
       <div className="min-h-0 grow overflow-auto bg-white dark:bg-stone-800">
         {dirtyWorktrees > 0 && (
-          <button onClick={onUncommitted} className="flex w-full items-center gap-3 border-b border-stone-100 px-4 py-1.5 text-left hover:bg-stone-50 dark:border-stone-700 dark:hover:bg-stone-700/50">
+          <button onClick={onUncommitted} className={`flex w-full items-center gap-3 border-b border-stone-100 px-4 py-1.5 text-left dark:border-stone-700 ${selected === null && uncommittedLabel ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
             <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-stone-400" />
             <span className="font-medium">Uncommitted changes</span>
-            <span className="text-xs text-stone-500">in {dirtyWorktrees} {dirtyWorktrees === 1 ? "worktree" : "worktrees"}</span>
+            <span className="text-xs text-stone-500">{uncommittedLabel ?? `in ${dirtyWorktrees} ${dirtyWorktrees === 1 ? "worktree" : "worktrees"}`}</span>
           </button>
         )}
         {entries.map((e, i) => (
