@@ -23,6 +23,7 @@ export async function openInNewWindow(route: Route) {
     height: 800,
     minWidth: 800,
     minHeight: 500,
+    zoomHotkeysEnabled: true,
   });
   await new Promise<void>((resolve, reject) => {
     w.once("tauri://created", () => resolve());
