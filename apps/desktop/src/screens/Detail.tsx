@@ -236,7 +236,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
           </div>
         </aside>
 
-        <SplitHandle axis="x" onMouseDown={split.start} />
+        <SplitHandle axis="x" onMouseDown={split.start} handleRef={split.handle} />
         <main className="flex min-w-0 grow flex-col bg-white dark:bg-stone-800">
           {d.operation && sel && (d.operation.conflicted.includes(sel.path) || d.operation.resolved.includes(sel.path)) ? (
             <ConflictView worktree={wt} path={sel.path} op={d.operation} onChanged={refresh} onOpenFile={() => api.openInEditor(`${wt}/${sel!.path}`)} />

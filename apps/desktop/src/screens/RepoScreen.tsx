@@ -41,7 +41,7 @@ export function RepoScreen({ root, commit, onError }: { root: string; commit: st
           refreshKey={tick}
         />
       </div>
-      <SplitHandle axis="y" onMouseDown={split.start} />
+      <SplitHandle axis="y" onMouseDown={split.start} handleRef={split.handle} />
       <div className="flex min-h-0 grow">
         {commit ? (
           <CommitDetail root={root} id={commit} onBack={() => navigate({ kind: "repo", root })} />

@@ -2,35 +2,33 @@ import { useEffect, useRef, useState } from "react";
 
 type Axis = "x" | "y";
 
-/// Screen pixels per layout pixel, measured on the box itself. Immune to how
-/// the webview reports mouse coordinates under CSS zoom.
-function scaleOf(el: HTMLElement | null, axis: Axis): number {
-  if (!el) return 1;
-  const r = el.getBoundingClientRect();
-  const layout = axis === "x" ? el.clientWidth : el.clientHeight;
-  const screen = axis === "x" ? r.width : r.height;
-  return layout > 0 && screen > 0 ? screen / layout : 1;
-}
-
 /// A remembered, draggable size. `size` is px for "x" or percent for "y".
-/// Drags by delta from the press point, scaled by the page zoom, so the
-/// handle stays under the mouse at any zoom level.
+/// The handle follows the mouse: size = mouse position inside the box, minus
+/// where on the handle the press happened. Everything is measured in the
+/// same client coordinates, so it cannot drift.
 export function useSplit(key: string, initial: number, axis: Axis, min: number, max: number) {
   const [size, setSize] = useState<number>(() => { try { return Number(localStorage.getItem(key)) || initial; } catch { return initial; } });
-  const drag = useRef<{ startPos: number; startSize: number; boxPx: number; scale: number } | null>(null);
+  const grab = useRef<number | null>(null); // offset from handle start to press point, client px
   const box = useRef<HTMLDivElement>(null);
+  const handle = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const move = (e: MouseEvent) => {
-      const d = drag.current;
-      if (!d) return;
-      const delta = ((axis === "x" ? e.clientX : e.clientY) - d.startPos) / d.scale;
-      const next = axis === "x" ? d.startSize + delta : d.startSize + (delta / d.boxPx) * 100;
+      if (grab.current === null || !box.current) return;
+      const r = box.current.getBoundingClientRect();
+      const mouse = axis === "x" ? e.clientX : e.clientY;
+      const startEdge = axis === "x" ? r.left : r.top;
+      const extent = axis === "x" ? r.width : r.height;
+      const posClient = mouse - grab.current - startEdge; // handle's leading edge, client px from box start
+      // Convert client px to layout px via the box's own ratio (1 unless zoomed).
+      const layout = axis === "x" ? box.current.clientWidth : box.current.clientHeight;
+      const scale = layout > 0 && extent > 0 ? extent / layout : 1;
+      const next = axis === "x" ? posClient / scale : (posClient / extent) * 100;
       setSize(Math.min(max, Math.max(min, next)));
     };
     const up = () => {
-      if (!drag.current) return;
-      drag.current = null;
+      if (grab.current === null) return;
+      grab.current = null;
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
       setSize((s) => { try { localStorage.setItem(key, String(s)); } catch { /* ignore */ } return s; });
@@ -42,19 +40,21 @@ export function useSplit(key: string, initial: number, axis: Axis, min: number, 
 
   const start = (e: React.MouseEvent) => {
     e.preventDefault();
-    const boxPx = box.current ? (axis === "x" ? box.current.clientWidth : box.current.clientHeight) : 1;
-    drag.current = { startPos: axis === "x" ? e.clientX : e.clientY, startSize: size, boxPx, scale: scaleOf(box.current, axis) };
+    const h = handle.current?.getBoundingClientRect();
+    const mouse = axis === "x" ? e.clientX : e.clientY;
+    grab.current = h ? mouse - (axis === "x" ? h.left : h.top) : 0;
     document.body.style.userSelect = "none";
     document.body.style.cursor = axis === "x" ? "col-resize" : "row-resize";
   };
 
-  return { size, box, start };
+  return { size, box, handle, start };
 }
 
-export function SplitHandle({ axis, onMouseDown }: { axis: Axis; onMouseDown: (e: React.MouseEvent) => void }) {
+export function SplitHandle({ axis, onMouseDown, handleRef }: { axis: Axis; onMouseDown: (e: React.MouseEvent) => void; handleRef: React.RefObject<HTMLDivElement | null> }) {
   const vertical = axis === "x";
   return (
     <div
+      ref={handleRef}
       onMouseDown={onMouseDown}
       role="separator"
       aria-orientation={vertical ? "vertical" : "horizontal"}

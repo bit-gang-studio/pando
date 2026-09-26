@@ -54,7 +54,7 @@ export function CommitDetail({ root, id, onBack }: { root: string; id: string; o
             </button>
           ))}
         </aside>
-        <SplitHandle axis="x" onMouseDown={split.start} />
+        <SplitHandle axis="x" onMouseDown={split.start} handleRef={split.handle} />
         <main className="flex min-w-0 grow flex-col bg-white dark:bg-stone-800">
           <DiffView diff={diff} loading={loading} mode={mode} onMode={setMode} onHunk={() => {}} onOpenFile={() => sel && api.openInEditor(`${root}/${sel}`)} readOnly />
         </main>
