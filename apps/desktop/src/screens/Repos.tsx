@@ -43,10 +43,8 @@ export function Repos({ onError }: Props) {
     const picked = await open({ directory: true, multiple: false, title: "Add a repository" });
     if (typeof picked !== "string") return;
     try {
-      const c = await api.reposAdd(picked);
-      const added = c.repos.find((r) => !(cfg?.repos ?? []).includes(r)) ?? c.repos[c.repos.length - 1];
-      setCfg(c);
-      navigate({ kind: "repo", root: added });
+      setCfg(await api.reposAdd(picked));
+      refresh();
     } catch (e) {
       onError(String(e));
     }
