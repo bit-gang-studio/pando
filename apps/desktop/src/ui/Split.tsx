@@ -60,9 +60,11 @@ export function SplitHandle({ axis, onMouseDown, handleRef }: { axis: Axis; onMo
       role="separator"
       aria-orientation={vertical ? "vertical" : "horizontal"}
       title="Drag to resize"
-      className={`group flex shrink-0 items-center justify-center bg-stone-200 dark:bg-stone-700 ${vertical ? "w-3 cursor-col-resize" : "h-3 cursor-row-resize"}`}
+      className={`group relative flex shrink-0 items-center justify-center bg-stone-300 dark:bg-stone-700 ${vertical ? "w-px cursor-col-resize" : "h-px cursor-row-resize"}`}
     >
-      <div className={`rounded-full bg-stone-400 group-hover:bg-teal-600 ${vertical ? "h-10 w-1" : "h-1 w-10"}`} />
+      {/* wider invisible grab area so a 1px bar is still easy to hit */}
+      <div className={`absolute ${vertical ? "inset-y-0 -left-1.5 w-3" : "inset-x-0 -top-1.5 h-3"}`} />
+      <div className={`rounded-full bg-stone-400 group-hover:bg-teal-600 ${vertical ? "h-8 w-[3px]" : "h-[3px] w-8"}`} />
     </div>
   );
 }
