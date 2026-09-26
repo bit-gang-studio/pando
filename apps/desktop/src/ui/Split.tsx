@@ -8,28 +8,27 @@ type Axis = "x" | "y";
 /// same client coordinates, so it cannot drift.
 export function useSplit(key: string, initial: number, axis: Axis, min: number, max: number) {
   const [size, setSize] = useState<number>(() => { try { return Number(localStorage.getItem(key)) || initial; } catch { return initial; } });
-  const grab = useRef<number | null>(null); // offset from handle start to press point, client px
+  // Set on press: grab offset and the measured client-px-per-layout-px ratio.
+  const drag = useRef<{ grab: number; ratio: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
   const handle = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const move = (e: MouseEvent) => {
-      if (grab.current === null || !box.current) return;
+      const d = drag.current;
+      if (!d || !box.current) return;
       const r = box.current.getBoundingClientRect();
       const mouse = axis === "x" ? e.clientX : e.clientY;
       const startEdge = axis === "x" ? r.left : r.top;
-      const extent = axis === "x" ? r.width : r.height;
-      const posClient = mouse - grab.current - startEdge; // handle's leading edge, client px from box start
-      // Convert client px to layout px via the box's own ratio (1 unless zoomed).
+      const posClient = mouse - d.grab - startEdge; // handle's leading edge, client px from box start
+      const next = posClient / d.ratio;
       const layout = axis === "x" ? box.current.clientWidth : box.current.clientHeight;
-      const scale = layout > 0 && extent > 0 ? extent / layout : 1;
-      const next = posClient / scale;
       const hardMax = Math.min(max, layout - 120); // keep the other pane usable
       setSize(Math.min(hardMax, Math.max(min, next)));
     };
     const up = () => {
-      if (grab.current === null) return;
-      grab.current = null;
+      if (!drag.current) return;
+      drag.current = null;
       document.body.style.userSelect = "";
       document.body.style.cursor = "";
       setSize((s) => { try { localStorage.setItem(key, String(s)); } catch { /* ignore */ } return s; });
@@ -42,8 +41,14 @@ export function useSplit(key: string, initial: number, axis: Axis, min: number, 
   const start = (e: React.MouseEvent) => {
     e.preventDefault();
     const h = handle.current?.getBoundingClientRect();
+    const b = box.current?.getBoundingClientRect();
     const mouse = axis === "x" ? e.clientX : e.clientY;
-    grab.current = h ? mouse - (axis === "x" ? h.left : h.top) : 0;
+    const handleStart = h ? (axis === "x" ? h.left : h.top) : mouse;
+    const boxStart = b ? (axis === "x" ? b.left : b.top) : 0;
+    // The handle sits `size` layout px from the box start. Its measured client
+    // distance divided by that is the exact client-to-layout ratio right now.
+    const ratio = size > 0 && h && b ? (handleStart - boxStart) / size : 1;
+    drag.current = { grab: mouse - handleStart, ratio: ratio > 0 ? ratio : 1 };
     document.body.style.userSelect = "none";
     document.body.style.cursor = axis === "x" ? "col-resize" : "row-resize";
   };
