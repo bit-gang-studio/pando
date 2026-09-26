@@ -11,7 +11,7 @@ pub const FILE_NAME: &str = ".pando.toml";
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct RepoConfig {
-    pub workspace: WorkspaceConfig,
+    pub worktree: WorktreeConfig,
     pub hooks: Hooks,
     pub runtime: RuntimeConfig,
     pub land: LandConfig,
@@ -20,7 +20,7 @@ pub struct RepoConfig {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub struct WorkspaceConfig {
+pub struct WorktreeConfig {
     /// Template. `{repo}`, `{branch}`, `{branch_slug}` and a leading `~` expand.
     /// Relative paths are relative to the repo root.
     pub location: String,
@@ -28,7 +28,7 @@ pub struct WorkspaceConfig {
     pub base: Option<String>,
 }
 
-impl Default for WorkspaceConfig {
+impl Default for WorktreeConfig {
     fn default() -> Self {
         Self {
             location: "~/.pando/worktrees/{repo}/{branch_slug}".into(),
@@ -128,15 +128,15 @@ pub fn commit(repo: &Repo, message: &str) -> Result<()> {
 }
 
 impl RepoConfig {
-    /// Where a new workspace for `branch` goes.
-    pub fn workspace_path(&self, repo: &Repo, branch: &str) -> PathBuf {
+    /// Where a new worktree for `branch` goes.
+    pub fn worktree_path(&self, repo: &Repo, branch: &str) -> PathBuf {
         let repo_name = repo
             .root
             .file_name()
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| "repo".into());
         let mut s = self
-            .workspace
+            .worktree
             .location
             .replace("{repo}", &repo_name)
             .replace("{branch_slug}", &branch_slug(branch))
@@ -179,7 +179,7 @@ mod tests {
     fn defaults_when_empty() {
         let c = RepoConfig::parse("").unwrap();
         assert_eq!(
-            c.workspace.location,
+            c.worktree.location,
             "~/.pando/worktrees/{repo}/{branch_slug}"
         );
         assert!(c.hooks.post_create.is_empty());
@@ -190,7 +190,7 @@ mod tests {
     fn parses_full_file() {
         let c = RepoConfig::parse(
             r#"
-[workspace]
+[worktree]
 location = "../{repo}-worktrees/{branch_slug}"
 base = "origin/main"
 [hooks]
@@ -206,7 +206,7 @@ command = "claude"
         assert_eq!(c.hooks.post_create.len(), 2);
         assert_eq!(c.runtime.port.unwrap().start, 4000);
         assert_eq!(c.agents["claude"].command, "claude");
-        assert_eq!(c.workspace.base.as_deref(), Some("origin/main"));
+        assert_eq!(c.worktree.base.as_deref(), Some("origin/main"));
     }
 
     #[test]
@@ -244,9 +244,9 @@ command = "claude"
             bare: false,
         };
         let mut c = RepoConfig::default();
-        c.workspace.location = "../{repo}-worktrees/{branch_slug}".into();
+        c.worktree.location = "../{repo}-worktrees/{branch_slug}".into();
         assert_eq!(
-            c.workspace_path(&repo, "feat/x"),
+            c.worktree_path(&repo, "feat/x"),
             PathBuf::from("/tmp/pando/../pando-worktrees/feat-x")
         );
     }

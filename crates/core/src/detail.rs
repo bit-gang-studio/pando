@@ -1,4 +1,4 @@
-//! Everything the workspace detail screen shows, in one call.
+//! Everything the worktree detail screen shows, in one call.
 
 use crate::branch::{self, Branch};
 use crate::commit::CommitInfo;
@@ -7,14 +7,14 @@ use crate::history;
 use crate::repo::{canon, Repo};
 use crate::runtime;
 use crate::status::{self, FileStatus};
-use crate::workspace::{self, Workspace};
+use crate::worktree::{self, Worktree};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Detail {
     pub repo: Repo,
-    pub workspace: Workspace,
+    pub worktree: Worktree,
     pub branch: Option<Branch>,
     pub files: Vec<FileStatus>,
     /// Commits on this branch that are not on the base branch, newest first.
@@ -26,16 +26,16 @@ pub struct Detail {
 
 pub fn load(repo: &Repo, path: &Path) -> Result<Detail> {
     let want = canon(path);
-    let workspace = workspace::list(repo)?
+    let worktree = worktree::list(repo)?
         .into_iter()
         .find(|w| w.path == want)
-        .ok_or_else(|| crate::Error::Config(format!("no workspace at {}", want.display())))?;
-    let branch = match &workspace.branch {
+        .ok_or_else(|| crate::Error::Config(format!("no worktree at {}", want.display())))?;
+    let branch = match &worktree.branch {
         Some(b) => branch::list(repo)?.into_iter().find(|x| &x.name == b),
         None => None,
     };
-    let files = status::files(&workspace.path)?;
-    let (ahead, base_branch) = match &workspace.branch {
+    let files = status::files(&worktree.path)?;
+    let (ahead, base_branch) = match &worktree.branch {
         Some(b) => {
             let h = history::linear(repo, b, 200)?;
             let n = h.base_index.unwrap_or(h.commits.len());
@@ -43,7 +43,7 @@ pub fn load(repo: &Repo, path: &Path) -> Result<Detail> {
         }
         None => (Vec::new(), repo.default_branch.clone()),
     };
-    let port = match &workspace.branch {
+    let port = match &worktree.branch {
         Some(b) => runtime::port_for(repo, b)?,
         None => None,
     };
@@ -53,7 +53,7 @@ pub fn load(repo: &Repo, path: &Path) -> Result<Detail> {
         .map(|c| c.summary.clone());
     Ok(Detail {
         repo: repo.clone(),
-        workspace,
+        worktree,
         branch,
         files,
         ahead,

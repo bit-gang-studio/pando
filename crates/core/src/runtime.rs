@@ -1,4 +1,4 @@
-//! Ports per workspace. Stored in `<git common dir>/pando/ports.json`.
+//! Ports per worktree. Stored in `<git common dir>/pando/ports.json`.
 
 use crate::config::PortConfig;
 use crate::error::Result;

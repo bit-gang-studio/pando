@@ -102,18 +102,18 @@ export function Settings({ root, userConfig, onUserConfig }: { root: string; use
 
         {cfg && tab === "general" && (
           <>
-            <Section title="Workspace location" hint="Template for new worktrees. {repo}, {branch} and {branch_slug} expand. A leading ~ is your home. Relative paths are relative to the repo root.">
-              <input value={cfg.workspace.location} onChange={(e) => up((c) => { c.workspace.location = e.target.value; return c; })} className={input} />
+            <Section title="Worktree location" hint="Template for new worktrees. {repo}, {branch} and {branch_slug} expand. A leading ~ is your home. Relative paths are relative to the repo root.">
+              <input value={cfg.worktree.location} onChange={(e) => up((c) => { c.worktree.location = e.target.value; return c; })} className={input} />
             </Section>
             <Section title="Default base" hint="Start point for new branches. Empty means the repo's default branch.">
-              <input value={cfg.workspace.base ?? ""} onChange={(e) => up((c) => { c.workspace.base = e.target.value || null; return c; })} placeholder="origin/main" className={input} />
+              <input value={cfg.worktree.base ?? ""} onChange={(e) => up((c) => { c.worktree.base = e.target.value || null; return c; })} placeholder="origin/main" className={input} />
             </Section>
           </>
         )}
 
         {cfg && tab === "hooks" && (
           <>
-            <Section title="After create" hint="Run in order in the new worktree. Stops on the first failure. Hooks get PORT, PANDO_MAIN, PANDO_BRANCH and PANDO_WORKSPACE.">
+            <Section title="After create" hint="Run in order in the new worktree. Stops on the first failure. Hooks get PORT, PANDO_MAIN, PANDO_BRANCH and PANDO_WORKTREE.">
               <CommandList items={cfg.hooks.post_create} onChange={(v) => up((c) => { c.hooks.post_create = v; return c; })} placeholder="pnpm install --prefer-offline" />
             </Section>
             <Section title="Before land" hint="Must pass before Land continues.">
@@ -127,7 +127,7 @@ export function Settings({ root, userConfig, onUserConfig }: { root: string; use
 
         {cfg && tab === "runtime" && (
           <>
-            <Section title="Port per workspace" hint="Each workspace gets its own port, exported to hooks and launchers.">
+            <Section title="Port per worktree" hint="Each worktree gets its own port, exported to hooks and launchers.">
               <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={!!cfg.runtime.port} onChange={(e) => up((c) => { c.runtime.port = e.target.checked ? { env: "PORT", start: 3000 } : null; return c; })} /> Assign ports</label>
               {cfg.runtime.port && (
                 <div className="flex items-center gap-3 text-xs">
@@ -136,14 +136,14 @@ export function Settings({ root, userConfig, onUserConfig }: { root: string; use
                 </div>
               )}
             </Section>
-            <Section title="Share between workspaces" hint="Copied from the main worktree with copy-on-write where the filesystem allows. Not wired into create yet.">
+            <Section title="Share between worktrees" hint="Copied from the main worktree with copy-on-write where the filesystem allows. Not wired into create yet.">
               <CommandList items={cfg.runtime.share} onChange={(v) => up((c) => { c.runtime.share = v; return c; })} placeholder="node_modules" />
             </Section>
           </>
         )}
 
         {cfg && tab === "agents" && (
-          <Section title="Agents" hint="Name and command. The command runs in the workspace with PORT set. Launching from the app lands with the M4 launchers card.">
+          <Section title="Agents" hint="Name and command. The command runs in the worktree with PORT set. Launching from the app lands with the M4 launchers card.">
             <div className="flex flex-col gap-1.5">
               {Object.entries(cfg.agents).map(([name, a]) => (
                 <div key={name} className="flex items-center gap-2">

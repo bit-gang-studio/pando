@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand, ValueEnum};
-use pando_core::{branch, workspace, CreateWorkspace, Repo, Workspace, WorkspaceKind};
+use pando_core::{branch, worktree, CreateWorktree, Repo, Worktree, WorktreeKind};
 use std::path::{Path, PathBuf};
 use std::process::exit;
 
@@ -18,11 +18,11 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Cmd {
-    /// List workspaces
+    /// List worktrees
     Ls,
     /// List branches with upstream, ahead/behind, and where they are checked out
     Branches,
-    /// Create a workspace for a branch and run post_create hooks
+    /// Create a worktree for a branch and run post_create hooks
     New {
         branch: String,
         /// Start point for the new branch
@@ -38,23 +38,23 @@ enum Cmd {
         #[arg(long)]
         no_hooks: bool,
     },
-    /// Remove a workspace by branch or path
+    /// Remove a worktree by branch or path
     Rm {
         target: String,
         /// Remove even with uncommitted changes
         #[arg(long, short)]
         force: bool,
     },
-    /// Print a workspace path. Use: cd "$(pando switch feat/x)"
+    /// Print a worktree path. Use: cd "$(pando switch feat/x)"
     Switch { target: String },
-    /// Open a workspace in your editor ($PANDO_EDITOR, $VISUAL, $EDITOR)
+    /// Open a worktree in your editor ($PANDO_EDITOR, $VISUAL, $EDITOR)
     Open {
         target: String,
         /// Editor command, e.g. "code" or "cursor"
         #[arg(long)]
         editor: Option<String>,
     },
-    /// Print a shell function `pcd` that cd's into a workspace
+    /// Print a shell function `pcd` that cd's into a worktree
     ShellInit { shell: Shell },
     /// Check git and the environment
     Doctor,
@@ -93,15 +93,15 @@ fn run(cli: Cli) -> pando_core::Result<()> {
         Cmd::ShellInit { shell } => print!("{}", shell_init(shell)),
         Cmd::Ls => {
             let repo = open(cli.repo.as_deref())?;
-            let ws = workspace::list(&repo)?;
+            let ws = worktree::list(&repo)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&ws).unwrap());
             } else {
                 let ports = pando_core::runtime::ports(&repo)?;
                 for w in &ws {
                     let kind = match w.kind {
-                        WorkspaceKind::Main => "main",
-                        WorkspaceKind::Linked => "",
+                        WorktreeKind::Main => "main",
+                        WorktreeKind::Linked => "",
                     };
                     let branch = w.branch.clone().unwrap_or_else(|| "(detached)".into());
                     let port = w
@@ -154,9 +154,9 @@ fn run(cli: Cli) -> pando_core::Result<()> {
             no_hooks,
         } => {
             let repo = open(cli.repo.as_deref())?;
-            let created = workspace::create(
+            let created = worktree::create(
                 &repo,
-                &CreateWorkspace {
+                &CreateWorktree {
                     branch,
                     base,
                     path,
@@ -167,7 +167,7 @@ fn run(cli: Cli) -> pando_core::Result<()> {
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&created).unwrap());
             } else {
-                println!("created {}", created.workspace.path.display());
+                println!("created {}", created.worktree.path.display());
                 if let Some(p) = created.port {
                     println!("port {p}");
                 }
@@ -186,7 +186,7 @@ fn run(cli: Cli) -> pando_core::Result<()> {
         Cmd::Rm { target, force } => {
             let repo = open(cli.repo.as_deref())?;
             let w = find(&repo, &target)?;
-            workspace::remove(&repo, &w.path, force)?;
+            worktree::remove(&repo, &w.path, force)?;
             if !cli.json {
                 println!("removed {}", w.path.display());
             }
@@ -209,9 +209,9 @@ fn open(path: Option<&Path>) -> pando_core::Result<Repo> {
     Repo::discover(path.unwrap_or(&cwd))
 }
 
-/// Match a workspace by branch name, then by path.
-fn find(repo: &Repo, target: &str) -> pando_core::Result<Workspace> {
-    let ws = workspace::list(repo)?;
+/// Match a worktree by branch name, then by path.
+fn find(repo: &Repo, target: &str) -> pando_core::Result<Worktree> {
+    let ws = worktree::list(repo)?;
     let by_branch = ws.iter().find(|w| w.branch.as_deref() == Some(target));
     let by_path = || {
         let p = dunce::canonicalize(target).ok()?;
@@ -220,7 +220,7 @@ fn find(repo: &Repo, target: &str) -> pando_core::Result<Workspace> {
     by_branch
         .or_else(by_path)
         .cloned()
-        .ok_or_else(|| pando_core::Error::Config(format!("no workspace for '{target}'")))
+        .ok_or_else(|| pando_core::Error::Config(format!("no worktree for '{target}'")))
 }
 
 fn shell_init(shell: Shell) -> &'static str {

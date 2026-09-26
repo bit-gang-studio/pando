@@ -50,7 +50,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
     if (!d || !sel) { setDiff(null); return; }
     let live = true;
     setDiffLoading(true);
-    api.diffFile(d.workspace.path, sel.path, sel.staged, sel.untracked)
+    api.diffFile(d.worktree.path, sel.path, sel.staged, sel.untracked)
       .then((x) => { if (live) setDiff(x); })
       .catch((e) => setError(String(e)))
       .finally(() => { if (live) setDiffLoading(false); });
@@ -76,12 +76,12 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
 
   if (!d) return <div className="flex grow items-center justify-center text-xs text-stone-500">{error ?? "Loading…"}</div>;
 
-  const wt = d.workspace.path;
+  const wt = d.worktree.path;
   const unstaged = d.files.filter((f) => f.unstaged || f.untracked);
   const staged = d.files.filter((f) => f.staged);
   const conflicts = d.files.filter((f) => f.conflicted).length;
   const b = d.branch;
-  const isMain = d.workspace.kind === "main";
+  const isMain = d.worktree.kind === "main";
   const canCommit = (staged.length > 0 || amend) && message.trim().length > 0 && !busy;
 
   async function doCommit() {
@@ -131,11 +131,11 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
   return (
     <div className="flex min-h-0 grow flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-stone-300 bg-white px-4 dark:border-stone-700 dark:bg-stone-800">
-        <button onClick={onBack} className="text-xs text-stone-500 hover:text-stone-800 dark:hover:text-stone-200">Workspaces</button>
+        <button onClick={onBack} className="text-xs text-stone-500 hover:text-stone-800 dark:hover:text-stone-200">Worktrees</button>
         <span className="text-stone-400">/</span>
         <span className="font-mono text-xs text-stone-500">{repoName(root)}</span>
         <span className="text-stone-400">/</span>
-        <span className="font-mono text-xs font-medium">{d.workspace.branch ?? "(detached)"}</span>
+        <span className="font-mono text-xs font-medium">{d.worktree.branch ?? "(detached)"}</span>
         {isMain && <Chip>main worktree</Chip>}
         {b && b.ahead != null && <Chip tone={(b.behind ?? 0) > 0 ? "amber" : "grey"}>↑{b.ahead} ↓{b.behind}</Chip>}
         {d.files.length > 0 ? <Chip tone="amber">{d.files.length} changed</Chip> : <Chip>clean</Chip>}
@@ -208,13 +208,13 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
 
         <aside className="flex w-[280px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-stone-300 bg-stone-100 p-4 dark:border-stone-700 dark:bg-stone-900">
           <div className="flex flex-col gap-1.5 rounded-lg border border-stone-300 bg-white p-3 text-xs dark:border-stone-700 dark:bg-stone-800">
-            <div className="font-semibold">Workspace</div>
+            <div className="font-semibold">Worktree</div>
             <div className="grid grid-cols-[56px_1fr] gap-x-2 gap-y-1">
               <span className="text-stone-500">Path</span><button onClick={() => api.openInEditor(wt)} className="truncate text-left font-mono text-[11px] text-teal-700" title={wt}>{wt}</button>
               <span className="text-stone-500">Base</span><span className="font-mono text-[11px]">{d.base_branch ?? "—"}</span>
               <span className="text-stone-500">Tracks</span><span className="font-mono text-[11px]">{b?.upstream ?? "no upstream"}</span>
               <span className="text-stone-500">Port</span><span className="font-mono text-[11px]">{d.port != null ? `PORT=${d.port}` : "—"}</span>
-              <span className="text-stone-500">HEAD</span><span className="truncate font-mono text-[11px]" title={d.workspace.head ?? ""}>{d.workspace.head?.slice(0, 7) ?? "—"}</span>
+              <span className="text-stone-500">HEAD</span><span className="truncate font-mono text-[11px]" title={d.worktree.head ?? ""}>{d.worktree.head?.slice(0, 7) ?? "—"}</span>
             </div>
           </div>
           <div className="flex flex-col gap-1 rounded-lg border border-stone-300 bg-white p-3 text-xs dark:border-stone-700 dark:bg-stone-800">

@@ -6,7 +6,7 @@ use crate::cmd::git;
 use crate::commit::{self, CommitInfo};
 use crate::error::{gix_err, Result};
 use crate::repo::Repo;
-use crate::workspace;
+use crate::worktree;
 use gix::remote::Direction;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -39,7 +39,7 @@ pub struct RemoteBranch {
 }
 
 pub fn list(repo: &Repo) -> Result<Vec<Branch>> {
-    let checked_out: HashMap<String, PathBuf> = workspace::list(repo)?
+    let checked_out: HashMap<String, PathBuf> = worktree::list(repo)?
         .into_iter()
         .filter_map(|w| w.branch.map(|b| (b, w.path)))
         .collect();

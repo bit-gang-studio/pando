@@ -43,6 +43,9 @@ fn fixture() -> Fx {
     let base = dunce::canonicalize(tmp.path()).unwrap();
     let root = base.join("work");
     git(&base, &["init", "-q", "-b", "main", "work"]);
+    // CI runners have no global identity; core commands must find one.
+    git(&root, &["config", "user.name", "Test"]);
+    git(&root, &["config", "user.email", "test@example.com"]);
     write(
         &root,
         "a.txt",
@@ -147,7 +150,7 @@ fn detail_and_sync() {
     write(&wt, "b.txt", "b2\n");
 
     let d = detail::load(&repo, &wt).unwrap();
-    assert_eq!(d.workspace.branch.as_deref(), Some("feat/x"));
+    assert_eq!(d.worktree.branch.as_deref(), Some("feat/x"));
     assert_eq!(d.ahead.len(), 1);
     assert_eq!(d.ahead[0].summary, "feat commit");
     assert_eq!(d.base_branch.as_deref(), Some("main"));

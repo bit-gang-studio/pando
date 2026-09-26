@@ -1,4 +1,4 @@
-//! Workspaces are worktrees. Listing uses `git worktree list --porcelain -z`
+//! A worktree is a git worktree plus what Pando attaches to it. Listing uses `git worktree list --porcelain -z`
 //! because gix does not report lock or prunable state.
 
 use crate::backup;
@@ -13,15 +13,15 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum WorkspaceKind {
+pub enum WorktreeKind {
     Main,
     Linked,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Workspace {
+pub struct Worktree {
     pub path: PathBuf,
-    pub kind: WorkspaceKind,
+    pub kind: WorktreeKind,
     /// Commit hash, or `None` for an unborn branch.
     pub head: Option<String>,
     /// Short branch name, or `None` when detached or bare.
@@ -35,7 +35,7 @@ pub struct Workspace {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct AddWorkspace {
+pub struct AddWorktree {
     pub path: PathBuf,
     pub branch: String,
     /// Start point for a new branch. Defaults to HEAD.
@@ -46,7 +46,7 @@ pub struct AddWorkspace {
 
 /// High-level create: path from config, worktree add, port, hooks.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct CreateWorkspace {
+pub struct CreateWorktree {
     pub branch: String,
     /// Start point for a new branch. Defaults to config base, then the repo default branch.
     pub base: Option<String>,
@@ -59,17 +59,17 @@ pub struct CreateWorkspace {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Created {
-    pub workspace: Workspace,
+    pub worktree: Worktree,
     pub port: Option<u16>,
     pub hooks: Vec<HookResult>,
 }
 
-pub fn create(repo: &Repo, req: &CreateWorkspace) -> Result<Created> {
+pub fn create(repo: &Repo, req: &CreateWorktree) -> Result<Created> {
     let cfg = RepoConfig::load(repo)?;
     let path = req
         .path
         .clone()
-        .unwrap_or_else(|| cfg.workspace_path(repo, &req.branch));
+        .unwrap_or_else(|| cfg.worktree_path(repo, &req.branch));
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -78,12 +78,12 @@ pub fn create(repo: &Repo, req: &CreateWorkspace) -> Result<Created> {
     } else {
         req.base
             .clone()
-            .or_else(|| cfg.workspace.base.clone())
+            .or_else(|| cfg.worktree.base.clone())
             .or_else(|| repo.default_branch.clone())
     };
-    let workspace = add(
+    let worktree = add(
         repo,
-        &AddWorkspace {
+        &AddWorktree {
             path,
             branch: req.branch.clone(),
             base,
@@ -103,32 +103,32 @@ pub fn create(repo: &Repo, req: &CreateWorkspace) -> Result<Created> {
         ),
         ("PANDO_BRANCH".to_string(), req.branch.clone()),
         (
-            "PANDO_WORKSPACE".to_string(),
-            workspace.path.to_string_lossy().into_owned(),
+            "PANDO_WORKTREE".to_string(),
+            worktree.path.to_string_lossy().into_owned(),
         ),
     ];
     if let (Some(pc), Some(p)) = (&cfg.runtime.port, port) {
         env.push((pc.env.clone(), p.to_string()));
     }
     let hooks = if req.run_hooks {
-        hooks::run(&cfg.hooks.post_create, &workspace.path, &env)?
+        hooks::run(&cfg.hooks.post_create, &worktree.path, &env)?
     } else {
         Vec::new()
     };
 
     Ok(Created {
-        workspace,
+        worktree,
         port,
         hooks,
     })
 }
 
-pub fn list(repo: &Repo) -> Result<Vec<Workspace>> {
+pub fn list(repo: &Repo) -> Result<Vec<Worktree>> {
     let out = git_bytes(&repo.root, ["worktree", "list", "--porcelain", "-z"])?;
     Ok(parse_porcelain(&out))
 }
 
-pub fn add(repo: &Repo, req: &AddWorkspace) -> Result<Workspace> {
+pub fn add(repo: &Repo, req: &AddWorktree) -> Result<Worktree> {
     let path = req.path.to_string_lossy().into_owned();
     let mut args: Vec<String> = vec!["worktree".into(), "add".into()];
     if req.create_branch {
@@ -195,7 +195,7 @@ pub fn unlock(repo: &Repo, path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn parse_porcelain(out: &[u8]) -> Vec<Workspace> {
+fn parse_porcelain(out: &[u8]) -> Vec<Worktree> {
     let text = String::from_utf8_lossy(out);
     let mut all = Vec::new();
     for (i, record) in text
@@ -203,12 +203,12 @@ fn parse_porcelain(out: &[u8]) -> Vec<Workspace> {
         .filter(|r| !r.trim_matches('\0').is_empty())
         .enumerate()
     {
-        let mut w = Workspace {
+        let mut w = Worktree {
             path: PathBuf::new(),
             kind: if i == 0 {
-                WorkspaceKind::Main
+                WorktreeKind::Main
             } else {
-                WorkspaceKind::Linked
+                WorktreeKind::Linked
             },
             head: None,
             branch: None,
@@ -248,7 +248,7 @@ mod tests {
                    worktree /r/b\0HEAD 000\0detached\0prunable gitdir file points to non-existent location\0\0";
         let v = parse_porcelain(raw.as_bytes());
         assert_eq!(v.len(), 3);
-        assert_eq!(v[0].kind, WorkspaceKind::Main);
+        assert_eq!(v[0].kind, WorktreeKind::Main);
         assert_eq!(v[0].branch.as_deref(), Some("main"));
         assert_eq!(v[1].locked.as_deref(), Some("busy"));
         assert_eq!(v[1].branch.as_deref(), Some("feat/a"));

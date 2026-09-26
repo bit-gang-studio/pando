@@ -1,4 +1,4 @@
-//! Open a workspace in the user's editor or file manager.
+//! Open a worktree in the user's editor or file manager.
 
 use crate::error::{Error, Result};
 use std::path::Path;

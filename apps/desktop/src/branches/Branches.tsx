@@ -6,14 +6,14 @@ import { BranchRail } from "./BranchRail";
 
 type Props = {
   root: string;
-  onOpenAsWorkspace: (branch: string) => void;
+  onOpenAsWorktree: (branch: string) => void;
   onChanged: () => void;
 };
 
 const btn = "h-7 rounded-md border border-stone-300 bg-white px-2.5 text-xs hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 const COLS = "grid-cols-[16px_minmax(200px,1fr)_150px_100px_minmax(160px,1fr)_auto]";
 
-export function Branches({ root, onOpenAsWorkspace, onChanged }: Props) {
+export function Branches({ root, onOpenAsWorktree, onChanged }: Props) {
   const [local, setLocal] = useState<Branch[]>([]);
   const [remote, setRemote] = useState<RemoteBranch[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
@@ -141,7 +141,7 @@ export function Branches({ root, onOpenAsWorkspace, onChanged }: Props) {
                   <span className="truncate font-mono text-[13px] font-medium">{b.name}</span>
                 )}
                 <span>
-                  {inMain ? <Chip>main worktree</Chip> : inWs ? <Chip tone="teal">workspace</Chip> : <span className="text-xs text-stone-500">not checked out</span>}
+                  {inMain ? <Chip>main worktree</Chip> : inWs ? <Chip tone="teal">worktree</Chip> : <span className="text-xs text-stone-500">not checked out</span>}
                 </span>
                 <span>
                   {b.upstream == null ? <Chip>no upstream</Chip>
@@ -153,16 +153,16 @@ export function Branches({ root, onOpenAsWorkspace, onChanged }: Props) {
                 </span>
                 <div className="flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                   {inMain && <button onClick={() => run("pull", () => api.branchPull(root, true))} disabled={!!busy || !b.upstream} className={btn}>Pull</button>}
-                  {inWs && <button onClick={() => api.openInEditor(b.checked_out_in!)} className={btn}>Open workspace</button>}
+                  {inWs && <button onClick={() => api.openInEditor(b.checked_out_in!)} className={btn}>Open worktree</button>}
                   {!checkedOut && (
                     <>
                       <button onClick={() => run("switch", () => switchInMain(b.name))} disabled={!!busy} className={btn}>Switch in main</button>
-                      <button onClick={() => onOpenAsWorkspace(b.name)} className={`${btn} border-teal-700 font-medium text-teal-700`}>Open as workspace</button>
+                      <button onClick={() => onOpenAsWorktree(b.name)} className={`${btn} border-teal-700 font-medium text-teal-700`}>Open as worktree</button>
                     </>
                   )}
                   <button onClick={() => run("push", () => api.branchPush(root, b.name, false))} disabled={!!busy} className={btn}>Push</button>
-                  <button onClick={() => setRename({ from: b.name, to: b.name })} disabled={checkedOut} className={btn} title={checkedOut ? "Checked out; remove the workspace first" : "Rename"}>Rename</button>
-                  <button onClick={() => del(b)} disabled={checkedOut || !!busy} className={`${btn} text-red-700`} title={checkedOut ? "Checked out; remove the workspace first" : "Delete"}>Delete</button>
+                  <button onClick={() => setRename({ from: b.name, to: b.name })} disabled={checkedOut} className={btn} title={checkedOut ? "Checked out; remove the worktree first" : "Rename"}>Rename</button>
+                  <button onClick={() => del(b)} disabled={checkedOut || !!busy} className={`${btn} text-red-700`} title={checkedOut ? "Checked out; remove the worktree first" : "Delete"}>Delete</button>
                 </div>
               </div>
             );
@@ -186,7 +186,7 @@ export function Branches({ root, onOpenAsWorkspace, onChanged }: Props) {
               </span>
               <div className="flex justify-end gap-1.5">
                 <button onClick={() => run("track", () => api.branchTrackRemote(root, r.name, r.short))} disabled={!!busy} className={btn}>Track locally</button>
-                <button onClick={() => run("track", async () => { await api.branchTrackRemote(root, r.name, r.short); onOpenAsWorkspace(r.short); })} disabled={!!busy} className={`${btn} border-teal-700 font-medium text-teal-700`}>Open as workspace</button>
+                <button onClick={() => run("track", async () => { await api.branchTrackRemote(root, r.name, r.short); onOpenAsWorktree(r.short); })} disabled={!!busy} className={`${btn} border-teal-700 font-medium text-teal-700`}>Open as worktree</button>
               </div>
             </div>
           ))}

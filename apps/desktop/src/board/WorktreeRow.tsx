@@ -8,8 +8,8 @@ type Props = {
   onRemove: () => void;
 };
 
-export function WorkspaceRow({ row, onReview, onOpen, onRemove }: Props) {
-  const { workspace: w, branch: b, status } = row;
+export function WorktreeRow({ row, onReview, onOpen, onRemove }: Props) {
+  const { worktree: w, branch: b, status } = row;
   const n = changed(status);
   const conflicts = status?.conflicts ?? 0;
   const dot = w.prunable || conflicts

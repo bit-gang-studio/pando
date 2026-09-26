@@ -5,9 +5,9 @@ import { api, repoName, type Board as BoardData, type UserConfig } from "../lib/
 import { Branches } from "../branches/Branches";
 import { Detail } from "../detail/Detail";
 import { Settings } from "../settings/Settings";
-import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
+import { NewWorktreeDialog } from "./NewWorktreeDialog";
 import { RightRail } from "./RightRail";
-import { WorkspaceRow } from "./WorkspaceRow";
+import { WorktreeRow } from "./WorktreeRow";
 import { matches, VIEWS, type ViewId } from "./views";
 
 const REFRESH_MS = 4000;
@@ -20,7 +20,7 @@ export function Board() {
   const [scope, setScope] = useState<string | null>(null);
   const [version, setVersion] = useState("");
   const [creating, setCreating] = useState<false | { branch?: string }>(false);
-  const [screen, setScreen] = useState<"workspaces" | "branches" | "settings">("workspaces");
+  const [screen, setScreen] = useState<"worktrees" | "branches" | "settings">("worktrees");
   const [detail, setDetail] = useState<{ root: string; path: string } | null>(null);
   const [userConfig, setUserConfig] = useState<UserConfig>({ repos: [], editor: null });
 
@@ -73,16 +73,16 @@ export function Board() {
     await refresh();
   }
 
-  async function removeWorkspace(root: string, path: string, branch: string | null) {
+  async function removeWorktree(root: string, path: string, branch: string | null) {
     const b = boards[root];
-    const row = b?.rows.find((r) => r.workspace.path === path);
+    const row = b?.rows.find((r) => r.worktree.path === path);
     const dirty = row?.status ? row.status.staged + row.status.unstaged + row.status.untracked + row.status.conflicts : 0;
     const msg = dirty > 0
       ? `${branch ?? path} has ${dirty} uncommitted changes. Remove anyway? The branch is kept and a backup ref is written.`
       : `Remove the worktree for ${branch ?? path}? The branch is kept and a backup ref is written.`;
-    if (!(await ask(msg, { title: "Remove workspace", kind: "warning" }))) return;
+    if (!(await ask(msg, { title: "Remove worktree", kind: "warning" }))) return;
     try {
-      await api.workspaceRemove(root, path, dirty > 0);
+      await api.worktreeRemove(root, path, dirty > 0);
       await refresh();
     } catch (e) {
       alert(String(e));
@@ -113,11 +113,11 @@ export function Board() {
           Add repository
         </button>
         <button onClick={() => setCreating({})} disabled={repos.length === 0} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800 disabled:opacity-50">
-          New workspace<span className="ml-2 text-xs opacity-70">⌘N</span>
+          New worktree<span className="ml-2 text-xs opacity-70">⌘N</span>
         </button>
       </header>
       {creating && (
-        <NewWorkspaceDialog repos={repos} initialRepo={scope} initialBranch={creating.branch ?? null} onClose={() => setCreating(false)} onCreated={refresh} />
+        <NewWorktreeDialog repos={repos} initialRepo={scope} initialBranch={creating.branch ?? null} onClose={() => setCreating(false)} onCreated={refresh} />
       )}
 
       <div className="flex min-h-0 grow">
@@ -133,16 +133,16 @@ export function Board() {
           </nav>
           <nav className="flex flex-col gap-0.5">
             <div className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-stone-500">REPOSITORIES</div>
-            <button onClick={() => { setScope(null); setScreen("workspaces"); }} className={`rounded-md px-2 py-1.5 text-left ${scope === null ? "bg-white font-medium dark:bg-stone-700" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>All</button>
+            <button onClick={() => { setScope(null); setScreen("worktrees"); }} className={`rounded-md px-2 py-1.5 text-left ${scope === null ? "bg-white font-medium dark:bg-stone-700" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>All</button>
             {repos.map((r) => (
               <div key={r} className={`flex flex-col rounded-md ${scope === r ? "bg-white dark:bg-stone-700" : ""}`}>
-                <button onClick={() => { setScope(r); if (scope !== r) setScreen("workspaces"); }} className={`flex justify-between rounded-md px-2 py-1.5 text-left ${scope === r ? "font-medium" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>
+                <button onClick={() => { setScope(r); if (scope !== r) setScreen("worktrees"); }} className={`flex justify-between rounded-md px-2 py-1.5 text-left ${scope === r ? "font-medium" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>
                   <span className="truncate font-mono text-xs">{repoName(r)}</span>
                   <span className="text-stone-500">{boards[r]?.rows.length ?? (errors[r] ? "!" : "…")}</span>
                 </button>
                 {scope === r && (
                   <>
-                    <button onClick={() => setScreen("workspaces")} className={`px-2 py-1 pl-5 text-left text-xs ${screen === "workspaces" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Workspaces</button>
+                    <button onClick={() => setScreen("worktrees")} className={`px-2 py-1 pl-5 text-left text-xs ${screen === "worktrees" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Worktrees</button>
                     <button onClick={() => setScreen("branches")} className={`px-2 py-1 pl-5 text-left text-xs ${screen === "branches" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Branches</button>
                     <button onClick={() => setScreen("settings")} className={`px-2 py-1 pb-1.5 pl-5 text-left text-xs ${screen === "settings" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Settings</button>
                   </>
@@ -160,7 +160,7 @@ export function Board() {
         ) : screen === "settings" && scope ? (
           <Settings root={scope} userConfig={userConfig} onUserConfig={setUserConfig} />
         ) : screen === "branches" && scope ? (
-          <Branches root={scope} onOpenAsWorkspace={(branch) => setCreating({ branch })} onChanged={refresh} />
+          <Branches root={scope} onOpenAsWorktree={(branch) => setCreating({ branch })} onChanged={refresh} />
         ) : (
         <>
         <main className="flex min-w-0 grow flex-col gap-4 overflow-y-auto p-6">
@@ -172,7 +172,7 @@ export function Board() {
           {repos.length === 0 && (
             <div className="rounded-lg border border-dashed border-stone-400 p-10 text-center">
               <div className="mb-1 font-medium">No repositories yet</div>
-              <div className="mb-4 text-stone-500">Add one to see its worktrees as workspaces.</div>
+              <div className="mb-4 text-stone-500">Add one to see its worktrees as worktrees.</div>
               <button onClick={addRepo} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800">Add repository</button>
             </div>
           )}
@@ -189,15 +189,15 @@ export function Board() {
                   <button onClick={() => removeRepo(b.repo.root)} className="text-xs text-stone-500 hover:text-red-700">remove</button>
                 </div>
                 {rows.map((r) => (
-                  <WorkspaceRow
-                    key={r.workspace.path}
+                  <WorktreeRow
+                    key={r.worktree.path}
                     row={r}
-                    onReview={() => setDetail({ root: b.repo.root, path: r.workspace.path })}
-                    onOpen={() => api.openInEditor(r.workspace.path).catch((e) => alert(String(e)))}
-                    onRemove={() => removeWorkspace(b.repo.root, r.workspace.path, r.workspace.branch)}
+                    onReview={() => setDetail({ root: b.repo.root, path: r.worktree.path })}
+                    onOpen={() => api.openInEditor(r.worktree.path).catch((e) => alert(String(e)))}
+                    onRemove={() => removeWorktree(b.repo.root, r.worktree.path, r.worktree.branch)}
                   />
                 ))}
-                {rows.length === 0 && <div className="px-1 text-xs text-stone-500">Only the main worktree. <button onClick={() => { setScope(b.repo.root); setCreating({}); }} className="text-teal-700 underline">New workspace</button></div>}
+                {rows.length === 0 && <div className="px-1 text-xs text-stone-500">Only the main worktree. <button onClick={() => { setScope(b.repo.root); setCreating({}); }} className="text-teal-700 underline">New worktree</button></div>}
               </section>
             );
           })}

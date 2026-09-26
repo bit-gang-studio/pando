@@ -2,7 +2,7 @@
 
 use pando_core::{
     board, branch, commit, detail, diff, history, index, launch, runtime, stash, sync, tag,
-    user_config, workspace, Board, Branch, CommitDiff, CreateWorkspace, Created, Detail, FileDiff,
+    user_config, worktree, Board, Branch, CommitDiff, CreateWorktree, Created, Detail, FileDiff,
     History, Hunk, RemoteBranch, Repo, RepoConfig, Stash, SyncResult, Tag, UserConfig,
 };
 use std::path::PathBuf;
@@ -46,9 +46,9 @@ fn board_load(root: PathBuf) -> R<Board> {
 }
 
 #[tauri::command]
-fn workspace_remove(root: PathBuf, path: PathBuf, force: bool) -> R<()> {
+fn worktree_remove(root: PathBuf, path: PathBuf, force: bool) -> R<()> {
     let repo = Repo::discover(&root).map_err(err)?;
-    workspace::remove(&repo, &path, force).map_err(err)
+    worktree::remove(&repo, &path, force).map_err(err)
 }
 
 #[tauri::command]
@@ -57,7 +57,7 @@ fn branches_list(root: PathBuf) -> R<Vec<Branch>> {
     branch::list(&repo).map_err(err)
 }
 
-/// What the New workspace dialog needs up front.
+/// What the New worktree dialog needs up front.
 #[derive(serde::Serialize)]
 struct CreateDefaults {
     config: RepoConfig,
@@ -76,7 +76,7 @@ fn create_defaults(root: PathBuf) -> R<CreateDefaults> {
     };
     Ok(CreateDefaults {
         default_branch: config
-            .workspace
+            .worktree
             .base
             .clone()
             .or_else(|| repo.default_branch.clone()),
@@ -87,19 +87,19 @@ fn create_defaults(root: PathBuf) -> R<CreateDefaults> {
 }
 
 #[tauri::command]
-fn workspace_path_preview(root: PathBuf, branch: String) -> R<String> {
+fn worktree_path_preview(root: PathBuf, branch: String) -> R<String> {
     let repo = Repo::discover(&root).map_err(err)?;
     let config = RepoConfig::load(&repo).map_err(err)?;
     Ok(config
-        .workspace_path(&repo, &branch)
+        .worktree_path(&repo, &branch)
         .to_string_lossy()
         .into_owned())
 }
 
 #[tauri::command]
-fn workspace_create(root: PathBuf, req: CreateWorkspace) -> R<Created> {
+fn worktree_create(root: PathBuf, req: CreateWorktree) -> R<Created> {
     let repo = Repo::discover(&root).map_err(err)?;
-    workspace::create(&repo, &req).map_err(err)
+    worktree::create(&repo, &req).map_err(err)
 }
 
 #[tauri::command]
@@ -307,9 +307,9 @@ pub fn run() {
             board_load,
             branches_list,
             create_defaults,
-            workspace_path_preview,
-            workspace_create,
-            workspace_remove,
+            worktree_path_preview,
+            worktree_create,
+            worktree_remove,
             branches_remote,
             history_linear,
             commit_diff,

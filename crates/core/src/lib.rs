@@ -23,7 +23,7 @@ pub mod status;
 pub mod sync;
 pub mod tag;
 pub mod user_config;
-pub mod workspace;
+pub mod worktree;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -43,4 +43,4 @@ pub use status::{FileStatus, Summary};
 pub use sync::SyncResult;
 pub use tag::Tag;
 pub use user_config::UserConfig;
-pub use workspace::{AddWorkspace, CreateWorkspace, Created, Workspace, WorkspaceKind};
+pub use worktree::{AddWorktree, CreateWorktree, Created, Worktree, WorktreeKind};

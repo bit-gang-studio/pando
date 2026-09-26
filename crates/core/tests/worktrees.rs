@@ -1,7 +1,7 @@
 //! Fixture: a bare `origin`, a main worktree on `main`, and two linked
 //! worktrees on `feat/a` and `feat/b`. `main` is 1 ahead and 1 behind origin.
 
-use pando_core::{branch, workspace, AddWorkspace, Repo, WorkspaceKind};
+use pando_core::{branch, worktree, AddWorktree, Repo, WorktreeKind};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -52,6 +52,9 @@ fn fixture() -> Fixture {
     let root = base.join("work");
     git(&base, &["init", "-q", "--bare", "origin.git"]);
     git(&base, &["init", "-q", "-b", "main", "work"]);
+    // CI runners have no global identity; core commands must find one.
+    git(&root, &["config", "user.name", "Test"]);
+    git(&root, &["config", "user.email", "test@example.com"]);
     commit(&root, "one");
     git(
         &root,
@@ -116,16 +119,16 @@ fn discover_outside_repo_fails() {
 }
 
 #[test]
-fn lists_three_workspaces() {
+fn lists_three_worktrees() {
     let f = fixture();
     let repo = Repo::discover(&f.root).unwrap();
-    let ws = workspace::list(&repo).unwrap();
+    let ws = worktree::list(&repo).unwrap();
     assert_eq!(ws.len(), 3);
-    assert_eq!(ws[0].kind, WorkspaceKind::Main);
+    assert_eq!(ws[0].kind, WorktreeKind::Main);
     assert_eq!(ws[0].path, f.root);
     assert_eq!(ws[0].branch.as_deref(), Some("main"));
     let a = ws.iter().find(|w| w.path == f.wt_a).unwrap();
-    assert_eq!(a.kind, WorkspaceKind::Linked);
+    assert_eq!(a.kind, WorktreeKind::Linked);
     assert_eq!(a.branch.as_deref(), Some("feat/a"));
     assert!(a.head.is_some());
     assert!(a.locked.is_none());
@@ -137,9 +140,9 @@ fn add_new_branch_then_remove_writes_backup() {
     let f = fixture();
     let repo = Repo::discover(&f.root).unwrap();
     let path = f.root.parent().unwrap().join("wt-c");
-    let w = workspace::add(
+    let w = worktree::add(
         &repo,
-        &AddWorkspace {
+        &AddWorktree {
             path: path.clone(),
             branch: "feat/c".into(),
             base: Some("main".into()),
@@ -148,10 +151,10 @@ fn add_new_branch_then_remove_writes_backup() {
     )
     .unwrap();
     assert_eq!(w.branch.as_deref(), Some("feat/c"));
-    assert_eq!(workspace::list(&repo).unwrap().len(), 4);
+    assert_eq!(worktree::list(&repo).unwrap().len(), 4);
 
-    workspace::remove(&repo, &path, false).unwrap();
-    assert_eq!(workspace::list(&repo).unwrap().len(), 3);
+    worktree::remove(&repo, &path, false).unwrap();
+    assert_eq!(worktree::list(&repo).unwrap().len(), 3);
     let backup = git(
         &f.root,
         &["rev-parse", "--verify", "refs/pando/backup/feat/c"],
@@ -166,9 +169,9 @@ fn add_existing_branch() {
     let repo = Repo::discover(&f.root).unwrap();
     git(&f.root, &["branch", "-q", "feat/d", "main"]);
     let path = f.root.parent().unwrap().join("wt-d");
-    let w = workspace::add(
+    let w = worktree::add(
         &repo,
-        &AddWorkspace {
+        &AddWorktree {
             path,
             branch: "feat/d".into(),
             base: None,
@@ -184,27 +187,27 @@ fn prune_drops_missing_worktree() {
     let f = fixture();
     let repo = Repo::discover(&f.root).unwrap();
     std::fs::remove_dir_all(&f.wt_b).unwrap();
-    let ws = workspace::list(&repo).unwrap();
+    let ws = worktree::list(&repo).unwrap();
     assert!(ws
         .iter()
         .find(|w| w.path == f.wt_b)
         .unwrap()
         .prunable
         .is_some());
-    assert_eq!(workspace::prune(&repo).unwrap(), 1);
-    assert_eq!(workspace::list(&repo).unwrap().len(), 2);
+    assert_eq!(worktree::prune(&repo).unwrap(), 1);
+    assert_eq!(worktree::list(&repo).unwrap().len(), 2);
 }
 
 #[test]
 fn lock_and_unlock() {
     let f = fixture();
     let repo = Repo::discover(&f.root).unwrap();
-    workspace::lock(&repo, &f.wt_a, Some("busy")).unwrap();
-    let ws = workspace::list(&repo).unwrap();
+    worktree::lock(&repo, &f.wt_a, Some("busy")).unwrap();
+    let ws = worktree::list(&repo).unwrap();
     let a = ws.iter().find(|w| w.path == f.wt_a).unwrap();
     assert_eq!(a.locked.as_deref(), Some("busy"));
-    workspace::unlock(&repo, &f.wt_a).unwrap();
-    let ws = workspace::list(&repo).unwrap();
+    worktree::unlock(&repo, &f.wt_a).unwrap();
+    let ws = worktree::list(&repo).unwrap();
     assert!(ws
         .iter()
         .find(|w| w.path == f.wt_a)
@@ -238,9 +241,9 @@ fn branches_with_upstream_and_checkout() {
 fn types_round_trip_through_json() {
     let f = fixture();
     let repo = Repo::discover(&f.root).unwrap();
-    let ws = workspace::list(&repo).unwrap();
+    let ws = worktree::list(&repo).unwrap();
     let json = serde_json::to_string(&ws).unwrap();
-    let back: Vec<pando_core::Workspace> = serde_json::from_str(&json).unwrap();
+    let back: Vec<pando_core::Worktree> = serde_json::from_str(&json).unwrap();
     assert_eq!(ws, back);
     let repo_json = serde_json::to_string(&repo).unwrap();
     assert_eq!(repo, serde_json::from_str::<Repo>(&repo_json).unwrap());
@@ -252,7 +255,7 @@ fn create_uses_config_hooks_and_port() {
     std::fs::write(
         f.root.join(".pando.toml"),
         r#"
-[workspace]
+[worktree]
 location = "../ws/{branch_slug}"
 [hooks]
 post_create = ["echo hi > hook.txt", "echo $PANDO_BRANCH > branch.txt"]
@@ -262,9 +265,9 @@ port = { env = "PORT", start = 4100 }
     )
     .unwrap();
     let repo = Repo::discover(&f.root).unwrap();
-    let created = workspace::create(
+    let created = worktree::create(
         &repo,
-        &pando_core::CreateWorkspace {
+        &pando_core::CreateWorktree {
             branch: "feat/x".into(),
             base: None,
             path: None,
@@ -274,16 +277,16 @@ port = { env = "PORT", start = 4100 }
     )
     .unwrap();
     let expected = dunce::canonicalize(f.root.parent().unwrap().join("ws").join("feat-x")).unwrap();
-    assert_eq!(created.workspace.path, expected);
+    assert_eq!(created.worktree.path, expected);
     assert_eq!(created.port, Some(4100));
     assert_eq!(created.hooks.len(), 2);
     assert!(created.hooks.iter().all(|h| h.ok()));
     assert!(expected.join("hook.txt").exists());
 
-    // Second workspace gets the next port; removing frees it.
-    let second = workspace::create(
+    // Second worktree gets the next port; removing frees it.
+    let second = worktree::create(
         &repo,
-        &pando_core::CreateWorkspace {
+        &pando_core::CreateWorktree {
             branch: "feat/y".into(),
             base: None,
             path: None,
@@ -293,7 +296,7 @@ port = { env = "PORT", start = 4100 }
     )
     .unwrap();
     assert_eq!(second.port, Some(4101));
-    workspace::remove(&repo, &created.workspace.path, true).unwrap();
+    worktree::remove(&repo, &created.worktree.path, true).unwrap();
     assert_eq!(
         pando_core::runtime::port_for(&repo, "feat/x").unwrap(),
         None
@@ -305,13 +308,13 @@ fn failing_hook_stops_and_reports() {
     let f = fixture();
     std::fs::write(
         f.root.join(".pando.toml"),
-        "[workspace]\nlocation = \"../ws/{branch_slug}\"\n[hooks]\npost_create = [\"exit 3\", \"echo never\"]\n",
+        "[worktree]\nlocation = \"../ws/{branch_slug}\"\n[hooks]\npost_create = [\"exit 3\", \"echo never\"]\n",
     )
     .unwrap();
     let repo = Repo::discover(&f.root).unwrap();
-    let created = workspace::create(
+    let created = worktree::create(
         &repo,
-        &pando_core::CreateWorkspace {
+        &pando_core::CreateWorktree {
             branch: "feat/z".into(),
             base: None,
             path: None,

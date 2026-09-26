@@ -18,7 +18,7 @@ just test
 ## CLI
 
 ```sh
-pando ls                 # workspaces
+pando ls                 # worktrees
 pando branches
 pando new feat/x         # worktree + .pando.toml hooks + port
 pando rm feat/x

@@ -1,4 +1,4 @@
-[workspace]
+[worktree]
 base = "origin/main"
 
 [hooks]

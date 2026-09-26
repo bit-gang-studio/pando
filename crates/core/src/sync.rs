@@ -1,4 +1,4 @@
-//! Bring a workspace up to date with its base.
+//! Bring a worktree up to date with its base.
 
 use crate::backup;
 use crate::cmd::git;

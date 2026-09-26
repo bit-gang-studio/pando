@@ -16,7 +16,7 @@ export function RightRail({ boards }: { boards: Board[] }) {
   return (
     <aside className="flex w-[300px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-stone-300 bg-stone-100 p-4 dark:border-stone-700 dark:bg-stone-900">
       <Card title="Overlaps">
-        <p className="text-xs text-stone-500">Coming soon. Workspaces editing the same hunks will show here before they conflict.</p>
+        <p className="text-xs text-stone-500">Coming soon. Worktrees editing the same hunks will show here before they conflict.</p>
       </Card>
       <Card title="Runtime">
         {ports.length === 0 ? (

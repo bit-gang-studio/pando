@@ -1,10 +1,10 @@
 import { invoke } from "@tauri-apps/api/core";
 
-export type WorkspaceKind = "main" | "linked";
+export type WorktreeKind = "main" | "linked";
 
-export type Workspace = {
+export type Worktree = {
   path: string;
-  kind: WorkspaceKind;
+  kind: WorktreeKind;
   head: string | null;
   branch: string | null;
   detached: boolean;
@@ -55,7 +55,7 @@ export type FileDiff = { path: string; staged: boolean; binary: boolean; new_fil
 
 export type Detail = {
   repo: Repo;
-  workspace: Workspace;
+  worktree: Worktree;
   branch: Branch | null;
   files: FileStatus[];
   ahead: CommitInfo[];
@@ -75,7 +75,7 @@ export type Summary = {
 };
 
 export type Row = {
-  workspace: Workspace;
+  worktree: Worktree;
   branch: Branch | null;
   port: number | null;
   status: Summary | null;
@@ -98,7 +98,7 @@ export type Board = {
 export type UserConfig = { repos: string[]; editor: string | null };
 
 export type RepoConfig = {
-  workspace: { location: string; base: string | null };
+  worktree: { location: string; base: string | null };
   hooks: { post_create: string[]; pre_land: string[]; post_land: string[] };
   runtime: { port: { env: string; start: number } | null; share: string[] };
   land: { strategy: string; delete_branch: boolean; remove_worktree: boolean };
@@ -112,7 +112,7 @@ export type CreateDefaults = {
   branches: Branch[];
 };
 
-export type CreateWorkspace = {
+export type CreateWorktree = {
   branch: string;
   base: string | null;
   path: string | null;
@@ -122,7 +122,7 @@ export type CreateWorkspace = {
 
 export type HookResult = { command: string; exit_code: number | null; stdout: string; stderr: string };
 
-export type Created = { workspace: Workspace; port: number | null; hooks: HookResult[] };
+export type Created = { worktree: Worktree; port: number | null; hooks: HookResult[] };
 
 export const api = {
   version: () => invoke<string>("version"),
@@ -132,12 +132,12 @@ export const api = {
   boardLoad: (root: string) => invoke<Board>("board_load", { root }),
   branchesList: (root: string) => invoke<Branch[]>("branches_list", { root }),
   createDefaults: (root: string) => invoke<CreateDefaults>("create_defaults", { root }),
-  workspacePathPreview: (root: string, branch: string) =>
-    invoke<string>("workspace_path_preview", { root, branch }),
-  workspaceCreate: (root: string, req: CreateWorkspace) =>
-    invoke<Created>("workspace_create", { root, req }),
-  workspaceRemove: (root: string, path: string, force: boolean) =>
-    invoke<void>("workspace_remove", { root, path, force }),
+  worktreePathPreview: (root: string, branch: string) =>
+    invoke<string>("worktree_path_preview", { root, branch }),
+  worktreeCreate: (root: string, req: CreateWorktree) =>
+    invoke<Created>("worktree_create", { root, req }),
+  worktreeRemove: (root: string, path: string, force: boolean) =>
+    invoke<void>("worktree_remove", { root, path, force }),
   openInEditor: (path: string) => invoke<void>("open_in_editor", { path }),
   branchesRemote: (root: string) => invoke<RemoteBranch[]>("branches_remote", { root }),
   history: (root: string, rev: string, limit = 100) => invoke<History>("history_linear", { root, rev, limit }),

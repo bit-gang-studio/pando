@@ -13,7 +13,7 @@ type Props = {
 type Mode = "new" | "existing";
 const PREFIXES = ["feat/", "fix/", "chore/", "spike/"];
 
-export function NewWorkspaceDialog({ repos, initialRepo, initialBranch, onClose, onCreated }: Props) {
+export function NewWorktreeDialog({ repos, initialRepo, initialBranch, onClose, onCreated }: Props) {
   const [repo, setRepo] = useState(initialRepo ?? repos[0] ?? "");
   const [mode, setMode] = useState<Mode>(initialBranch ? "existing" : "new");
   const [defaults, setDefaults] = useState<CreateDefaults | null>(null);
@@ -48,7 +48,7 @@ export function NewWorkspaceDialog({ repos, initialRepo, initialBranch, onClose,
   useEffect(() => {
     if (!repo || !branch || pathEdited) return;
     let live = true;
-    api.workspacePathPreview(repo, branch).then((p) => { if (live) setPath(p); });
+    api.worktreePathPreview(repo, branch).then((p) => { if (live) setPath(p); });
     return () => { live = false; };
   }, [repo, branch, pathEdited]);
 
@@ -69,7 +69,7 @@ export function NewWorkspaceDialog({ repos, initialRepo, initialBranch, onClose,
     setBusy(true);
     setError(null);
     try {
-      const r = await api.workspaceCreate(repo, {
+      const r = await api.worktreeCreate(repo, {
         branch: branch.trim(),
         base: mode === "new" && base ? base : null,
         path: pathEdited && path ? path : null,
@@ -80,7 +80,7 @@ export function NewWorkspaceDialog({ repos, initialRepo, initialBranch, onClose,
       onCreated();
       const failed = r.hooks.some((h) => h.exit_code !== 0);
       if (!failed) {
-        if (openAfter) api.openInEditor(r.workspace.path).catch(() => {});
+        if (openAfter) api.openInEditor(r.worktree.path).catch(() => {});
         onClose();
       }
     } catch (e) {
@@ -97,7 +97,7 @@ export function NewWorkspaceDialog({ repos, initialRepo, initialBranch, onClose,
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
       <div role="dialog" aria-labelledby="nw-title" className="flex max-h-[90vh] w-[720px] flex-col overflow-hidden rounded-xl border border-stone-300 bg-white text-[13px] shadow-xl dark:border-stone-700 dark:bg-stone-800">
         <div className="flex items-center gap-3 border-b border-stone-300 px-5 py-4 dark:border-stone-700">
-          <h2 id="nw-title" className="text-base font-semibold">New workspace</h2>
+          <h2 id="nw-title" className="text-base font-semibold">New worktree</h2>
           <div className="grow" />
           <div className="flex overflow-hidden rounded-md border border-stone-300 dark:border-stone-600">
             {(["new", "existing"] as Mode[]).map((m) => (
@@ -168,7 +168,7 @@ export function NewWorkspaceDialog({ repos, initialRepo, initialBranch, onClose,
           {error && <div className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
           {result && result.hooks.some((h) => h.exit_code !== 0) && (
             <div className="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:bg-amber-900/30">
-              <div className="font-medium">Workspace created, but a setup hook failed. Fix it and run the rest by hand.</div>
+              <div className="font-medium">Worktree created, but a setup hook failed. Fix it and run the rest by hand.</div>
               {result.hooks.map((h, i) => (
                 <div key={i}>
                   <div className="font-mono">{h.exit_code === 0 ? "ok  " : "FAIL"} {h.command}</div>
@@ -185,7 +185,7 @@ export function NewWorkspaceDialog({ repos, initialRepo, initialBranch, onClose,
           <button onClick={onClose} className="h-8 rounded-lg border border-stone-300 bg-white px-3 dark:border-stone-600 dark:bg-stone-700">{result ? "Close" : "Cancel"}<span className="ml-2 text-xs text-stone-400">Esc</span></button>
           {!result && (
             <button onClick={submit} disabled={!canSubmit} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800 disabled:opacity-50">
-              {busy ? "Creating…" : "Create workspace"}<span className="ml-2 text-xs opacity-70">⌘↵</span>
+              {busy ? "Creating…" : "Create worktree"}<span className="ml-2 text-xs opacity-70">⌘↵</span>
             </button>
           )}
         </div>

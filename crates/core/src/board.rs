@@ -5,13 +5,13 @@ use crate::error::{gix_err, Result};
 use crate::repo::Repo;
 use crate::runtime;
 use crate::status::{self, Summary};
-use crate::workspace::{self, Workspace};
+use crate::worktree::{self, Worktree};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Row {
-    pub workspace: Workspace,
+    pub worktree: Worktree,
     pub branch: Option<Branch>,
     pub port: Option<u16>,
     /// `None` when the worktree directory is missing.
@@ -36,7 +36,7 @@ pub fn load(repo: &Repo) -> Result<Board> {
     let g = repo.open_gix()?;
 
     let mut rows = Vec::new();
-    for ws in workspace::list(repo)? {
+    for ws in worktree::list(repo)? {
         let st = if ws.prunable.is_none() && ws.path.is_dir() {
             status::summary(&ws.path).ok()
         } else {
@@ -46,7 +46,7 @@ pub fn load(repo: &Repo) -> Result<Board> {
         let branch = ws.branch.as_ref().and_then(|b| branches.get(b).cloned());
         let port = ws.branch.as_ref().and_then(|b| ports.get(b).copied());
         rows.push(Row {
-            workspace: ws,
+            worktree: ws,
             branch,
             port,
             status: st,
