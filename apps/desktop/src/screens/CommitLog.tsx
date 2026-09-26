@@ -10,6 +10,7 @@ type Props = {
   scope: string;
   dirtyWorktrees: number;
   uncommittedLabel?: string;
+  uncommittedSelected?: boolean;
   selected: string | null;
   onSelect: (id: string | null) => void;
   onUncommitted: () => void;
@@ -20,7 +21,7 @@ type Props = {
 
 const PAGE = 200;
 
-export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, selected, onSelect, onUncommitted, onLoaded, refreshKey }: Props) {
+export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, onLoaded, refreshKey }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -51,7 +52,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, selec
       </div>
       <div className="min-h-0 grow overflow-auto bg-white dark:bg-stone-800">
         {dirtyWorktrees > 0 && (
-          <button onClick={onUncommitted} className={`flex w-full items-center gap-3 border-b border-stone-100 px-4 py-1.5 text-left dark:border-stone-700 ${selected === null && uncommittedLabel ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
+          <button onClick={onUncommitted} className={`flex w-full items-center gap-3 border-b border-stone-100 px-4 py-1.5 text-left dark:border-stone-700 ${uncommittedSelected || (selected === null && uncommittedLabel) ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
             <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-stone-400" />
             <span className="font-medium">Uncommitted changes</span>
             <span className="text-xs text-stone-500">{uncommittedLabel ?? `in ${dirtyWorktrees} ${dirtyWorktrees === 1 ? "worktree" : "worktrees"}`}</span>

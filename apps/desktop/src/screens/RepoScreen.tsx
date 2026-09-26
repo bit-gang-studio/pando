@@ -4,6 +4,7 @@ import { navigate } from "../lib/routes";
 import { CommitDetail } from "./CommitDetail";
 import { CommitLog } from "./CommitLog";
 import { RepoSidebar } from "./RepoSidebar";
+import { UncommittedPanel } from "./UncommittedPanel";
 import { Detail } from "./Detail";
 import { SplitHandle, useSplit } from "../ui/Split";
 
@@ -14,6 +15,7 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
   const [tick, setTick] = useState(0);
   const [wtCommit, setWtCommit] = useState<string | null>(null); // selected commit while on a worktree
   const [firstId, setFirstId] = useState<string | null>(null); // newest commit, shown by default on the repo page
+  const [showUncommitted, setShowUncommitted] = useState(false);
   const split = useSplit(worktree ? "pando.split.worktree.px" : "pando.split.repo.px", worktree ? 240 : 320, "y", 120, 4000);
   const side = useSplit("pando.split.sidebar.px", 300, "x", 200, 700);
   const onLoaded = useCallback((id: string | null) => setFirstId(id), []);
@@ -33,7 +35,10 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
   }, [refresh]);
 
   const dirty = (data?.branches.filter((b) => b.worktree && changed(b.status) > 0).length ?? 0) + (data?.detached.filter((d) => changed(d.status) > 0).length ?? 0);
-  const firstDirty = data?.branches.find((b) => b.worktree && changed(b.status) > 0)?.worktree?.path ?? data?.detached.find((d) => changed(d.status) > 0)?.worktree.path ?? null;
+  const dirtyPaths = [
+    ...(data?.branches.filter((b) => b.worktree && changed(b.status) > 0).map((b) => b.worktree!.path) ?? []),
+    ...(data?.detached.filter((d) => changed(d.status) > 0).map((d) => d.worktree.path) ?? []),
+  ];
 
   // Worktree mode: scope the log to its branch and treat "Uncommitted changes" as this worktree's.
   const wtRow = worktree ? data?.branches.find((b) => b.worktree?.path === worktree) ?? null : null;
@@ -60,10 +65,11 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
           scope={worktree ? wtBranch : ""}
           dirtyWorktrees={worktree ? (wtDirty > 0 ? 1 : 0) : dirty}
           uncommittedLabel={worktree ? `${wtDirty} in this worktree` : undefined}
-          selected={selected}
-          onSelect={(id) => (worktree ? setWtCommit(id) : navigate(id ? { kind: "commit", root, id } : { kind: "repo", root }))}
+          selected={worktree ? selected : showUncommitted ? null : selected}
+          uncommittedSelected={!worktree && showUncommitted}
+          onSelect={(id) => { setShowUncommitted(false); if (worktree) setWtCommit(id); else navigate(id ? { kind: "commit", root, id } : { kind: "repo", root }); }}
           onLoaded={worktree ? undefined : onLoaded}
-          onUncommitted={() => (worktree ? setWtCommit(null) : firstDirty && navigate({ kind: "worktree", root, path: firstDirty }))}
+          onUncommitted={() => (worktree ? setWtCommit(null) : setShowUncommitted(true))}
           refreshKey={tick}
         />
       </div>
@@ -75,6 +81,8 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
           ) : (
             <Detail root={root} path={worktree} onBack={() => navigate({ kind: "repo", root })} onChanged={refresh} />
           )
+        ) : showUncommitted && dirtyPaths.length > 0 ? (
+          <UncommittedPanel root={root} worktrees={dirtyPaths} />
         ) : shown ? (
           <CommitDetail root={root} id={shown} />
         ) : (
