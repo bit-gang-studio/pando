@@ -7,5 +7,12 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+dunce = "1.0.5"
+gix = { version = "0.88", default-features = false, features = ["revision", "sha1"] }
 serde.workspace = true
 thiserror.workspace = true
+
+[dev-dependencies]
+dunce = "1.0.5"
+serde_json.workspace = true
+tempfile = "3.27.0"

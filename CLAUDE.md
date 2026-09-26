@@ -23,4 +23,4 @@ Read `docs/architecture.md` first. The plan and status are the Crunchy board (pr
 
 ## Gotchas
 
-- None yet. Add one only when a rule changes.
+- Worktree listing uses `git worktree list --porcelain -z`, not gix. gix does not report lock or prunable state.
