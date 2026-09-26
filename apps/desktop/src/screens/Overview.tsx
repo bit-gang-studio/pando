@@ -97,7 +97,6 @@ export function Overview({ root, data, onRefresh: refresh, onOpenDetail, onError
               <th className={th}>PATH</th>
               <th className={`${th} w-[110px]`}>CHANGES</th>
               <th className={`${th} w-[130px]`}>AHEAD OF {base.toUpperCase()}</th>
-              <th className={`${th} w-[70px]`}>PORT</th>
               <th className={`${th} w-[80px] text-right`}>LAST</th>
               <th className={`${th} w-[250px]`}></th>
             </tr>
@@ -125,7 +124,6 @@ export function Overview({ root, data, onRefresh: refresh, onOpenDetail, onError
                     {r.isMain ? (r.branch?.branch.behind ? <Chip tone="amber">{r.branch.branch.behind} behind {r.branch.branch.upstream}</Chip> : null) : r.ahead ? r.ahead : <span className="text-stone-400">0</span>}
                     {r.stale && <Chip>stale</Chip>}
                   </td>
-                  <td className={`${td} font-mono text-xs`}>{r.port != null ? `:${r.port}` : ""}</td>
                   <td className={`${td} text-right text-xs text-stone-500`}>{r.time ? ago(r.time) : ""}</td>
                   <td className={`${td} text-right`} onClick={(e) => e.stopPropagation()}>
                     <div className="flex justify-end gap-1.5">
