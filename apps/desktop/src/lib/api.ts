@@ -53,6 +53,25 @@ export type DiffLine = { kind: LineKind; old_no: number | null; new_no: number |
 export type Hunk = { header: string; old_start: number; old_count: number; new_start: number; new_count: number; lines: DiffLine[] };
 export type FileDiff = { path: string; staged: boolean; binary: boolean; new_file: boolean; hunks: Hunk[]; added: number; deleted: number };
 
+export type Operation = {
+  kind: "rebase" | "merge" | "cherry_pick";
+  applied: number;
+  total: number;
+  head_label: string;
+  incoming_label: string;
+  conflicted: string[];
+  resolved: string[];
+};
+
+export type ConflictFile = {
+  path: string;
+  ours: string;
+  theirs: string;
+  base: string | null;
+  working: string;
+  binary: boolean;
+};
+
 export type Detail = {
   repo: Repo;
   worktree: Worktree;
@@ -62,6 +81,7 @@ export type Detail = {
   base_branch: string | null;
   port: number | null;
   head_summary: string | null;
+  operation: Operation | null;
 };
 
 export type SyncResult = { ok: boolean; conflicts: string[]; message: string };
@@ -230,6 +250,14 @@ export const api = {
   landRun: (root: string, path: string, plan: LandPlan) => invoke<LandResult>("land_run", { root, path, plan }),
   cleanPlan: (root: string) => invoke<Candidate[]>("clean_plan", { root }),
   cleanRun: (root: string, req: CleanRequest) => invoke<LandStep[]>("clean_run", { root, req }),
+  conflictFile: (worktree: string, path: string) => invoke<ConflictFile>("conflict_file", { worktree, path }),
+  conflictTake: (worktree: string, path: string, side: "ours" | "theirs" | "both") =>
+    invoke<void>("conflict_take", { worktree, path, side }),
+  conflictResolve: (worktree: string, path: string, content: string) =>
+    invoke<void>("conflict_resolve", { worktree, path, content }),
+  conflictReset: (worktree: string, path: string) => invoke<void>("conflict_reset", { worktree, path }),
+  opContinue: (worktree: string) => invoke<Operation | null>("op_continue", { worktree }),
+  opAbort: (worktree: string) => invoke<void>("op_abort", { worktree }),
 };
 
 export function bytes(n: number): string {

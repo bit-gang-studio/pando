@@ -3,6 +3,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { ago, api, repoName, type Detail as DetailData, type FileDiff, type FileStatus, type Hunk } from "../lib/api";
 import { Chip } from "../board/Chip";
 import { DiffView } from "./DiffView";
+import { ConflictView } from "./ConflictView";
 import { LandDialog } from "../land/LandDialog";
 
 type Props = { root: string; path: string; onBack: () => void; onChanged: () => void };
@@ -31,6 +32,8 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
       setD(next);
       setError(null);
       setSel((s) => {
+        if (next.operation && s && (next.operation.conflicted.includes(s.path) || next.operation.resolved.includes(s.path))) return s;
+        if (next.operation && next.operation.conflicted.length > 0) return { path: next.operation.conflicted[0], staged: false, untracked: false };
         if (s && next.files.some((f) => f.path === s.path && (s.staged ? !!f.staged : !!f.unstaged || f.untracked))) return s;
         const first = next.files.find((f) => f.unstaged || f.untracked) ?? next.files.find((f) => f.staged);
         return first ? { path: first.path, staged: !first.unstaged && !first.untracked && !!first.staged, untracked: first.untracked } : null;
@@ -85,7 +88,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
   const conflicts = d.files.filter((f) => f.conflicted).length;
   const b = d.branch;
   const isMain = d.worktree.kind === "main";
-  const canCommit = (staged.length > 0 || amend) && message.trim().length > 0 && !busy;
+  const canCommit = (staged.length > 0 || amend) && message.trim().length > 0 && !busy && !d.operation;
 
   async function doCommit() {
     if (!canCommit) return;
@@ -114,7 +117,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
     await run("sync", async () => {
       const r = await api.syncRebase(root, wt, b.name, base);
       if (r.ok) setNotice(r.message);
-      else setError(`${r.message}${r.conflicts.length ? ` Conflicts in: ${r.conflicts.join(", ")}.` : ""} Conflict resolution lands with the M3 conflicts card.`);
+      else setNotice(r.message);
     });
   }
 
@@ -148,11 +151,24 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
         {conflicts > 0 && <Chip tone="red">{conflicts} conflicts</Chip>}
         {d.port != null && <Chip mono>:{d.port}</Chip>}
         <div className="grow" />
-        {!isMain && d.base_branch && <button onClick={syncNow} disabled={!!busy} className={btn}>{busy === "sync" ? "Syncing…" : `Sync with ${d.base_branch}`}</button>}
+        {!isMain && d.base_branch && !d.operation && <button onClick={syncNow} disabled={!!busy} className={btn}>{busy === "sync" ? "Syncing…" : `Sync with ${d.base_branch}`}</button>}
         <button onClick={() => api.openInEditor(wt)} className={btn}>Open in editor <span className="text-xs text-stone-400">⌘E</span></button>
-        <button onClick={() => setLanding(true)} disabled={isMain || !d.worktree.branch} className="h-8 rounded-lg bg-teal-700 px-3.5 text-[13px] font-medium text-white hover:bg-teal-800 disabled:opacity-40" title={isMain ? "The main worktree is the base; land linked worktrees into it" : "Land"}>Land <span className="text-xs opacity-70">⌘L</span></button>
+        <button onClick={() => setLanding(true)} disabled={isMain || !d.worktree.branch || !!d.operation} className="h-8 rounded-lg bg-teal-700 px-3.5 text-[13px] font-medium text-white hover:bg-teal-800 disabled:opacity-40" title={isMain ? "The main worktree is the base; land linked worktrees into it" : "Land"}>Land <span className="text-xs opacity-70">⌘L</span></button>
       </div>
 
+      {d.operation && (
+        <div className="flex items-center gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2 text-xs dark:border-amber-800 dark:bg-amber-900/30">
+          <span className="h-2 w-2 rounded-full bg-amber-700" />
+          <span className="font-semibold text-amber-800 dark:text-amber-200">
+            {d.operation.kind === "rebase" ? `Rebase paused onto ${d.operation.head_label}` : d.operation.kind === "merge" ? `Merge paused: ${d.operation.incoming_label} into ${d.operation.head_label}` : `Cherry-pick paused: ${d.operation.incoming_label}`}
+            {d.operation.total > 0 && ` · ${d.operation.applied} of ${d.operation.total} commits`}
+          </span>
+          <span className="text-stone-600 dark:text-stone-300">{d.operation.conflicted.length > 0 ? `${d.operation.conflicted.length} ${d.operation.conflicted.length === 1 ? "file has" : "files have"} conflicts. Resolve each, then continue.` : "All conflicts resolved."}</span>
+          <div className="grow" />
+          <button onClick={() => run("abort", async () => { if (await ask("Abort and put the branch back exactly as it was?", { title: "Abort", kind: "warning" })) await api.opAbort(wt); })} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-red-700 dark:border-stone-600 dark:bg-stone-700">Abort</button>
+          <button onClick={() => run("continue", () => api.opContinue(wt))} disabled={!!busy || d.operation.conflicted.length > 0} className="h-7 rounded-md bg-teal-700 px-3 font-medium text-white disabled:opacity-50">{busy === "continue" ? "Continuing…" : d.operation.conflicted.length > 0 ? `Continue (${d.operation.conflicted.length} unresolved)` : "Continue"}</button>
+        </div>
+      )}
       {(error || notice) && (
         <div className={`px-4 py-2 text-xs ${error ? "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200" : "bg-teal-50 text-teal-800 dark:bg-teal-900/30 dark:text-teal-200"}`}>
           {error ?? notice}
@@ -163,6 +179,25 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
       <div className="flex min-h-0 min-w-0 grow">
         <aside className="flex w-[300px] shrink-0 flex-col border-r border-stone-300 bg-white dark:border-stone-700 dark:bg-stone-800">
           <div className="flex min-h-0 grow flex-col gap-0.5 overflow-y-auto p-2">
+            {d.operation && (
+              <>
+                <div className="px-2 pb-1 pt-1 text-[11px] font-semibold tracking-wider text-stone-500">CONFLICTED · {d.operation.conflicted.length}</div>
+                {d.operation.conflicted.map((p) => (
+                  <div key={`c-${p}`} onClick={() => setSel({ path: p, staged: false, untracked: false })} className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${sel?.path === p ? "bg-amber-100 dark:bg-amber-900/40" : "bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/20 dark:hover:bg-amber-900/40"}`}>
+                    <span className="h-2 w-2 rounded-full bg-amber-700" /><span className="grow truncate font-mono text-xs">{p}</span>
+                  </div>
+                ))}
+                {d.operation.conflicted.length === 0 && <span className="px-2 text-xs text-stone-500">None left.</span>}
+                <div className="px-2 pb-1 pt-3 text-[11px] font-semibold tracking-wider text-stone-500">RESOLVED · {d.operation.resolved.length}</div>
+                {d.operation.resolved.map((p) => (
+                  <div key={`r-${p}`} onClick={() => setSel({ path: p, staged: true, untracked: false })} className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${sel?.path === p ? "bg-teal-100 dark:bg-teal-900/40" : "hover:bg-stone-100 dark:hover:bg-stone-700"}`}>
+                    <span className="w-2 font-semibold text-teal-700">✓</span><span className="grow truncate font-mono text-xs">{p}</span>
+                    <button onClick={(e) => { e.stopPropagation(); run("reset", () => api.conflictReset(wt, p)); }} className="text-[11px] text-teal-700 hover:underline">Undo</button>
+                  </div>
+                ))}
+                <div className="my-2 border-t border-stone-200 dark:border-stone-700" />
+              </>
+            )}
             <div className="flex items-center justify-between px-2 pb-1 pt-1">
               <span className="text-[11px] font-semibold tracking-wider text-stone-500">UNSTAGED · {unstaged.length}</span>
               <button onClick={() => run("stage", () => api.stageAll(wt))} disabled={unstaged.length === 0 || !!busy} className={small}>Stage all</button>
@@ -204,7 +239,11 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
         </aside>
 
         <main className="flex min-w-0 grow flex-col bg-white dark:bg-stone-800">
-          <DiffView diff={diff} loading={diffLoading} mode={mode} onMode={setMode} onHunk={hunk} onOpenFile={() => sel && api.openInEditor(`${wt}/${sel.path}`)} />
+          {d.operation && sel && (d.operation.conflicted.includes(sel.path) || d.operation.resolved.includes(sel.path)) ? (
+            <ConflictView worktree={wt} path={sel.path} op={d.operation} onChanged={refresh} onOpenFile={() => api.openInEditor(`${wt}/${sel!.path}`)} />
+          ) : (
+            <DiffView diff={diff} loading={diffLoading} mode={mode} onMode={setMode} onHunk={hunk} onOpenFile={() => sel && api.openInEditor(`${wt}/${sel.path}`)} />
+          )}
           <div className="flex h-8 shrink-0 items-center gap-3 border-t border-stone-300 bg-stone-50 px-4 text-xs text-stone-500 dark:border-stone-700 dark:bg-stone-900/40">
             <span>Terminal drawer (v1.1) docks here</span>
             <div className="grow" />
@@ -223,6 +262,12 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
               <span className="text-stone-500">HEAD</span><span className="truncate font-mono text-[11px]" title={d.worktree.head ?? ""}>{d.worktree.head?.slice(0, 7) ?? "—"}</span>
             </div>
           </div>
+          {d.operation && (
+            <div className="flex flex-col gap-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-900/30">
+              <div className="font-semibold">Safety</div>
+              <span>Your branch tip was saved as <span className="font-mono">refs/pando/backup/{d.worktree.branch}</span> before this started. Abort restores it exactly.</span>
+            </div>
+          )}
           <div className="flex flex-col gap-1 rounded-lg border border-stone-300 bg-white p-3 text-xs dark:border-stone-700 dark:bg-stone-800">
             <div className="font-semibold">Agent</div>
             <span className="text-stone-500">Session awareness lands with the M4 launchers card.</span>

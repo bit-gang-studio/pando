@@ -1,10 +1,11 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
 use pando_core::{
-    board, branch, clean, commit, detail, diff, history, index, land, launch, runtime, stash, sync,
-    tag, user_config, worktree, Board, Branch, Candidate, CleanRequest, CommitDiff, CreateWorktree,
-    Created, Detail, FileDiff, History, Hunk, LandPlan, LandResult, Preflight, RemoteBranch, Repo,
-    RepoConfig, Stash, SyncResult, Tag, UserConfig,
+    board, branch, clean, commit, conflict, detail, diff, history, index, land, launch, operation,
+    runtime, stash, sync, tag, user_config, worktree, Board, Branch, Candidate, CleanRequest,
+    CommitDiff, ConflictFile, CreateWorktree, Created, Detail, FileDiff, History, Hunk, LandPlan,
+    LandResult, Operation, Preflight, RemoteBranch, Repo, RepoConfig, Side, Stash, SyncResult, Tag,
+    UserConfig,
 };
 use std::path::PathBuf;
 
@@ -423,6 +424,36 @@ async fn clean_run(root: PathBuf, req: CleanRequest) -> R<Vec<land::Step>> {
 }
 
 #[tauri::command]
+async fn conflict_file(worktree: PathBuf, path: String) -> R<ConflictFile> {
+    blocking(move || conflict::file(&worktree, &path).map_err(err)).await
+}
+
+#[tauri::command]
+async fn conflict_take(worktree: PathBuf, path: String, side: Side) -> R<()> {
+    blocking(move || conflict::take(&worktree, &path, side).map_err(err)).await
+}
+
+#[tauri::command]
+async fn conflict_resolve(worktree: PathBuf, path: String, content: String) -> R<()> {
+    blocking(move || conflict::resolve(&worktree, &path, &content).map_err(err)).await
+}
+
+#[tauri::command]
+async fn conflict_reset(worktree: PathBuf, path: String) -> R<()> {
+    blocking(move || conflict::reset(&worktree, &path).map_err(err)).await
+}
+
+#[tauri::command]
+async fn op_continue(worktree: PathBuf) -> R<Option<Operation>> {
+    blocking(move || operation::continue_op(&worktree).map_err(err)).await
+}
+
+#[tauri::command]
+async fn op_abort(worktree: PathBuf) -> R<()> {
+    blocking(move || operation::abort(&worktree).map_err(err)).await
+}
+
+#[tauri::command]
 async fn open_in_editor(path: PathBuf) -> R<()> {
     blocking(move || {
         let editor = user_config::load().ok().and_then(|c| c.editor);
@@ -481,6 +512,12 @@ pub fn run() {
             land_run,
             clean_plan,
             clean_run,
+            conflict_file,
+            conflict_take,
+            conflict_resolve,
+            conflict_reset,
+            op_continue,
+            op_abort,
             open_in_editor
         ])
         .run(tauri::generate_context!())

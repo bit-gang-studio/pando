@@ -4,6 +4,7 @@ use crate::branch::{self, Branch};
 use crate::commit::CommitInfo;
 use crate::error::Result;
 use crate::history;
+use crate::operation::{self, Operation};
 use crate::repo::{canon, Repo};
 use crate::runtime;
 use crate::status::{self, FileStatus};
@@ -22,6 +23,7 @@ pub struct Detail {
     pub base_branch: Option<String>,
     pub port: Option<u16>,
     pub head_summary: Option<String>,
+    pub operation: Option<Operation>,
 }
 
 pub fn load(repo: &Repo, path: &Path) -> Result<Detail> {
@@ -47,6 +49,7 @@ pub fn load(repo: &Repo, path: &Path) -> Result<Detail> {
         Some(b) => runtime::port_for(repo, b)?,
         None => None,
     };
+    let operation = operation::detect(&worktree.path)?;
     let head_summary = branch
         .as_ref()
         .and_then(|b| b.last_commit.as_ref())
@@ -60,5 +63,6 @@ pub fn load(repo: &Repo, path: &Path) -> Result<Detail> {
         base_branch,
         port,
         head_summary,
+        operation,
     })
 }

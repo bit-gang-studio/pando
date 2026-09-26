@@ -171,7 +171,7 @@ fn detail_and_sync() {
 }
 
 #[test]
-fn sync_conflict_is_aborted_cleanly() {
+fn sync_conflict_pauses_and_can_abort() {
     let f = fixture();
     let repo = Repo::discover(&f.root).unwrap();
     let wt = f.root.parent().unwrap().join("wt");
@@ -193,7 +193,11 @@ fn sync_conflict_is_aborted_cleanly() {
     let r = sync::rebase_onto(&repo, &wt, "feat/y", "main").unwrap();
     assert!(!r.ok);
     assert_eq!(r.conflicts, vec!["a.txt"]);
-    assert!(!wt.join(".git").is_dir());
+    let op = pando_core::operation::detect(&wt).unwrap().expect("paused");
+    assert_eq!(op.kind, pando_core::OpKind::Rebase);
+    assert_eq!(op.conflicted, vec!["a.txt"]);
+    pando_core::operation::abort(&wt).unwrap();
+    assert!(pando_core::operation::detect(&wt).unwrap().is_none());
     assert_eq!(git(&wt, &["log", "-1", "--format=%s"]), "feat edit");
     assert!(
         status::files(&wt).unwrap().is_empty(),

@@ -10,13 +10,13 @@ use std::path::Path;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SyncResult {
     pub ok: bool,
-    /// Set when the rebase stopped on conflicts and was aborted.
+    /// Set when the rebase paused on conflicts. Resolve, then continue or abort.
     pub conflicts: Vec<String>,
     pub message: String,
 }
 
 /// Fetch, then rebase the worktree's branch onto `base`. On conflict the rebase
-/// is aborted and the conflicted paths are returned. A backup ref is written first.
+/// stays paused so the user can resolve it. A backup ref is written first.
 pub fn rebase_onto(repo: &Repo, worktree: &Path, branch: &str, base: &str) -> Result<SyncResult> {
     backup::write(repo, branch)?;
     if base.contains('/') {
@@ -35,11 +35,19 @@ pub fn rebase_onto(repo: &Repo, worktree: &Path, branch: &str, base: &str) -> Re
                 .lines()
                 .map(str::to_string)
                 .collect();
-            let _ = git(worktree, ["rebase", "--abort"]);
+            if conflicts.is_empty() {
+                let _ = git(worktree, ["rebase", "--abort"]);
+                return Ok(SyncResult {
+                    ok: false,
+                    conflicts,
+                    message: format!("Rebase failed and was undone. {e}"),
+                });
+            }
+            let message = format!("Rebase paused on conflicts in {} file(s).", conflicts.len());
             Ok(SyncResult {
                 ok: false,
                 conflicts,
-                message: format!("Rebase stopped on conflicts and was undone. {e}"),
+                message,
             })
         }
     }
