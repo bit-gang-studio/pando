@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { ago, api, changed, type BranchRow, type Overview as OverviewData, type RemoteBranch } from "../lib/api";
 import { Chip } from "../ui/Chip";
@@ -7,13 +7,10 @@ import { NewBranchDialog } from "../dialogs/NewBranchDialog";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 
-type Props = { root: string; onOpenDetail: (path: string) => void; onError: (msg: string) => void };
-
-const REFRESH_MS = 4000;
+type Props = { root: string; data: OverviewData | null; onRefresh: () => Promise<void>; onOpenDetail: (path: string) => void; onError: (msg: string) => void };
 const btn = "h-7 rounded-md border border-stone-300 bg-white px-2.5 text-xs hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 
-export function Overview({ root, onOpenDetail, onError }: Props) {
-  const [data, setData] = useState<OverviewData | null>(null);
+export function Overview({ root, data, onRefresh: refresh, onOpenDetail, onError }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ branch?: string; remote?: string } | null>(null);
   const [merging, setMerging] = useState<BranchRow | null>(null);
@@ -35,22 +32,13 @@ export function Overview({ root, onOpenDetail, onError }: Props) {
     else onOpenDetail(path);
   }
 
-  const refresh = useCallback(async () => {
-    try { setData(await api.overview(root)); }
-    catch (e) { onError(String(e)); }
-  }, [root, onError]);
-
   useEffect(() => {
-    refresh();
-    const t = setInterval(() => { if (document.hasFocus()) refresh(); }, REFRESH_MS);
-    const onFocus = () => refresh();
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "n") { e.preventDefault(); setCreating({}); }
     };
-    window.addEventListener("focus", onFocus);
     window.addEventListener("keydown", onKey);
-    return () => { clearInterval(t); window.removeEventListener("focus", onFocus); window.removeEventListener("keydown", onKey); };
-  }, [refresh]);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
 
   async function run(label: string, fn: () => Promise<unknown>) {
     setBusy(label);
@@ -76,7 +64,7 @@ export function Overview({ root, onOpenDetail, onError }: Props) {
   const remoteShown = showAllRemote ? remote : remote.slice(0, 5);
 
   return (
-    <main className="flex min-w-0 grow flex-col gap-6 overflow-auto p-6">
+    <main className="flex min-w-0 grow flex-col gap-6 overflow-auto p-5">
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
       {creating && data && (
         <NewBranchDialog root={root} base={data.base} initialBranch={creating.branch ?? null} onClose={() => setCreating(null)} onCreated={refresh} />

@@ -70,6 +70,11 @@ export type Detail = {
 
 export type SyncResult = { ok: boolean; conflicts: string[]; message: string };
 
+export type LogEntry = { id: string; parents: string[]; author: string; time: number; summary: string; refs: string[]; is_head: boolean };
+export type Log = { entries: LogEntry[]; truncated: boolean };
+export type FileChange = { path: string; added: number; deleted: number };
+export type CommitDiff = { commit: CommitInfo; message: string; files: FileChange[] };
+
 export type Preflight = {
   branch: string; base: string; base_local: string; clean: boolean; ahead: number; behind: number;
   conflict_predicted: boolean; conflict_files: string[]; base_checked_out_in: string | null; base_worktree_clean: boolean | null;
@@ -107,6 +112,9 @@ export const api = {
   worktreeAdd: (root: string, req: CreateWorktree) => invoke<Created>("worktree_add", { root, req }),
   worktreeRemove: (root: string, path: string, force: boolean) => invoke<void>("worktree_remove", { root, path, force }),
 
+  log: (root: string, branch: string | null, skip: number, limit: number) => invoke<Log>("log_list", { root, branch, skip, limit }),
+  commitDiff: (root: string, id: string) => invoke<CommitDiff>("commit_diff", { root, id }),
+  commitFileDiff: (root: string, id: string, path: string) => invoke<FileDiff>("commit_file_diff", { root, id, path }),
   detail: (root: string, path: string) => invoke<Detail>("detail_load", { root, path }),
   diffFile: (worktree: string, path: string, staged: boolean, untracked: boolean) => invoke<FileDiff>("diff_file", { worktree, path, staged, untracked }),
   stagePaths: (worktree: string, paths: string[]) => invoke<void>("stage_paths", { worktree, paths }),

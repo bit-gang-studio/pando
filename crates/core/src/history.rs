@@ -56,9 +56,9 @@ pub struct FileChange {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CommitDiff {
     pub commit: CommitInfo,
+    /// Full commit message.
+    pub message: String,
     pub files: Vec<FileChange>,
-    /// Unified diff text.
-    pub patch: String,
 }
 
 pub fn commit_diff(repo: &Repo, id: &str) -> Result<CommitDiff> {
@@ -81,10 +81,32 @@ pub fn commit_diff(repo: &Repo, id: &str) -> Result<CommitDiff> {
             })
         })
         .collect();
-    let patch = git(&repo.common_git_dir, ["show", "--format=", "--patch", id])?;
+    let message = git(&repo.common_git_dir, ["log", "-1", "--format=%B", id])?
+        .trim_end()
+        .to_string();
     Ok(CommitDiff {
         commit: info,
+        message,
         files,
-        patch,
     })
+}
+
+/// Structured diff of one file in one commit.
+pub fn commit_file_diff(repo: &Repo, id: &str, path: &str) -> Result<crate::diff::FileDiff> {
+    let out = git(
+        &repo.common_git_dir,
+        [
+            "show",
+            "--format=",
+            "--no-color",
+            "--no-ext-diff",
+            "-U3",
+            id,
+            "--",
+            path,
+        ],
+    )?;
+    let mut d = crate::diff::parse_unified(&out);
+    d.path = path.to_string();
+    Ok(d)
 }

@@ -83,7 +83,10 @@ fn history_marks_base_and_lists_newest_first() {
     let d = history::commit_diff(&repo, &h.commits[0].id).unwrap();
     assert_eq!(d.files.len(), 1);
     assert_eq!(d.files[0].path, "b2");
-    assert!(d.patch.contains("+b2"));
+    assert_eq!(d.message, "b2");
+    let fd = pando_core::history::commit_file_diff(&repo, &h.commits[0].id, "b2").unwrap();
+    assert!(fd.new_file);
+    assert_eq!(fd.added, 1);
 }
 
 #[test]
@@ -176,4 +179,26 @@ fn tags_list() {
     assert_eq!(t.len(), 1);
     assert_eq!(t[0].name, "v0.1.0");
     assert_eq!(t[0].target.len(), 40);
+}
+
+#[test]
+fn log_lists_all_branches_with_labels() {
+    let f = fixture();
+    let repo = Repo::discover(&f.root).unwrap();
+    git(&f.root, &["switch", "-q", "-c", "feat/b"]);
+    commit(&f.root, "b1");
+    let all = pando_core::log::list(&repo, None, 0, 50).unwrap();
+    assert!(!all.truncated);
+    assert_eq!(all.entries[0].summary, "b1");
+    assert!(all.entries[0].is_head);
+    assert!(all.entries[0].refs.contains(&"feat/b".to_string()));
+    let one = all.entries.iter().find(|e| e.summary == "one").unwrap();
+    assert!(
+        one.refs.contains(&"main".to_string()) && one.refs.contains(&"origin/main".to_string())
+    );
+    assert!(one.refs.contains(&"tag: v0.1.0".to_string()));
+    let only_main = pando_core::log::list(&repo, Some("main"), 0, 50).unwrap();
+    assert_eq!(only_main.entries.len(), 1);
+    let paged = pando_core::log::list(&repo, None, 0, 1).unwrap();
+    assert!(paged.truncated);
 }

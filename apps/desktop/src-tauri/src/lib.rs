@@ -1,10 +1,10 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
 use pando_core::{
-    branch, commit, conflict, detail, diff, index, launch, merge, operation, overview, runtime,
-    sync, user_config, worktree, ConflictFile, CreateWorktree, Created, Detail, FileDiff, Hunk,
-    MergePlan, MergeResult, Operation, Overview, Preflight, Repo, RepoConfig, Side, SyncResult,
-    UserConfig,
+    branch, commit, conflict, detail, diff, history, index, launch, log, merge, operation,
+    overview, runtime, sync, user_config, worktree, CommitDiff, ConflictFile, CreateWorktree,
+    Created, Detail, FileDiff, Hunk, Log, MergePlan, MergeResult, Operation, Overview, Preflight,
+    Repo, RepoConfig, Side, SyncResult, UserConfig,
 };
 use std::path::PathBuf;
 
@@ -122,6 +122,23 @@ async fn worktree_add(root: PathBuf, req: CreateWorktree) -> R<Created> {
 #[tauri::command]
 async fn worktree_remove(root: PathBuf, path: PathBuf, force: bool) -> R<()> {
     blocking(move || worktree::remove(&repo(&root)?, &path, force).map_err(err)).await
+}
+
+// ---- log -------------------------------------------------------------------
+
+#[tauri::command]
+async fn log_list(root: PathBuf, branch: Option<String>, skip: usize, limit: usize) -> R<Log> {
+    blocking(move || log::list(&repo(&root)?, branch.as_deref(), skip, limit).map_err(err)).await
+}
+
+#[tauri::command]
+async fn commit_diff(root: PathBuf, id: String) -> R<CommitDiff> {
+    blocking(move || history::commit_diff(&repo(&root)?, &id).map_err(err)).await
+}
+
+#[tauri::command]
+async fn commit_file_diff(root: PathBuf, id: String, path: String) -> R<FileDiff> {
+    blocking(move || history::commit_file_diff(&repo(&root)?, &id, &path).map_err(err)).await
 }
 
 // ---- detail: changes and commits -------------------------------------------
@@ -281,6 +298,9 @@ pub fn run() {
             worktree_path_preview,
             worktree_add,
             worktree_remove,
+            log_list,
+            commit_diff,
+            commit_file_diff,
             detail_load,
             diff_file,
             stage_paths,

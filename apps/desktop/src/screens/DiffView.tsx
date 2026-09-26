@@ -9,11 +9,12 @@ type Props = {
   onMode: (m: "unified" | "split") => void;
   onHunk: (hunk: Hunk, reverse: boolean) => void;
   onOpenFile: () => void;
+  readOnly?: boolean;
 };
 
 const MAX_LINES = 4000;
 
-export function DiffView({ diff, loading, mode, onMode, onHunk, onOpenFile }: Props) {
+export function DiffView({ diff, loading, mode, onMode, onHunk, onOpenFile, readOnly }: Props) {
   const [tokens, setTokens] = useState<{ old: Tok[][]; new: Tok[][] } | null>(null);
   const [showAll, setShowAll] = useState(false);
 
@@ -74,7 +75,7 @@ export function DiffView({ diff, loading, mode, onMode, onHunk, onOpenFile }: Pr
         <button onClick={onOpenFile} className="h-6.5 rounded-md border border-stone-300 bg-white px-2.5 text-xs dark:border-stone-600 dark:bg-stone-700">Open file</button>
       </div>
       <div className="min-h-0 grow overflow-auto font-mono text-[12px] leading-5">
-        {mode === "unified" ? <Unified rows={shown} diff={diff} onHunk={onHunk} /> : <Split rows={shown} diff={diff} onHunk={onHunk} />}
+        {mode === "unified" ? <Unified rows={shown} diff={diff} onHunk={readOnly ? undefined : onHunk} /> : <Split rows={shown} diff={diff} onHunk={readOnly ? undefined : onHunk} />}
         {capped && (
           <button onClick={() => setShowAll(true)} className="m-3 rounded-md border border-stone-300 bg-white px-3 py-1.5 font-sans text-xs dark:border-stone-600 dark:bg-stone-700">
             Show all {total} lines
@@ -89,12 +90,12 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <div className="flex grow items-center justify-center text-xs text-stone-500">{children}</div>;
 }
 
-function HunkBar({ hunk, diff, onHunk }: { hunk: Hunk; diff: FileDiff; onHunk: (h: Hunk, r: boolean) => void }) {
+function HunkBar({ hunk, diff, onHunk }: { hunk: Hunk; diff: FileDiff; onHunk?: (h: Hunk, r: boolean) => void }) {
   return (
     <div className="flex items-center gap-3 border-y border-stone-200 bg-stone-100 px-4 py-1 text-stone-500 dark:border-stone-700 dark:bg-stone-800/80">
       <span className="truncate">{hunk.header}</span>
       <div className="grow" />
-      {!diff.new_file && (
+      {!diff.new_file && onHunk && (
         <button onClick={() => onHunk(hunk, diff.staged)} className="h-5.5 rounded border border-stone-300 bg-white px-2 font-sans text-[11px] dark:border-stone-600 dark:bg-stone-700">
           {diff.staged ? "Unstage hunk" : "Stage hunk"}
         </button>
@@ -110,7 +111,7 @@ function Code({ toks }: { toks: Tok[] }) {
 const bg = { add: "bg-teal-50 dark:bg-teal-900/30", del: "bg-red-50 dark:bg-red-900/30", context: "" } as const;
 const num = "select-none pr-2 text-right text-stone-400";
 
-function Unified({ rows, diff, onHunk }: { rows: { hunk: Hunk; hi: number; line: DiffLine; toks: Tok[] }[]; diff: FileDiff; onHunk: (h: Hunk, r: boolean) => void }) {
+function Unified({ rows, diff, onHunk }: { rows: { hunk: Hunk; hi: number; line: DiffLine; toks: Tok[] }[]; diff: FileDiff; onHunk?: (h: Hunk, r: boolean) => void }) {
   let lastHi = -1;
   return (
     <div>
@@ -133,7 +134,7 @@ function Unified({ rows, diff, onHunk }: { rows: { hunk: Hunk; hi: number; line:
   );
 }
 
-function Split({ rows, diff, onHunk }: { rows: { hunk: Hunk; hi: number; line: DiffLine; toks: Tok[] }[]; diff: FileDiff; onHunk: (h: Hunk, r: boolean) => void }) {
+function Split({ rows, diff, onHunk }: { rows: { hunk: Hunk; hi: number; line: DiffLine; toks: Tok[] }[]; diff: FileDiff; onHunk?: (h: Hunk, r: boolean) => void }) {
   // Pair dels with the adds that follow them.
   type Pair = { left?: { line: DiffLine; toks: Tok[] }; right?: { line: DiffLine; toks: Tok[] }; hunk: Hunk; hi: number };
   const pairs: Pair[] = [];

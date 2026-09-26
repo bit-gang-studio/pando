@@ -108,7 +108,7 @@ fn untracked_file(worktree: &Path, path: &str) -> FileDiff {
     d
 }
 
-pub(crate) fn parse_unified(out: &str) -> FileDiff {
+pub fn parse_unified(out: &str) -> FileDiff {
     let mut d = FileDiff {
         path: String::new(),
         staged: false,

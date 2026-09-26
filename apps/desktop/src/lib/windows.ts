@@ -9,6 +9,7 @@ export function titleFor(r: Route): string {
     case "repo": return repoName(r.root);
     case "settings": return `${repoName(r.root)} · settings`;
     case "worktree": return `${repoName(r.root)} · ${r.path.split(/[\\/]/).pop()}`;
+    case "commit": return `${repoName(r.root)} · ${r.id.slice(0, 7)}`;
   }
 }
 

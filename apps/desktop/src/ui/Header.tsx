@@ -17,6 +17,7 @@ export function Header({ route, right }: { route: Route; right?: React.ReactNode
             <button onClick={() => navigate({ kind: "repo", root: route.root })} className={`${crumb} font-mono text-xs`}>{repoName(route.root)}</button>
           )}
           {route.kind === "worktree" && (<><span className="text-stone-400">/</span><span className="font-mono text-xs font-medium">{route.path.split(/[\\/]/).pop()}</span></>)}
+          {route.kind === "commit" && (<><span className="text-stone-400">/</span><span className="font-mono text-xs font-medium">{route.id.slice(0, 7)}</span></>)}
           {route.kind === "settings" && (<><span className="text-stone-400">/</span><span className="text-xs font-medium">Settings</span></>)}
         </>
       )}

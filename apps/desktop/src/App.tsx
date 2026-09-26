@@ -3,7 +3,7 @@ import { api, type UserConfig } from "./lib/api";
 import { fromHash, navigate, type Route } from "./lib/routes";
 import { setWindowTitle } from "./lib/windows";
 import { Detail } from "./screens/Detail";
-import { Overview } from "./screens/Overview";
+import { RepoScreen } from "./screens/RepoScreen";
 import { Repos } from "./screens/Repos";
 import { Settings } from "./screens/Settings";
 import { Header } from "./ui/Header";
@@ -26,7 +26,7 @@ export default function App() {
 
   useEffect(() => { setWindowTitle(route); setFatal(null); }, [route]);
 
-  const gear = route.kind === "repo" ? (
+  const gear = route.kind === "repo" || route.kind === "commit" ? (
     <button onClick={() => navigate({ kind: "settings", root: route.root })} aria-label="Repository settings" title="Repository settings" className="rounded-md px-2.5 py-1 hover:bg-stone-100 dark:hover:bg-stone-700">⚙</button>
   ) : null;
 
@@ -42,7 +42,8 @@ export default function App() {
       )}
       <div className="flex min-h-0 min-w-0 grow bg-stone-100 dark:bg-stone-900">
         {route.kind === "repos" && <Repos onError={setFatal} />}
-        {route.kind === "repo" && <Overview key={route.root} root={route.root} onOpenDetail={(path) => navigate({ kind: "worktree", root: route.root, path })} onError={setFatal} />}
+        {route.kind === "repo" && <RepoScreen key={route.root} root={route.root} commit={null} onError={setFatal} />}
+        {route.kind === "commit" && <RepoScreen key={route.root} root={route.root} commit={route.id} onError={setFatal} />}
         {route.kind === "worktree" && <Detail root={route.root} path={route.path} onBack={() => navigate({ kind: "repo", root: route.root })} onChanged={() => {}} />}
         {route.kind === "settings" && <Settings root={route.root} userConfig={userConfig} onUserConfig={setUserConfig} />}
       </div>
