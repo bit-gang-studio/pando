@@ -3,7 +3,7 @@ import { api, changed, type Overview as OverviewData } from "../lib/api";
 import { navigate } from "../lib/routes";
 import { CommitDetail } from "./CommitDetail";
 import { CommitLog } from "./CommitLog";
-import { Overview } from "./Overview";
+import { RepoSidebar } from "./RepoSidebar";
 import { Detail } from "./Detail";
 import { SplitHandle, useSplit } from "../ui/Split";
 
@@ -13,7 +13,10 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
   const [data, setData] = useState<OverviewData | null>(null);
   const [tick, setTick] = useState(0);
   const [wtCommit, setWtCommit] = useState<string | null>(null); // selected commit while on a worktree
+  const [firstId, setFirstId] = useState<string | null>(null); // newest commit, shown by default on the repo page
   const split = useSplit(worktree ? "pando.split.worktree.px" : "pando.split.repo.px", worktree ? 240 : 320, "y", 120, 4000);
+  const side = useSplit("pando.split.sidebar.px", 300, "x", 200, 700);
+  const onLoaded = useCallback((id: string | null) => setFirstId(id), []);
   useEffect(() => { setWtCommit(null); }, [worktree]);
 
   const refresh = useCallback(async () => {
@@ -37,9 +40,19 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
   const wtDetached = worktree ? data?.detached.find((d) => d.worktree.path === worktree) ?? null : null;
   const wtBranch = wtRow?.branch.name ?? "";
   const wtDirty = worktree ? changed(wtRow?.status ?? wtDetached?.status ?? null) : 0;
-  const selected = worktree ? wtCommit : commit;
+  const selected = worktree ? wtCommit : commit ?? firstId;
 
+  const shown = worktree ? null : commit ?? firstId;
   return (
+    <div ref={side.box} className="flex min-h-0 min-w-0 grow">
+      {!worktree && (
+        <>
+          <div style={{ width: side.size }} className="flex shrink-0 flex-col">
+            <RepoSidebar root={root} data={data} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} onError={onError} />
+          </div>
+          <SplitHandle axis="x" onMouseDown={side.start} handleRef={side.handle} />
+        </>
+      )}
     <div ref={split.box} className="flex min-h-0 min-w-0 grow flex-col">
       <div style={{ height: split.size, flex: "0 0 auto" }} className="flex min-h-0 flex-col">
         <CommitLog
@@ -49,6 +62,7 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
           uncommittedLabel={worktree ? `${wtDirty} in this worktree` : undefined}
           selected={selected}
           onSelect={(id) => (worktree ? setWtCommit(id) : navigate(id ? { kind: "commit", root, id } : { kind: "repo", root }))}
+          onLoaded={worktree ? undefined : onLoaded}
           onUncommitted={() => (worktree ? setWtCommit(null) : firstDirty && navigate({ kind: "worktree", root, path: firstDirty }))}
           refreshKey={tick}
         />
@@ -61,12 +75,13 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
           ) : (
             <Detail root={root} path={worktree} onBack={() => navigate({ kind: "repo", root })} onChanged={refresh} />
           )
-        ) : commit ? (
-          <CommitDetail root={root} id={commit} onBack={() => navigate({ kind: "repo", root })} />
+        ) : shown ? (
+          <CommitDetail root={root} id={shown} />
         ) : (
-          <Overview root={root} data={data} onRefresh={refresh} onOpenDetail={(path) => navigate({ kind: "worktree", root, path })} onError={onError} />
+          <div className="flex grow items-center justify-center text-xs text-stone-500">No commits yet.</div>
         )}
       </div>
+    </div>
     </div>
   );
 }

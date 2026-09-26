@@ -13,12 +13,14 @@ type Props = {
   selected: string | null;
   onSelect: (id: string | null) => void;
   onUncommitted: () => void;
+  /// Called with the newest commit id after each load.
+  onLoaded?: (firstId: string | null) => void;
   refreshKey: number;
 };
 
 const PAGE = 200;
 
-export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, selected, onSelect, onUncommitted, refreshKey }: Props) {
+export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, selected, onSelect, onUncommitted, onLoaded, refreshKey }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,10 +31,11 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, selec
       setEntries((prev) => (skip === 0 ? l.entries : [...prev, ...l.entries]));
       setTruncated(l.truncated);
       setError(null);
+      if (skip === 0) onLoaded?.(l.entries[0]?.id ?? null);
     } catch (e) {
       setError(String(e));
     }
-  }, [root, scope]);
+  }, [root, scope, onLoaded]);
 
   useEffect(() => { load(0); }, [load, refreshKey]);
 
