@@ -26,6 +26,18 @@ pub(crate) fn info(g: &gix::Repository, id: gix::ObjectId) -> Result<CommitInfo>
     })
 }
 
+/// Commit the index. Returns the new commit id.
+pub fn create(worktree: &std::path::Path, message: &str, amend: bool) -> Result<String> {
+    let mut args = vec!["commit", "-q", "-m", message];
+    if amend {
+        args.push("--amend");
+    }
+    crate::cmd::git(worktree, &args)?;
+    Ok(crate::cmd::git(worktree, ["rev-parse", "HEAD"])?
+        .trim()
+        .to_string())
+}
+
 pub(crate) fn parse_id(hex: &str) -> Result<gix::ObjectId> {
     gix::ObjectId::from_hex(hex.as_bytes()).map_err(gix_err)
 }

@@ -38,6 +38,33 @@ export type History = { commits: CommitInfo[]; base_index: number | null; base_b
 export type FileChange = { path: string; added: number; deleted: number };
 export type CommitDiff = { commit: CommitInfo; files: FileChange[]; patch: string };
 export type Stash = { index: number; message: string; branch: string | null; time: number };
+
+export type FileStatus = {
+  path: string;
+  orig_path: string | null;
+  staged: string | null;
+  unstaged: string | null;
+  untracked: boolean;
+  conflicted: boolean;
+};
+
+export type LineKind = "context" | "add" | "del";
+export type DiffLine = { kind: LineKind; old_no: number | null; new_no: number | null; text: string; no_newline: boolean };
+export type Hunk = { header: string; old_start: number; old_count: number; new_start: number; new_count: number; lines: DiffLine[] };
+export type FileDiff = { path: string; staged: boolean; binary: boolean; new_file: boolean; hunks: Hunk[]; added: number; deleted: number };
+
+export type Detail = {
+  repo: Repo;
+  workspace: Workspace;
+  branch: Branch | null;
+  files: FileStatus[];
+  ahead: CommitInfo[];
+  base_branch: string | null;
+  port: number | null;
+  head_summary: string | null;
+};
+
+export type SyncResult = { ok: boolean; conflicts: string[]; message: string };
 export type Tag = { name: string; target: string };
 
 export type Summary = {
@@ -136,6 +163,21 @@ export const api = {
   configSave: (root: string, config: RepoConfig) => invoke<string>("config_save", { root, config }),
   configCommit: (root: string) => invoke<void>("config_commit", { root }),
   userConfigSave: (config: UserConfig) => invoke<void>("user_config_save", { config }),
+  detailLoad: (root: string, path: string) => invoke<Detail>("detail_load", { root, path }),
+  diffFile: (worktree: string, path: string, staged: boolean, untracked: boolean) =>
+    invoke<FileDiff>("diff_file", { worktree, path, staged, untracked }),
+  stagePaths: (worktree: string, paths: string[]) => invoke<void>("stage_paths", { worktree, paths }),
+  unstagePaths: (worktree: string, paths: string[]) => invoke<void>("unstage_paths", { worktree, paths }),
+  stageAll: (worktree: string) => invoke<void>("stage_all", { worktree }),
+  unstageAll: (worktree: string) => invoke<void>("unstage_all", { worktree }),
+  discardPaths: (worktree: string, paths: string[], untracked: string[]) =>
+    invoke<void>("discard_paths", { worktree, paths, untracked }),
+  applyHunk: (worktree: string, path: string, hunk: Hunk, reverse: boolean) =>
+    invoke<void>("apply_hunk", { worktree, path, hunk, reverse }),
+  commitCreate: (worktree: string, message: string, amend: boolean) =>
+    invoke<string>("commit_create", { worktree, message, amend }),
+  syncRebase: (root: string, worktree: string, branch: string, base: string) =>
+    invoke<SyncResult>("sync_rebase", { root, worktree, branch, base }),
 };
 
 export function changed(s: Summary | null): number {

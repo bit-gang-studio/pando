@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { api, repoName, type Board as BoardData, type UserConfig } from "../lib/api";
 import { Branches } from "../branches/Branches";
+import { Detail } from "../detail/Detail";
 import { Settings } from "../settings/Settings";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
 import { RightRail } from "./RightRail";
@@ -20,6 +21,7 @@ export function Board() {
   const [version, setVersion] = useState("");
   const [creating, setCreating] = useState<false | { branch?: string }>(false);
   const [screen, setScreen] = useState<"workspaces" | "branches" | "settings">("workspaces");
+  const [detail, setDetail] = useState<{ root: string; path: string } | null>(null);
   const [userConfig, setUserConfig] = useState<UserConfig>({ repos: [], editor: null });
 
   const refresh = useCallback(async () => {
@@ -153,7 +155,9 @@ export function Board() {
           </nav>
         </aside>
 
-        {screen === "settings" && scope ? (
+        {detail ? (
+          <Detail root={detail.root} path={detail.path} onBack={() => setDetail(null)} onChanged={refresh} />
+        ) : screen === "settings" && scope ? (
           <Settings root={scope} userConfig={userConfig} onUserConfig={setUserConfig} />
         ) : screen === "branches" && scope ? (
           <Branches root={scope} onOpenAsWorkspace={(branch) => setCreating({ branch })} onChanged={refresh} />
@@ -188,6 +192,7 @@ export function Board() {
                   <WorkspaceRow
                     key={r.workspace.path}
                     row={r}
+                    onReview={() => setDetail({ root: b.repo.root, path: r.workspace.path })}
                     onOpen={() => api.openInEditor(r.workspace.path).catch((e) => alert(String(e)))}
                     onRemove={() => removeWorkspace(b.repo.root, r.workspace.path, r.workspace.branch)}
                   />

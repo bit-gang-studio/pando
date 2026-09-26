@@ -3,11 +3,12 @@ import { Chip } from "./Chip";
 
 type Props = {
   row: Row;
+  onReview: () => void;
   onOpen: () => void;
   onRemove: () => void;
 };
 
-export function WorkspaceRow({ row, onOpen, onRemove }: Props) {
+export function WorkspaceRow({ row, onReview, onOpen, onRemove }: Props) {
   const { workspace: w, branch: b, status } = row;
   const n = changed(status);
   const conflicts = status?.conflicts ?? 0;
@@ -21,7 +22,7 @@ export function WorkspaceRow({ row, onOpen, onRemove }: Props) {
   const isMain = w.kind === "main";
 
   return (
-    <div className={`grid grid-cols-[16px_minmax(240px,1fr)_minmax(200px,1fr)_120px_90px_auto] items-center gap-3 rounded-lg border px-3 py-2.5 ${isMain ? "border-stone-200 bg-stone-50 dark:border-stone-700 dark:bg-stone-800/60" : "border-stone-300 bg-white dark:border-stone-700 dark:bg-stone-800"}`}>
+    <div onClick={onReview} className={`grid cursor-pointer grid-cols-[16px_minmax(240px,1fr)_minmax(200px,1fr)_120px_90px_auto] items-center gap-3 rounded-lg border px-3 py-2.5 hover:border-stone-400 ${isMain ? "border-stone-200 bg-stone-50 dark:border-stone-700 dark:bg-stone-800/60" : "border-stone-300 bg-white dark:border-stone-700 dark:bg-stone-800"}`}>
       <span className={`h-2 w-2 rounded-full ${dot}`} />
       <div className="min-w-0">
         <div className="truncate font-mono text-[13px] font-medium">
@@ -46,7 +47,10 @@ export function WorkspaceRow({ row, onOpen, onRemove }: Props) {
       </div>
       <div>{row.port != null && <Chip mono>:{row.port}</Chip>}</div>
       <div className="text-xs text-stone-500">{ago(row.last_commit_at)}</div>
-      <div className="flex justify-end gap-1.5">
+      <div className="flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+        <button onClick={onReview} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-xs hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600">
+          Review
+        </button>
         <button onClick={onOpen} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-xs hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600">
           Open
         </button>

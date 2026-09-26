@@ -1,9 +1,9 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
 use pando_core::{
-    board, branch, history, launch, runtime, stash, tag, user_config, workspace, Board, Branch,
-    CommitDiff, CreateWorkspace, Created, History, RemoteBranch, Repo, RepoConfig, Stash, Tag,
-    UserConfig,
+    board, branch, commit, detail, diff, history, index, launch, runtime, stash, sync, tag,
+    user_config, workspace, Board, Branch, CommitDiff, CreateWorkspace, Created, Detail, FileDiff,
+    History, Hunk, RemoteBranch, Repo, RepoConfig, Stash, SyncResult, Tag, UserConfig,
 };
 use std::path::PathBuf;
 
@@ -237,6 +237,58 @@ fn user_config_save(config: UserConfig) -> R<()> {
 }
 
 #[tauri::command]
+fn detail_load(root: PathBuf, path: PathBuf) -> R<Detail> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    detail::load(&repo, &path).map_err(err)
+}
+
+#[tauri::command]
+fn diff_file(worktree: PathBuf, path: String, staged: bool, untracked: bool) -> R<FileDiff> {
+    diff::file(&worktree, &path, staged, untracked).map_err(err)
+}
+
+#[tauri::command]
+fn stage_paths(worktree: PathBuf, paths: Vec<String>) -> R<()> {
+    index::stage(&worktree, &paths).map_err(err)
+}
+
+#[tauri::command]
+fn unstage_paths(worktree: PathBuf, paths: Vec<String>) -> R<()> {
+    index::unstage(&worktree, &paths).map_err(err)
+}
+
+#[tauri::command]
+fn stage_all(worktree: PathBuf) -> R<()> {
+    index::stage_all(&worktree).map_err(err)
+}
+
+#[tauri::command]
+fn unstage_all(worktree: PathBuf) -> R<()> {
+    index::unstage_all(&worktree).map_err(err)
+}
+
+#[tauri::command]
+fn discard_paths(worktree: PathBuf, paths: Vec<String>, untracked: Vec<String>) -> R<()> {
+    index::discard(&worktree, &paths, &untracked).map_err(err)
+}
+
+#[tauri::command]
+fn apply_hunk(worktree: PathBuf, path: String, hunk: Hunk, reverse: bool) -> R<()> {
+    index::apply_hunk(&worktree, &path, &hunk, reverse).map_err(err)
+}
+
+#[tauri::command]
+fn commit_create(worktree: PathBuf, message: String, amend: bool) -> R<String> {
+    commit::create(&worktree, &message, amend).map_err(err)
+}
+
+#[tauri::command]
+fn sync_rebase(root: PathBuf, worktree: PathBuf, branch: String, base: String) -> R<SyncResult> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    sync::rebase_onto(&repo, &worktree, &branch, &base).map_err(err)
+}
+
+#[tauri::command]
 fn open_in_editor(path: PathBuf) -> R<()> {
     let editor = user_config::load().ok().and_then(|c| c.editor);
     launch::open_in_editor(&path, editor.as_deref()).map_err(err)
@@ -278,6 +330,16 @@ pub fn run() {
             config_save,
             config_commit,
             user_config_save,
+            detail_load,
+            diff_file,
+            stage_paths,
+            unstage_paths,
+            stage_all,
+            unstage_all,
+            discard_paths,
+            apply_hunk,
+            commit_create,
+            sync_rebase,
             open_in_editor
         ])
         .run(tauri::generate_context!())
