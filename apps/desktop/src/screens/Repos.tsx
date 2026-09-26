@@ -79,6 +79,7 @@ export function Repos({ onError }: Props) {
               <th className="px-2 py-1.5 font-semibold">PATH</th>
               <th className="w-[110px] px-2 py-1.5 text-right font-semibold">WORKTREES</th>
               <th className="w-[130px] px-2 py-1.5 text-right font-semibold">CHANGES</th>
+              <th className="w-[44px] px-2 py-1.5"></th>
             </tr>
           </thead>
           <tbody>
@@ -104,6 +105,9 @@ export function Repos({ onError }: Props) {
                   <td className="px-2 py-2 text-right tabular-nums">{wts ?? (errors[root] ? "!" : "…")}</td>
                   <td className={`px-2 py-2 text-right tabular-nums ${errors[root] ? "text-red-700" : dirty ? "text-amber-700" : "text-stone-500"}`}>
                     {errors[root] ? "can't read" : dirty === null ? "…" : dirty === 0 ? "clean" : `${dirty} changed`}
+                  </td>
+                  <td className="px-2 py-1 text-right">
+                    <button onClick={(e) => { e.stopPropagation(); openInNewWindow(route).catch((err) => onError(String(err))); }} title="Open in new window" aria-label={`Open ${repoName(root)} in new window`} className="rounded px-2 py-0.5 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100">⧉</button>
                   </td>
                 </tr>
               );
