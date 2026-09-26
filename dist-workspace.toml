@@ -21,3 +21,5 @@ tap = "bit-gang-studio/homebrew-tap"
 publish-jobs = []
 # Whether to install an updater program
 install-updater = false
+# Build each package with -p so the CLI build never pulls in the desktop crate
+precise-builds = true
