@@ -4,6 +4,7 @@ import { api, changed, repoName, type Overview, type UserConfig } from "../lib/a
 import { navigate } from "../lib/routes";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
+import { NewWindowIcon } from "../ui/icons";
 
 type Props = { onError: (m: string) => void };
 
@@ -107,7 +108,7 @@ export function Repos({ onError }: Props) {
                     {errors[root] ? "can't read" : dirty === null ? "…" : dirty === 0 ? "clean" : `${dirty} changed`}
                   </td>
                   <td className="px-2 py-1 text-right">
-                    <button onClick={(e) => { e.stopPropagation(); openInNewWindow(route).catch((err) => onError(String(err))); }} title="Open in new window" aria-label={`Open ${repoName(root)} in new window`} className="rounded px-2 py-0.5 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100">⧉</button>
+                    <button onClick={(e) => { e.stopPropagation(); openInNewWindow(route).catch((err) => onError(String(err))); }} title="Open in new window" aria-label={`Open ${repoName(root)} in new window`} className="inline-flex items-center rounded px-2 py-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100"><NewWindowIcon /></button>
                   </td>
                 </tr>
               );

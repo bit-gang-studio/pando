@@ -1,6 +1,7 @@
 import { repoName } from "../lib/api";
 import { navigate, type Route } from "../lib/routes";
 import { openInNewWindow } from "../lib/windows";
+import { NewWindowIcon } from "./icons";
 
 export function Header({ route, right }: { route: Route; right?: React.ReactNode }) {
   const crumb = "text-stone-500 hover:text-stone-800 dark:hover:text-stone-200";
@@ -24,8 +25,8 @@ export function Header({ route, right }: { route: Route; right?: React.ReactNode
       )}
       <div className="grow" />
       {right}
-      <button onClick={() => openInNewWindow(route).catch(() => {})} title="Open this screen in a new window" aria-label="Open in new window" className="rounded-md px-2.5 py-1 text-stone-500 hover:bg-stone-100 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-200">
-        ⧉
+      <button onClick={() => openInNewWindow(route).catch(() => {})} title="Open this screen in a new window" aria-label="Open in new window" className="flex items-center rounded-md px-2.5 py-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-200">
+        <NewWindowIcon />
       </button>
     </header>
   );
