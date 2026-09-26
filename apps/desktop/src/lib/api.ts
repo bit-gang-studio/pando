@@ -131,6 +131,11 @@ export const api = {
   branchPush: (root: string, name: string, forceWithLease: boolean) =>
     invoke<void>("branch_push", { root, name, forceWithLease }),
   branchPull: (worktree: string, rebase: boolean) => invoke<void>("branch_pull", { worktree, rebase }),
+  configLoad: (root: string) => invoke<RepoConfig>("config_load", { root }),
+  configRender: (config: RepoConfig) => invoke<string>("config_render", { config }),
+  configSave: (root: string, config: RepoConfig) => invoke<string>("config_save", { root, config }),
+  configCommit: (root: string) => invoke<void>("config_commit", { root }),
+  userConfigSave: (config: UserConfig) => invoke<void>("user_config_save", { config }),
 };
 
 export function changed(s: Summary | null): number {

@@ -209,6 +209,34 @@ fn branch_pull(worktree: PathBuf, rebase: bool) -> R<()> {
 }
 
 #[tauri::command]
+fn config_load(root: PathBuf) -> R<RepoConfig> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    RepoConfig::load(&repo).map_err(err)
+}
+
+#[tauri::command]
+fn config_render(config: RepoConfig) -> R<String> {
+    config.to_toml().map_err(err)
+}
+
+#[tauri::command]
+fn config_save(root: PathBuf, config: RepoConfig) -> R<String> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    config.save(&repo).map_err(err)
+}
+
+#[tauri::command]
+fn config_commit(root: PathBuf) -> R<()> {
+    let repo = Repo::discover(&root).map_err(err)?;
+    pando_core::config::commit(&repo, "chore: update .pando.toml").map_err(err)
+}
+
+#[tauri::command]
+fn user_config_save(config: UserConfig) -> R<()> {
+    user_config::save(&config).map_err(err)
+}
+
+#[tauri::command]
 fn open_in_editor(path: PathBuf) -> R<()> {
     let editor = user_config::load().ok().and_then(|c| c.editor);
     launch::open_in_editor(&path, editor.as_deref()).map_err(err)
@@ -245,6 +273,11 @@ pub fn run() {
             fetch_all,
             branch_push,
             branch_pull,
+            config_load,
+            config_render,
+            config_save,
+            config_commit,
+            user_config_save,
             open_in_editor
         ])
         .run(tauri::generate_context!())

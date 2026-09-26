@@ -108,6 +108,26 @@ impl RepoConfig {
         toml::from_str(text).map_err(|e| Error::Config(e.to_string()))
     }
 
+    pub fn to_toml(&self) -> Result<String> {
+        toml::to_string_pretty(self).map_err(|e| Error::Config(e.to_string()))
+    }
+
+    /// Write `.pando.toml` at the repo root. Returns the text written.
+    pub fn save(&self, repo: &Repo) -> Result<String> {
+        let text = self.to_toml()?;
+        std::fs::write(repo.root.join(FILE_NAME), &text)?;
+        Ok(text)
+    }
+}
+
+/// Commit only `.pando.toml` in the main worktree.
+pub fn commit(repo: &Repo, message: &str) -> Result<()> {
+    crate::cmd::git(&repo.root, ["add", "--", FILE_NAME])?;
+    crate::cmd::git(&repo.root, ["commit", "-m", message, "--", FILE_NAME])?;
+    Ok(())
+}
+
+impl RepoConfig {
     /// Where a new workspace for `branch` goes.
     pub fn workspace_path(&self, repo: &Repo, branch: &str) -> PathBuf {
         let repo_name = repo
@@ -187,6 +207,25 @@ command = "claude"
         assert_eq!(c.runtime.port.unwrap().start, 4000);
         assert_eq!(c.agents["claude"].command, "claude");
         assert_eq!(c.workspace.base.as_deref(), Some("origin/main"));
+    }
+
+    #[test]
+    fn toml_round_trip() {
+        let mut c = RepoConfig::default();
+        c.hooks.post_create = vec!["pnpm install".into()];
+        c.runtime.port = Some(PortConfig {
+            env: "PORT".into(),
+            start: 4000,
+        });
+        c.agents.insert(
+            "claude".into(),
+            AgentConfig {
+                command: "claude".into(),
+            },
+        );
+        let text = c.to_toml().unwrap();
+        assert_eq!(RepoConfig::parse(&text).unwrap(), c);
+        assert!(text.contains("[hooks]"));
     }
 
     #[test]

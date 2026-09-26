@@ -9,6 +9,7 @@ use std::path::{Path, PathBuf};
 pub struct UserConfig {
     /// Main worktree roots the app knows about.
     pub repos: Vec<PathBuf>,
+    /// Editor command line, e.g. `code` or `cursor`. Falls back to $VISUAL/$EDITOR.
     pub editor: Option<String>,
 }
 

@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { api, repoName, type Board as BoardData } from "../lib/api";
+import { api, repoName, type Board as BoardData, type UserConfig } from "../lib/api";
 import { Branches } from "../branches/Branches";
+import { Settings } from "../settings/Settings";
 import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
 import { RightRail } from "./RightRail";
 import { WorkspaceRow } from "./WorkspaceRow";
@@ -18,10 +19,12 @@ export function Board() {
   const [scope, setScope] = useState<string | null>(null);
   const [version, setVersion] = useState("");
   const [creating, setCreating] = useState<false | { branch?: string }>(false);
-  const [screen, setScreen] = useState<"workspaces" | "branches">("workspaces");
+  const [screen, setScreen] = useState<"workspaces" | "branches" | "settings">("workspaces");
+  const [userConfig, setUserConfig] = useState<UserConfig>({ repos: [], editor: null });
 
   const refresh = useCallback(async () => {
     const cfg = await api.reposList();
+    setUserConfig(cfg);
     setRepos(cfg.repos);
     await Promise.all(
       cfg.repos.map(async (root) => {
@@ -139,6 +142,7 @@ export function Board() {
                   <>
                     <button onClick={() => setScreen("workspaces")} className={`px-2 py-1 pl-5 text-left text-xs ${screen === "workspaces" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Workspaces</button>
                     <button onClick={() => setScreen("branches")} className={`px-2 py-1 pl-5 text-left text-xs ${screen === "branches" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Branches</button>
+                    <button onClick={() => setScreen("settings")} className={`px-2 py-1 pb-1.5 pl-5 text-left text-xs ${screen === "settings" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Settings</button>
                   </>
                 )}
               </div>
@@ -149,7 +153,9 @@ export function Board() {
           </nav>
         </aside>
 
-        {screen === "branches" && scope ? (
+        {screen === "settings" && scope ? (
+          <Settings root={scope} userConfig={userConfig} onUserConfig={setUserConfig} />
+        ) : screen === "branches" && scope ? (
           <Branches root={scope} onOpenAsWorkspace={(branch) => setCreating({ branch })} onChanged={refresh} />
         ) : (
         <>
