@@ -202,3 +202,23 @@ fn log_lists_all_branches_with_labels() {
     let paged = pando_core::log::list(&repo, None, 0, 1).unwrap();
     assert!(paged.truncated);
 }
+
+#[test]
+fn merge_commit_diff_is_against_first_parent() {
+    let f = fixture();
+    let repo = Repo::discover(&f.root).unwrap();
+    git(&f.root, &["switch", "-q", "-c", "topic"]);
+    commit(&f.root, "t1");
+    git(&f.root, &["switch", "-q", "main"]);
+    commit(&f.root, "m1");
+    git(
+        &f.root,
+        &["merge", "-q", "--no-ff", "-m", "merge topic", "topic"],
+    );
+    let id = git(&f.root, &["rev-parse", "HEAD"]);
+    let d = pando_core::history::commit_diff(&repo, &id).unwrap();
+    assert_eq!(d.files.len(), 1, "{:?}", d.files);
+    assert_eq!(d.files[0].path, "t1");
+    let fd = pando_core::history::commit_file_diff(&repo, &id, "t1").unwrap();
+    assert_eq!(fd.added, 1);
+}

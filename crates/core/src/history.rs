@@ -107,6 +107,8 @@ pub fn commit_file_diff(repo: &Repo, id: &str, path: &str) -> Result<crate::diff
         &repo.common_git_dir,
         [
             "show",
+            "-m",
+            "--first-parent",
             "--format=",
             "--no-color",
             "--no-ext-diff",
