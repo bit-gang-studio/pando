@@ -4,11 +4,12 @@ import { Chip } from "./Chip";
 type Props = {
   row: Row;
   onReview: () => void;
+  onLand?: () => void;
   onOpen: () => void;
   onRemove: () => void;
 };
 
-export function WorktreeRow({ row, onReview, onOpen, onRemove }: Props) {
+export function WorktreeRow({ row, onReview, onLand, onOpen, onRemove }: Props) {
   const { worktree: w, branch: b, status } = row;
   const n = changed(status);
   const conflicts = status?.conflicts ?? 0;
@@ -54,6 +55,11 @@ export function WorktreeRow({ row, onReview, onOpen, onRemove }: Props) {
         <button onClick={onOpen} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-xs hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600">
           Open
         </button>
+        {onLand && (
+          <button onClick={onLand} className="h-7 rounded-md border border-teal-700 bg-white px-2.5 text-xs font-medium text-teal-700 hover:bg-teal-50 dark:bg-stone-700 dark:hover:bg-stone-600">
+            Land
+          </button>
+        )}
         {!isMain && (
           <button onClick={onRemove} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-xs hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600">
             Remove

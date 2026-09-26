@@ -62,3 +62,17 @@ where
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
 }
+
+/// Run git and return (exit code, stdout, stderr) without failing on non-zero.
+pub(crate) fn git_raw<I, S>(cwd: &Path, args: I) -> Result<(i32, String, String)>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let out = base(cwd).args(args).output()?;
+    Ok((
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    ))
+}

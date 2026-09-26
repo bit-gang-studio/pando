@@ -3,6 +3,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { ago, api, repoName, type Detail as DetailData, type FileDiff, type FileStatus, type Hunk } from "../lib/api";
 import { Chip } from "../board/Chip";
 import { DiffView } from "./DiffView";
+import { LandDialog } from "../land/LandDialog";
 
 type Props = { root: string; path: string; onBack: () => void; onChanged: () => void };
 type Sel = { path: string; staged: boolean; untracked: boolean } | null;
@@ -22,6 +23,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const msgRef = useRef<HTMLTextAreaElement>(null);
+  const [landing, setLanding] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -60,7 +62,8 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && document.activeElement !== msgRef.current) onBack();
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); doCommit(); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !landing) { e.preventDefault(); doCommit(); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "l" && d && d.worktree.kind === "linked" && d.worktree.branch) { e.preventDefault(); setLanding(true); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -130,6 +133,9 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
 
   return (
     <div className="flex min-h-0 min-w-0 grow flex-col">
+      {landing && d.worktree.branch && (
+        <LandDialog root={root} path={wt} branch={d.worktree.branch} headSummary={d.head_summary} onClose={() => setLanding(false)} onLanded={() => { onChanged(); }} />
+      )}
       <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-stone-300 bg-white px-4 dark:border-stone-700 dark:bg-stone-800">
         <button onClick={onBack} className="text-xs text-stone-500 hover:text-stone-800 dark:hover:text-stone-200">Worktrees</button>
         <span className="text-stone-400">/</span>
@@ -144,7 +150,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
         <div className="grow" />
         {!isMain && d.base_branch && <button onClick={syncNow} disabled={!!busy} className={btn}>{busy === "sync" ? "Syncing…" : `Sync with ${d.base_branch}`}</button>}
         <button onClick={() => api.openInEditor(wt)} className={btn}>Open in editor <span className="text-xs text-stone-400">⌘E</span></button>
-        <button disabled className={btn} title="Lands with the M3 Land card">Land <span className="text-xs text-stone-400">⌘L</span></button>
+        <button onClick={() => setLanding(true)} disabled={isMain || !d.worktree.branch} className="h-8 rounded-lg bg-teal-700 px-3.5 text-[13px] font-medium text-white hover:bg-teal-800 disabled:opacity-40" title={isMain ? "The main worktree is the base; land linked worktrees into it" : "Land"}>Land <span className="text-xs opacity-70">⌘L</span></button>
       </div>
 
       {(error || notice) && (

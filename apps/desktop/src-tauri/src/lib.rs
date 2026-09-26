@@ -1,9 +1,10 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
 use pando_core::{
-    board, branch, commit, detail, diff, history, index, launch, runtime, stash, sync, tag,
+    board, branch, commit, detail, diff, history, index, land, launch, runtime, stash, sync, tag,
     user_config, worktree, Board, Branch, CommitDiff, CreateWorktree, Created, Detail, FileDiff,
-    History, Hunk, RemoteBranch, Repo, RepoConfig, Stash, SyncResult, Tag, UserConfig,
+    History, Hunk, LandPlan, LandResult, Preflight, RemoteBranch, Repo, RepoConfig, Stash,
+    SyncResult, Tag, UserConfig,
 };
 use std::path::PathBuf;
 
@@ -377,6 +378,33 @@ async fn sync_rebase(
 }
 
 #[tauri::command]
+async fn land_preflight(
+    root: PathBuf,
+    path: PathBuf,
+    branch: String,
+    base: Option<String>,
+) -> R<Preflight> {
+    blocking(move || {
+        let repo = Repo::discover(&root).map_err(err)?;
+        let base = match base {
+            Some(b) => b,
+            None => land::default_base(&repo).map_err(err)?,
+        };
+        land::preflight(&repo, &path, &branch, &base).map_err(err)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn land_run(root: PathBuf, path: PathBuf, plan: LandPlan) -> R<LandResult> {
+    blocking(move || {
+        let repo = Repo::discover(&root).map_err(err)?;
+        land::run(&repo, &path, &plan).map_err(err)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn open_in_editor(path: PathBuf) -> R<()> {
     blocking(move || {
         let editor = user_config::load().ok().and_then(|c| c.editor);
@@ -431,6 +459,8 @@ pub fn run() {
             apply_hunk,
             commit_create,
             sync_rebase,
+            land_preflight,
+            land_run,
             open_in_editor
         ])
         .run(tauri::generate_context!())

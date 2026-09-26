@@ -120,7 +120,11 @@ pub fn list_remote(repo: &Repo) -> Result<Vec<RemoteBranch>> {
 }
 
 /// Commits reachable from `from` but not from `hide`.
-fn count_only_in(g: &gix::Repository, from: gix::ObjectId, hide: gix::ObjectId) -> Result<u32> {
+pub(crate) fn count_only_in(
+    g: &gix::Repository,
+    from: gix::ObjectId,
+    hide: gix::ObjectId,
+) -> Result<u32> {
     let walk = g
         .rev_walk([from])
         .with_hidden([hide])

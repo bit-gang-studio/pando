@@ -65,6 +65,41 @@ export type Detail = {
 };
 
 export type SyncResult = { ok: boolean; conflicts: string[]; message: string };
+
+export type Preflight = {
+  branch: string;
+  base: string;
+  base_local: string;
+  clean: boolean;
+  ahead: number;
+  behind: number;
+  conflict_predicted: boolean;
+  conflict_files: string[];
+  base_checked_out_in: string | null;
+  base_worktree_clean: boolean | null;
+  has_upstream: boolean;
+  pre_land_hooks: string[];
+  squash_default: boolean;
+  remove_worktree_default: boolean;
+  delete_branch_default: boolean;
+  problems: string[];
+};
+
+export type LandPlan = {
+  branch: string;
+  base: string;
+  squash: boolean;
+  message: string | null;
+  destination: "local_merge" | "push_branch";
+  push_base: boolean;
+  run_hooks: boolean;
+  remove_worktree: boolean;
+  delete_branch: boolean;
+  delete_remote: boolean;
+};
+
+export type LandStep = { name: string; ok: boolean; output: string };
+export type LandResult = { landed: boolean; steps: LandStep[]; backup_ref: string | null };
 export type Tag = { name: string; target: string };
 
 export type Summary = {
@@ -178,6 +213,9 @@ export const api = {
     invoke<string>("commit_create", { worktree, message, amend }),
   syncRebase: (root: string, worktree: string, branch: string, base: string) =>
     invoke<SyncResult>("sync_rebase", { root, worktree, branch, base }),
+  landPreflight: (root: string, path: string, branch: string, base: string | null) =>
+    invoke<Preflight>("land_preflight", { root, path, branch, base }),
+  landRun: (root: string, path: string, plan: LandPlan) => invoke<LandResult>("land_run", { root, path, plan }),
 };
 
 export function changed(s: Summary | null): number {

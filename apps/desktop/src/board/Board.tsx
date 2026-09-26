@@ -4,6 +4,7 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import { api, repoName, type Board as BoardData, type UserConfig } from "../lib/api";
 import { Branches } from "../branches/Branches";
 import { Detail } from "../detail/Detail";
+import { LandDialog } from "../land/LandDialog";
 import { Settings } from "../settings/Settings";
 import { NewWorktreeDialog } from "./NewWorktreeDialog";
 import { RightRail } from "./RightRail";
@@ -23,6 +24,7 @@ export function Board() {
   const [screen, setScreen] = useState<"worktrees" | "branches" | "settings">("worktrees");
   const [detail, setDetail] = useState<{ root: string; path: string } | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
+  const [landing, setLanding] = useState<{ root: string; path: string; branch: string } | null>(null);
 
   useEffect(() => {
     const onErr = (e: ErrorEvent) => setFatal(e.message);
@@ -132,6 +134,9 @@ export function Board() {
           <button onClick={() => setFatal(null)} className="underline">dismiss</button>
         </div>
       )}
+      {landing && (
+        <LandDialog root={landing.root} path={landing.path} branch={landing.branch} onClose={() => setLanding(null)} onLanded={refresh} />
+      )}
       {creating && (
         <NewWorktreeDialog repos={repos} initialRepo={scope} initialBranch={creating.branch ?? null} onClose={() => setCreating(false)} onCreated={refresh} />
       )}
@@ -209,6 +214,7 @@ export function Board() {
                     key={r.worktree.path}
                     row={r}
                     onReview={() => setDetail({ root: b.repo.root, path: r.worktree.path })}
+                    onLand={r.worktree.kind === "linked" && r.worktree.branch ? () => setLanding({ root: b.repo.root, path: r.worktree.path, branch: r.worktree.branch! }) : undefined}
                     onOpen={() => api.openInEditor(r.worktree.path).catch((e) => alert(String(e)))}
                     onRemove={() => removeWorktree(b.repo.root, r.worktree.path, r.worktree.branch)}
                   />
