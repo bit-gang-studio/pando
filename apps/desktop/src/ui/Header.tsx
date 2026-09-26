@@ -20,7 +20,6 @@ export function Header({ route, right }: { route: Route; right?: React.ReactNode
           )}
           {route.kind === "worktree" && (<><span className="text-stone-400">/</span><span className="font-mono text-xs font-medium">{route.path.split(/[\\/]/).pop()}</span></>)}
           {route.kind === "commit" && (<><span className="text-stone-400">/</span><span className="font-mono text-xs font-medium">{route.id.slice(0, 7)}</span></>)}
-          {route.kind === "settings" && (<><span className="text-stone-400">/</span><span className="text-xs font-medium">Settings</span></>)}
         </>
       )}
       <div className="grow" />

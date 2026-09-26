@@ -23,18 +23,15 @@ enum Cmd {
     /// Add a worktree for a branch (creates the branch unless --existing)
     Add {
         branch: String,
-        /// Start point for a new branch
+        /// Start point for a new branch. Defaults to the repo's default branch
         #[arg(long)]
         base: Option<String>,
-        /// Where to put it. Defaults to the .pando.toml location template
+        /// Where to put it. Defaults to a sibling folder, <repo>-<branch>
         #[arg(long)]
         path: Option<PathBuf>,
         /// The branch already exists
         #[arg(long)]
         existing: bool,
-        /// Skip post_create hooks
-        #[arg(long)]
-        no_hooks: bool,
     },
     /// Remove a worktree by branch or path. The branch is kept.
     Remove {
@@ -141,7 +138,6 @@ fn run(cli: Cli) -> pando_core::Result<()> {
             base,
             path,
             existing,
-            no_hooks,
         } => {
             let repo = open(cli.repo.as_deref())?;
             let created = worktree::create(
@@ -151,26 +147,12 @@ fn run(cli: Cli) -> pando_core::Result<()> {
                     base,
                     path,
                     existing_branch: existing,
-                    run_hooks: !no_hooks,
                 },
             )?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&created).unwrap());
             } else {
                 println!("added {}", created.worktree.path.display());
-                if let Some(p) = created.port {
-                    println!("port {p}");
-                }
-                for h in &created.hooks {
-                    let mark = if h.ok() { "ok " } else { "FAIL" };
-                    println!("{mark} {}", h.command);
-                    if !h.ok() {
-                        eprint!("{}{}", h.stdout, h.stderr);
-                    }
-                }
-            }
-            if created.hooks.iter().any(|h| !h.ok()) {
-                exit(2);
             }
         }
         Cmd::Remove { target, force } => {

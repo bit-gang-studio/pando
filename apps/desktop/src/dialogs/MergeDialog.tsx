@@ -24,7 +24,6 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
   const [message, setMessage] = useState("");
   const [destination, setDestination] = useState<MergePlan["destination"]>("local_merge");
   const [pushBase, setPushBase] = useState(true);
-  const [runHooks, setRunHooks] = useState(true);
   const [removeWt, setRemoveWt] = useState(true);
   const [deleteBranch, setDeleteBranch] = useState(true);
   const [deleteRemote, setDeleteRemote] = useState(false);
@@ -34,9 +33,6 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
   useEffect(() => {
     api.mergePreflight(root, path, branch).then((p) => {
       setPf(p);
-      setSquash(p.squash_default);
-      setRemoveWt(p.remove_worktree_default);
-      setDeleteBranch(p.delete_branch_default);
       setPushBase(p.has_upstream || p.base.includes("/"));
       if (!message) setMessage(p.ahead === 1 && headSummary ? headSummary : `Merge ${branch}`);
     }).catch((e) => setError(String(e)));
@@ -60,7 +56,7 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
     try {
       const r = await api.mergeRun(root, path, {
         branch, base: pf.base, squash, message: squash ? message : null, destination, push_base: pushBase,
-        run_hooks: runHooks, remove_worktree: removeWt, delete_branch: deleteBranch, delete_remote: deleteRemote,
+        remove_worktree: removeWt, delete_branch: deleteBranch, delete_remote: deleteRemote,
       });
       setResult(r);
       if (r.landed) onMerged();
@@ -93,7 +89,6 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
                   <Check state={pf.behind === 0 ? "ok" : "warn"}>{pf.behind === 0 ? `Up to date with ${pf.base}` : `${pf.behind} behind ${pf.base}. Will rebase first.`}</Check>
                   <Check state={pf.conflict_predicted ? "bad" : "ok"}>{pf.conflict_predicted ? `Rebase will conflict in ${pf.conflict_files.join(", ")}. Sync and resolve first.` : "Rebase preview: no conflicts"}</Check>
                   {pf.base_checked_out_in && <Check state={pf.base_worktree_clean ? "ok" : "bad"}>{pf.base_worktree_clean ? `${pf.base_local} is checked out and clean` : `The worktree with ${pf.base_local} has uncommitted changes.`}</Check>}
-                  {pf.pre_land_hooks.length > 0 && <Check state="info">Before-merge hooks will run: <span className="font-mono text-xs">{pf.pre_land_hooks.join(" · ")}</span></Check>}
                   
                 </>
               )}
@@ -126,7 +121,6 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
 
               <fieldset className="flex flex-col gap-2 rounded-lg border border-stone-300 p-3 dark:border-stone-600">
                 <legend className="px-1 text-xs font-semibold tracking-wider text-stone-500">AFTER MERGING</legend>
-                <label className="flex items-center gap-2"><input type="checkbox" checked={runHooks} onChange={(e) => setRunHooks(e.target.checked)} /> Run before-merge and after-merge hooks</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={removeWt} onChange={(e) => setRemoveWt(e.target.checked)} /> Remove this worktree</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={deleteBranch} disabled={destination !== "local_merge"} onChange={(e) => setDeleteBranch(e.target.checked)} /> Delete local branch <span className="font-mono text-xs">{branch}</span></label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={deleteRemote} disabled={destination !== "local_merge" || !deleteBranch || !pf.has_upstream} onChange={(e) => setDeleteRemote(e.target.checked)} /> Delete remote branch</label>

@@ -93,7 +93,6 @@ fn plan(squash: bool) -> MergePlan {
         message: Some("Merge feat/x squashed".into()),
         destination: Destination::LocalMerge,
         push_base: true,
-        run_hooks: true,
         remove_worktree: true,
         delete_branch: true,
         delete_remote: false,
@@ -168,16 +167,4 @@ fn merge_keep_commits() {
         git(&f.root, &["log", "--format=%s", "-3"]),
         "x2\nx1\nmain-moved"
     );
-}
-
-#[test]
-fn merge_stops_on_failing_hook() {
-    let f = fixture();
-    write(&f.root, ".pando.toml", "[hooks]\npre_land = [\"exit 2\"]\n");
-    let repo = Repo::discover(&f.root).unwrap();
-    let r = merge::run(&repo, &f.wt, &plan(true)).unwrap();
-    assert!(!r.landed);
-    assert_eq!(r.steps.len(), 2);
-    assert!(!r.steps[1].ok);
-    assert!(f.wt.exists());
 }

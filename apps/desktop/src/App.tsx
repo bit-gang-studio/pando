@@ -1,10 +1,9 @@
 import { useEffect, useState } from "react";
 
-import { fromHash, navigate, type Route } from "./lib/routes";
+import { fromHash, type Route } from "./lib/routes";
 import { openInNewWindow, setWindowTitle } from "./lib/windows";
 import { RepoScreen } from "./screens/RepoScreen";
 import { Repos } from "./screens/Repos";
-import { Settings } from "./screens/Settings";
 import { Header } from "./ui/Header";
 
 export default function App() {
@@ -27,13 +26,9 @@ export default function App() {
 
   useEffect(() => { setWindowTitle(route); setFatal(null); }, [route]);
 
-  const gear = route.kind === "repo" || route.kind === "commit" ? (
-    <button onClick={() => navigate({ kind: "settings", root: route.root })} aria-label="Repository settings" title="Repository settings" className="rounded-md px-2.5 py-1 hover:bg-stone-100 dark:hover:bg-stone-700">⚙</button>
-  ) : null;
-
   return (
     <div className="flex h-screen flex-col text-[13px]">
-      <Header route={route} right={gear} />
+      <Header route={route} />
       {fatal && (
         <div className="flex items-center gap-3 bg-red-100 px-4 py-2 text-xs text-red-900 dark:bg-red-900/40 dark:text-red-100">
           <span className="font-medium">Error:</span><span className="truncate">{fatal}</span>
@@ -46,7 +41,6 @@ export default function App() {
         {route.kind === "repo" && <RepoScreen key={route.root} root={route.root} commit={null} onError={setFatal} />}
         {route.kind === "commit" && <RepoScreen key={route.root} root={route.root} commit={route.id} onError={setFatal} />}
         {route.kind === "worktree" && <RepoScreen key={`${route.root}:${route.path}`} root={route.root} commit={null} worktree={route.path} onError={setFatal} />}
-        {route.kind === "settings" && <Settings root={route.root} />}
       </div>
     </div>
   );

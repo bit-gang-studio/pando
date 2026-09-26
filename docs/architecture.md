@@ -33,17 +33,14 @@ Repo       { root, common_git_dir, default_branch, forge, config }
 Branch     { name, upstream, ahead, behind, tip, checked_out_in, pr }
 Worktree  { path, branch, base, kind: Main | Linked, locked }
 Status     { staged, unstaged, untracked, ahead, behind, conflicts }
-Runtime    { ports, env, processes, agent }
 Overlap    { a, b, files: [{ path, hunks }] }
 Operation  { kind: Rebase | Merge | CherryPick, applied, total, conflicted, resolved }
 Overview   { repo, base, branches: [BranchRow { branch, worktree?, status?, port?, ahead_of_base, stale }], remote_only }
 ```
 
-## Config
+## Worktree folders
 
-`.pando.toml` at the repo root, committed. Sections: `worktree` (location, base), `hooks` (post_create, pre_land, post_land), `runtime` (port, share), `land` (strategy, delete_branch, remove_worktree), `agents.<name>`.
-
-User prefs in `~/.config/pando/config.toml`.
+New worktrees go next to the repo as `<repo>-<branch-slug>`. The New branch dialog shows the path and lets you change it. There is no config file; Pando adds nothing to a repo.
 
 ## Safety
 

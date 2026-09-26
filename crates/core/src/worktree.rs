@@ -3,11 +3,8 @@
 
 use crate::backup;
 use crate::cmd::{git, git_bytes};
-use crate::config::RepoConfig;
 use crate::error::Result;
-use crate::hooks::{self, HookResult};
 use crate::repo::{canon, Repo};
-use crate::runtime;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -44,42 +41,66 @@ pub struct AddWorktree {
     pub create_branch: bool,
 }
 
-/// High-level create: path from config, worktree add, port, hooks.
+/// High-level create: pick a sibling folder, run `git worktree add`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CreateWorktree {
     pub branch: String,
-    /// Start point for a new branch. Defaults to config base, then the repo default branch.
+    /// Start point for a new branch. Defaults to the repo's default branch.
     pub base: Option<String>,
-    /// Overrides the configured location template.
+    /// Overrides the default sibling folder.
     pub path: Option<PathBuf>,
     /// Check out an existing branch instead of creating one.
     pub existing_branch: bool,
-    pub run_hooks: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Created {
     pub worktree: Worktree,
-    pub port: Option<u16>,
-    pub hooks: Vec<HookResult>,
+}
+
+/// Where a new worktree goes by default: next to the repo, `<repo>-<branch-slug>`.
+pub fn default_path(repo: &Repo, branch: &str) -> PathBuf {
+    let name = repo
+        .root
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "repo".into());
+    let parent = repo
+        .root
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| repo.root.clone());
+    parent.join(format!("{name}-{}", branch_slug(branch)))
+}
+
+/// `feat/Auth Refresh` -> `feat-auth-refresh`
+pub fn branch_slug(branch: &str) -> String {
+    let mut out = String::with_capacity(branch.len());
+    let mut last_dash = false;
+    for c in branch.chars() {
+        if c.is_ascii_alphanumeric() || c == '.' || c == '_' {
+            out.push(c.to_ascii_lowercase());
+            last_dash = false;
+        } else if !last_dash {
+            out.push('-');
+            last_dash = true;
+        }
+    }
+    out.trim_matches('-').to_string()
 }
 
 pub fn create(repo: &Repo, req: &CreateWorktree) -> Result<Created> {
-    let cfg = RepoConfig::load(repo)?;
     let path = req
         .path
         .clone()
-        .unwrap_or_else(|| cfg.worktree_path(repo, &req.branch));
+        .unwrap_or_else(|| default_path(repo, &req.branch));
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     let base = if req.existing_branch {
         None
     } else {
-        req.base
-            .clone()
-            .or_else(|| cfg.worktree.base.clone())
-            .or_else(|| repo.default_branch.clone())
+        req.base.clone().or_else(|| repo.default_branch.clone())
     };
     let worktree = add(
         repo,
@@ -90,37 +111,7 @@ pub fn create(repo: &Repo, req: &CreateWorktree) -> Result<Created> {
             create_branch: !req.existing_branch,
         },
     )?;
-
-    let port = match &cfg.runtime.port {
-        Some(pc) => Some(runtime::assign_port(repo, &req.branch, pc)?),
-        None => None,
-    };
-
-    let mut env = vec![
-        (
-            "PANDO_MAIN".to_string(),
-            repo.root.to_string_lossy().into_owned(),
-        ),
-        ("PANDO_BRANCH".to_string(), req.branch.clone()),
-        (
-            "PANDO_WORKTREE".to_string(),
-            worktree.path.to_string_lossy().into_owned(),
-        ),
-    ];
-    if let (Some(pc), Some(p)) = (&cfg.runtime.port, port) {
-        env.push((pc.env.clone(), p.to_string()));
-    }
-    let hooks = if req.run_hooks {
-        hooks::run(&cfg.hooks.post_create, &worktree.path, &env)?
-    } else {
-        Vec::new()
-    };
-
-    Ok(Created {
-        worktree,
-        port,
-        hooks,
-    })
+    Ok(Created { worktree })
 }
 
 pub fn list(repo: &Repo) -> Result<Vec<Worktree>> {
@@ -156,7 +147,7 @@ pub fn add(repo: &Repo, req: &AddWorktree) -> Result<Worktree> {
         })
 }
 
-/// Remove a worktree. Writes a backup ref for its branch first and frees its port.
+/// Remove a worktree. Writes a backup ref for its branch first.
 pub fn remove(repo: &Repo, path: &Path, force: bool) -> Result<()> {
     let want = canon(path);
     if let Some(branch) = list(repo)?
@@ -165,7 +156,6 @@ pub fn remove(repo: &Repo, path: &Path, force: bool) -> Result<()> {
         .and_then(|w| w.branch.clone())
     {
         backup::write(repo, &branch)?;
-        runtime::release_port(repo, &branch)?;
     }
     let mut args = vec!["worktree", "remove"];
     if force {
@@ -247,6 +237,13 @@ fn parse_porcelain(out: &[u8]) -> Vec<Worktree> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn slugs() {
+        assert_eq!(branch_slug("feat/Auth Refresh"), "feat-auth-refresh");
+        assert_eq!(branch_slug("fix/a..b__c"), "fix-a..b__c");
+        assert_eq!(branch_slug("/x/"), "x");
+    }
 
     #[test]
     fn parses_three_records() {

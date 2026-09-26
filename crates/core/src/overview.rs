@@ -1,11 +1,9 @@
 //! One call for the main screen: every branch, with its worktree if it has one.
 
 use crate::branch::{self, Branch, RemoteBranch};
-use crate::config::RepoConfig;
 use crate::error::Result;
 use crate::merge;
 use crate::repo::Repo;
-use crate::runtime;
 use crate::status::{self, Summary};
 use crate::worktree::{self, Worktree, WorktreeKind};
 use serde::{Deserialize, Serialize};
@@ -20,7 +18,6 @@ pub struct BranchRow {
     pub worktree: Option<Worktree>,
     pub is_main_worktree: bool,
     pub status: Option<Summary>,
-    pub port: Option<u16>,
     /// Commits not on the base branch.
     pub ahead_of_base: Option<u32>,
     /// Has a worktree, is clean, and its last commit is older than `STALE_DAYS`.
@@ -54,7 +51,6 @@ pub fn load(repo: &Repo) -> Result<Overview> {
         .as_deref()
         .and_then(|b| g.rev_parse_single(b).ok())
         .map(|id| id.detach());
-    let ports = runtime::ports(repo)?;
     let all_worktrees = worktree::list(repo)?;
     let detached = all_worktrees
         .iter()
@@ -77,7 +73,6 @@ pub fn load(repo: &Repo) -> Result<Overview> {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0);
-    let _ = RepoConfig::load(repo)?; // validate early so a bad .pando.toml surfaces here
 
     let mut rows = Vec::new();
     for b in branch::list(repo)? {
@@ -107,7 +102,6 @@ pub fn load(repo: &Repo) -> Result<Overview> {
             && st.map(|s| s.is_clean()).unwrap_or(false)
             && idle_days >= STALE_DAYS;
         rows.push(BranchRow {
-            port: ports.get(&b.name).copied(),
             is_main_worktree: is_main,
             worktree: wt,
             status: st,

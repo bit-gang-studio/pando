@@ -6,7 +6,6 @@ use crate::error::Result;
 use crate::history;
 use crate::operation::{self, Operation};
 use crate::repo::{canon, Repo};
-use crate::runtime;
 use crate::status::{self, FileStatus};
 use crate::worktree::{self, Worktree};
 use serde::{Deserialize, Serialize};
@@ -21,7 +20,6 @@ pub struct Detail {
     /// Commits on this branch that are not on the base branch, newest first.
     pub ahead: Vec<CommitInfo>,
     pub base_branch: Option<String>,
-    pub port: Option<u16>,
     pub head_summary: Option<String>,
     pub operation: Option<Operation>,
 }
@@ -45,10 +43,6 @@ pub fn load(repo: &Repo, path: &Path) -> Result<Detail> {
         }
         None => (Vec::new(), repo.default_branch.clone()),
     };
-    let port = match &worktree.branch {
-        Some(b) => runtime::port_for(repo, b)?,
-        None => None,
-    };
     let operation = operation::detect(&worktree.path)?;
     let head_summary = branch
         .as_ref()
@@ -61,7 +55,6 @@ pub fn load(repo: &Repo, path: &Path) -> Result<Detail> {
         files,
         ahead,
         base_branch,
-        port,
         head_summary,
         operation,
     })

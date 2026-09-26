@@ -35,17 +35,14 @@ export type BranchRow = {
   worktree: Worktree | null;
   is_main_worktree: boolean;
   status: Summary | null;
-  port: number | null;
   ahead_of_base: number | null;
   stale: boolean;
 };
 export type DetachedRow = { worktree: Worktree; is_main_worktree: boolean; status: Summary | null };
 export type Overview = { repo: Repo; base: string | null; branches: BranchRow[]; detached: DetachedRow[]; remote_only: RemoteBranch[] };
 
-export type BranchDefaults = { base: string | null; next_port: number | null; hooks: string[] };
-export type CreateWorktree = { branch: string; base: string | null; path: string | null; existing_branch: boolean; run_hooks: boolean };
-export type HookResult = { command: string; exit_code: number | null; stdout: string; stderr: string };
-export type Created = { worktree: Worktree; port: number | null; hooks: HookResult[] };
+export type CreateWorktree = { branch: string; base: string | null; path: string | null; existing_branch: boolean };
+export type Created = { worktree: Worktree };
 
 export type FileStatus = { path: string; orig_path: string | null; staged: string | null; unstaged: string | null; untracked: boolean; conflicted: boolean };
 export type LineKind = "context" | "add" | "del";
@@ -63,7 +60,6 @@ export type Detail = {
   files: FileStatus[];
   ahead: CommitInfo[];
   base_branch: string | null;
-  port: number | null;
   head_summary: string | null;
   operation: Operation | null;
 };
@@ -78,23 +74,16 @@ export type CommitDiff = { commit: CommitInfo; message: string; files: FileChang
 export type Preflight = {
   branch: string; base: string; base_local: string; clean: boolean; ahead: number; behind: number;
   conflict_predicted: boolean; conflict_files: string[]; base_checked_out_in: string | null; base_worktree_clean: boolean | null;
-  has_upstream: boolean; pre_land_hooks: string[]; squash_default: boolean; remove_worktree_default: boolean; delete_branch_default: boolean;
+  has_upstream: boolean;
   problems: string[];
 };
 export type MergePlan = {
   branch: string; base: string; squash: boolean; message: string | null; destination: "local_merge" | "push_branch";
-  push_base: boolean; run_hooks: boolean; remove_worktree: boolean; delete_branch: boolean; delete_remote: boolean;
+  push_base: boolean; remove_worktree: boolean; delete_branch: boolean; delete_remote: boolean;
 };
 export type Step = { name: string; ok: boolean; output: string };
 export type MergeResult = { landed: boolean; steps: Step[]; backup_ref: string | null };
 
-export type RepoConfig = {
-  worktree: { location: string; base: string | null };
-  hooks: { post_create: string[]; pre_land: string[]; post_land: string[] };
-  runtime: { port: { env: string; start: number } | null; share: string[] };
-  land: { strategy: string; delete_branch: boolean; remove_worktree: boolean };
-  agents: Record<string, { command: string }>;
-};
 
 // ---- calls -------------------------------------------------------------------
 
@@ -107,7 +96,6 @@ export const api = {
 
   overview: (root: string) => invoke<Overview>("overview_load", { root }),
   fetchAll: (root: string) => invoke<void>("fetch_all", { root }),
-  branchDefaults: (root: string) => invoke<BranchDefaults>("branch_defaults", { root }),
   worktreePathPreview: (root: string, branch: string) => invoke<string>("worktree_path_preview", { root, branch }),
   worktreeAdd: (root: string, req: CreateWorktree) => invoke<Created>("worktree_add", { root, req }),
   worktreeRemove: (root: string, path: string, force: boolean) => invoke<void>("worktree_remove", { root, path, force }),
@@ -136,10 +124,6 @@ export const api = {
   opContinue: (worktree: string) => invoke<Operation | null>("op_continue", { worktree }),
   opAbort: (worktree: string) => invoke<void>("op_abort", { worktree }),
 
-  configLoad: (root: string) => invoke<RepoConfig>("config_load", { root }),
-  configRender: (config: RepoConfig) => invoke<string>("config_render", { config }),
-  configSave: (root: string, config: RepoConfig) => invoke<string>("config_save", { root, config }),
-  configCommit: (root: string) => invoke<void>("config_commit", { root }),
 };
 
 // ---- helpers -----------------------------------------------------------------

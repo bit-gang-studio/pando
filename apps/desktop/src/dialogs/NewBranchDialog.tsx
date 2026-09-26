@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { api, type BranchDefaults, type Created } from "../lib/api";
+import { api, type Created } from "../lib/api";
 
 type Props = {
   root: string;
@@ -16,25 +16,16 @@ const PREFIXES = ["feat/", "fix/", "chore/", "spike/"];
 export function NewBranchDialog({ root, base: defaultBase, initialBranch, onClose, onCreated }: Props) {
   const repo = root;
   const mode: Mode = initialBranch ? "existing" : "new";
-  const [defaults, setDefaults] = useState<BranchDefaults | null>(null);
   const [branch, setBranch] = useState(initialBranch ?? "");
   const [base, setBase] = useState("");
   const [path, setPath] = useState("");
   const [pathEdited, setPathEdited] = useState(false);
-  const [runHooks, setRunHooks] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Created | null>(null);
   const branchRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (!repo) return;
-    setDefaults(null);
-    api.branchDefaults(repo).then((d) => {
-      setDefaults(d);
-      setBase(d.base ?? defaultBase ?? "");
-    }).catch((e) => setError(String(e)));
-  }, [repo]);
+  useEffect(() => { setBase(defaultBase ?? ""); }, [defaultBase]);
 
   useEffect(() => {
     branchRef.current?.focus();
@@ -68,14 +59,10 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, onClos
         base: mode === "new" && base ? base : null,
         path: pathEdited && path ? path : null,
         existing_branch: mode === "existing",
-        run_hooks: runHooks,
       });
       setResult(r);
       onCreated();
-      const failed = r.hooks.some((h) => h.exit_code !== 0);
-      if (!failed) {
-        onClose();
-      }
+      onClose();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -83,8 +70,6 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, onClos
     }
   }
 
-  const hooks = defaults?.hooks ?? [];
-  const port = defaults?.next_port ?? null;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
@@ -100,7 +85,7 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, onClos
                 <span className="text-xs font-medium text-stone-600 dark:text-stone-300">Base</span>
                 <input list="nw-bases" value={base} onChange={(e) => setBase(e.target.value)} className="h-8 rounded-md border border-stone-300 bg-white px-2 font-mono text-xs dark:border-stone-600 dark:bg-stone-700" />
                 <datalist id="nw-bases">
-                  {defaults?.base && <option value={defaults.base} />}
+                  {defaultBase && <option value={defaultBase} />}
                 </datalist>
               </label>
             ) : <div />}
@@ -128,28 +113,7 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, onClos
             <input value={path} onChange={(e) => { setPath(e.target.value); setPathEdited(true); }} spellCheck={false} className="h-8 rounded-md border border-stone-300 bg-stone-50 px-2 font-mono text-xs text-stone-600 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-300" />
           </label>
 
-          <div className="flex flex-col gap-2 rounded-lg border border-stone-300 bg-stone-50 p-3 dark:border-stone-600 dark:bg-stone-900/40">
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold tracking-wider text-stone-500">SETUP</span>
-              <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={runHooks} onChange={(e) => setRunHooks(e.target.checked)} /> Run hooks</label>
-            </div>
-            {hooks.length === 0 && port == null && <div className="text-xs text-stone-500">No setup commands or port configured. Set them in this repo's settings.</div>}
-            {hooks.map((h, i) => <div key={i} className={`font-mono text-xs ${runHooks ? "" : "line-through opacity-50"}`}>{h}</div>)}
-            {port != null && <div className="font-mono text-xs">PORT={port}</div>}
-          </div>
-
           {error && <div className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
-          {result && result.hooks.some((h) => h.exit_code !== 0) && (
-            <div className="flex flex-col gap-2 rounded-md border border-amber-300 bg-amber-50 p-3 text-xs dark:bg-amber-900/30">
-              <div className="font-medium">Worktree created, but a setup hook failed. Fix it and run the rest by hand.</div>
-              {result.hooks.map((h, i) => (
-                <div key={i}>
-                  <div className="font-mono">{h.exit_code === 0 ? "ok  " : "FAIL"} {h.command}</div>
-                  {h.exit_code !== 0 && <pre className="mt-1 max-h-40 overflow-auto rounded bg-stone-900 p-2 font-mono text-[11px] text-stone-100">{h.stdout}{h.stderr}</pre>}
-                </div>
-              ))}
-            </div>
-          )}
         </div>
 
         <div className="flex items-center gap-2 border-t border-stone-300 bg-stone-50 px-5 py-3.5 dark:border-stone-700 dark:bg-stone-900/40">

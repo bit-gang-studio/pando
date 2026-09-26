@@ -147,7 +147,6 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
         {b && b.ahead != null && <Chip tone={(b.behind ?? 0) > 0 ? "amber" : "grey"}>↑{b.ahead} ↓{b.behind}</Chip>}
         {d.files.length > 0 ? <Chip tone="amber">{d.files.length} changed</Chip> : <Chip>clean</Chip>}
         {conflicts > 0 && <Chip tone="red">{conflicts} conflicts</Chip>}
-        {d.port != null && <Chip mono>:{d.port}</Chip>}
         <div className="grow" />
         {!isMain && d.base_branch && !d.operation && <button onClick={syncNow} disabled={!!busy} className={btn}>{busy === "sync" ? "Syncing…" : `Sync with ${d.base_branch}`}</button>}
         {!isMain && <button onClick={() => setMerging(true)} disabled={!d.worktree.branch || !!d.operation} className="h-8 rounded-lg bg-teal-700 px-3.5 text-[13px] font-medium text-white hover:bg-teal-800 disabled:opacity-40">Merge <span className="text-xs opacity-70">⌘L</span></button>}

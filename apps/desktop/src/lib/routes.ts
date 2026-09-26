@@ -4,8 +4,7 @@ export type Route =
   | { kind: "repos" }
   | { kind: "repo"; root: string }
   | { kind: "worktree"; root: string; path: string }
-  | { kind: "commit"; root: string; id: string }
-  | { kind: "settings"; root: string };
+  | { kind: "commit"; root: string; id: string };
 
 export function toHash(r: Route): string {
   const q = (o: Record<string, string>) => new URLSearchParams(o).toString();
@@ -14,7 +13,6 @@ export function toHash(r: Route): string {
     case "repo": return `#/repo?${q({ root: r.root })}`;
     case "worktree": return `#/worktree?${q({ root: r.root, path: r.path })}`;
     case "commit": return `#/commit?${q({ root: r.root, id: r.id })}`;
-    case "settings": return `#/settings?${q({ root: r.root })}`;
   }
 }
 
@@ -26,7 +24,6 @@ export function fromHash(hash: string): Route {
     case "/repo": return root ? { kind: "repo", root } : { kind: "repos" };
     case "/worktree": return root && p.get("path") ? { kind: "worktree", root, path: p.get("path")! } : { kind: "repos" };
     case "/commit": return root && p.get("id") ? { kind: "commit", root, id: p.get("id")! } : { kind: "repos" };
-    case "/settings": return root ? { kind: "settings", root } : { kind: "repos" };
     default: return { kind: "repos" };
   }
 }

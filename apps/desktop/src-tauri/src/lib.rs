@@ -1,10 +1,10 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
 use pando_core::{
-    branch, commit, conflict, detail, diff, history, index, log, merge, operation, overview,
-    runtime, sync, user_config, worktree, CommitDiff, ConflictFile, CreateWorktree, Created,
-    Detail, FileDiff, Hunk, Log, MergePlan, MergeResult, Operation, Overview, Preflight, Repo,
-    RepoConfig, Side, SyncResult, UserConfig,
+    branch, commit, conflict, detail, diff, history, index, log, merge, operation, overview, sync,
+    user_config, worktree, CommitDiff, ConflictFile, CreateWorktree, Created, Detail, FileDiff,
+    Hunk, Log, MergePlan, MergeResult, Operation, Overview, Preflight, Repo, Side, SyncResult,
+    UserConfig,
 };
 use std::path::PathBuf;
 
@@ -71,43 +71,10 @@ async fn fetch_all(root: PathBuf) -> R<()> {
     blocking(move || branch::fetch_all(&repo(&root)?).map_err(err)).await
 }
 
-/// What the New branch dialog needs up front.
-#[derive(serde::Serialize)]
-struct BranchDefaults {
-    base: Option<String>,
-    next_port: Option<u16>,
-    hooks: Vec<String>,
-}
-
-#[tauri::command]
-async fn branch_defaults(root: PathBuf) -> R<BranchDefaults> {
-    blocking(move || {
-        let r = repo(&root)?;
-        let cfg = RepoConfig::load(&r).map_err(err)?;
-        let next_port = match &cfg.runtime.port {
-            Some(pc) => Some(runtime::next_port(&r, pc).map_err(err)?),
-            None => None,
-        };
-        Ok(BranchDefaults {
-            base: cfg
-                .worktree
-                .base
-                .clone()
-                .or_else(|| r.default_branch.clone()),
-            next_port,
-            hooks: cfg.hooks.post_create,
-        })
-    })
-    .await
-}
-
 #[tauri::command]
 async fn worktree_path_preview(root: PathBuf, branch: String) -> R<String> {
     blocking(move || {
-        let r = repo(&root)?;
-        let cfg = RepoConfig::load(&r).map_err(err)?;
-        Ok(cfg
-            .worktree_path(&r, &branch)
+        Ok(worktree::default_path(&repo(&root)?, &branch)
             .to_string_lossy()
             .into_owned())
     })
@@ -247,31 +214,6 @@ async fn op_abort(worktree: PathBuf) -> R<()> {
     blocking(move || operation::abort(&worktree).map_err(err)).await
 }
 
-// ---- settings --------------------------------------------------------------
-
-#[tauri::command]
-async fn config_load(root: PathBuf) -> R<RepoConfig> {
-    blocking(move || RepoConfig::load(&repo(&root)?).map_err(err)).await
-}
-
-#[tauri::command]
-async fn config_render(config: RepoConfig) -> R<String> {
-    blocking(move || config.to_toml().map_err(err)).await
-}
-
-#[tauri::command]
-async fn config_save(root: PathBuf, config: RepoConfig) -> R<String> {
-    blocking(move || config.save(&repo(&root)?).map_err(err)).await
-}
-
-#[tauri::command]
-async fn config_commit(root: PathBuf) -> R<()> {
-    blocking(move || {
-        pando_core::config::commit(&repo(&root)?, "chore: update .pando.toml").map_err(err)
-    })
-    .await
-}
-
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -285,7 +227,6 @@ pub fn run() {
             user_config_save,
             overview_load,
             fetch_all,
-            branch_defaults,
             worktree_path_preview,
             worktree_add,
             worktree_remove,
@@ -309,11 +250,7 @@ pub fn run() {
             conflict_resolve,
             conflict_reset,
             op_continue,
-            op_abort,
-            config_load,
-            config_render,
-            config_save,
-            config_commit
+            op_abort
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Pando");

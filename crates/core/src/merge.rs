@@ -4,9 +4,7 @@
 use crate::backup;
 use crate::branch::count_only_in;
 use crate::cmd::{git, git_raw};
-use crate::config::RepoConfig;
 use crate::error::{gix_err, Result};
-use crate::hooks;
 use crate::repo::Repo;
 use crate::status;
 use crate::worktree;
@@ -27,11 +25,7 @@ pub struct Preflight {
     pub base_checked_out_in: Option<PathBuf>,
     pub base_worktree_clean: Option<bool>,
     pub has_upstream: bool,
-    pub pre_land_hooks: Vec<String>,
-    pub squash_default: bool,
-    pub remove_worktree_default: bool,
-    pub delete_branch_default: bool,
-    /// Blocking problems. Empty means Land can run.
+    /// Blocking problems. Empty means Merge can run.
     pub problems: Vec<String>,
 }
 
@@ -52,7 +46,6 @@ pub struct MergePlan {
     pub message: Option<String>,
     pub destination: Destination,
     pub push_base: bool,
-    pub run_hooks: bool,
     pub remove_worktree: bool,
     pub delete_branch: bool,
     pub delete_remote: bool,
@@ -79,19 +72,14 @@ fn local_name(base: &str) -> String {
     }
 }
 
-/// The base a branch lands into: config base, else the repo default branch.
+/// The base a branch merges into: the repo's default branch.
 pub fn default_base(repo: &Repo) -> Result<String> {
-    let cfg = RepoConfig::load(repo)?;
-    cfg.worktree
-        .base
-        .or_else(|| repo.default_branch.clone())
-        .ok_or_else(|| {
-            crate::Error::Config("no default branch; set [worktree] base in .pando.toml".into())
-        })
+    repo.default_branch
+        .clone()
+        .ok_or_else(|| crate::Error::Config("no default branch found".into()))
 }
 
 pub fn preflight(repo: &Repo, wt: &Path, branch: &str, base: &str) -> Result<Preflight> {
-    let cfg = RepoConfig::load(repo)?;
     let g = repo.open_gix()?;
     let tip = g.rev_parse_single(branch).map_err(gix_err)?.detach();
     let base_id = g.rev_parse_single(base).map_err(gix_err)?.detach();
@@ -173,16 +161,11 @@ pub fn preflight(repo: &Repo, wt: &Path, branch: &str, base: &str) -> Result<Pre
         base_checked_out_in,
         base_worktree_clean,
         has_upstream,
-        pre_land_hooks: cfg.hooks.pre_land,
-        squash_default: cfg.land.strategy == "squash",
-        remove_worktree_default: cfg.land.remove_worktree,
-        delete_branch_default: cfg.land.delete_branch,
         problems,
     })
 }
 
 pub fn run(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
-    let cfg = RepoConfig::load(repo)?;
     let mut steps: Vec<Step> = vec![];
     let mut r = MergeResult {
         landed: false,
@@ -215,40 +198,11 @@ pub fn run(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
     let branch = plan.branch.as_str();
     let base = plan.base.as_str();
     let base_local = local_name(base);
-    let env = vec![
-        (
-            "PANDO_MAIN".to_string(),
-            repo.root.to_string_lossy().into_owned(),
-        ),
-        ("PANDO_BRANCH".to_string(), branch.to_string()),
-        ("PANDO_BASE".to_string(), base.to_string()),
-    ];
-
     step!("Backup ref", {
         let name = backup::write(repo, branch)?;
         r.backup_ref = name.clone();
         Ok(name.unwrap_or_default())
     });
-
-    if plan.run_hooks && !cfg.hooks.pre_land.is_empty() {
-        step!("Before-land hooks", {
-            let results = hooks::run(&cfg.hooks.pre_land, wt, &env)?;
-            let mut out = String::new();
-            for h in &results {
-                out.push_str(&format!(
-                    "{} {}\n{}{}",
-                    if h.ok() { "ok  " } else { "FAIL" },
-                    h.command,
-                    h.stdout,
-                    h.stderr
-                ));
-                if !h.ok() {
-                    return Err(crate::Error::Config(out));
-                }
-            }
-            Ok(out)
-        });
-    }
 
     step!(format!("Rebase onto {base}"), {
         if let Some((remote, _)) = base.split_once('/') {
@@ -320,17 +274,6 @@ pub fn run(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
                 )
             });
         }
-    }
-
-    if plan.run_hooks && !cfg.hooks.post_land.is_empty() {
-        step!("After-land hooks", {
-            let results = hooks::run(&cfg.hooks.post_land, &repo.root, &env)?;
-            Ok(results
-                .iter()
-                .map(|h| format!("{} {}", if h.ok() { "ok  " } else { "FAIL" }, h.command))
-                .collect::<Vec<_>>()
-                .join("\n"))
-        });
     }
 
     if plan.remove_worktree && wt != repo.root {

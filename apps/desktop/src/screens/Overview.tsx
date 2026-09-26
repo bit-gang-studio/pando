@@ -15,7 +15,7 @@ const th = "px-2 py-1.5 text-left text-[11px] font-semibold tracking-wider text-
 const td = "px-2 py-1.5 align-middle";
 const iconBtn = "inline-flex items-center rounded px-1.5 py-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100";
 
-type WtRow = { key: string; label: string; sub: string | null; worktree: Worktree; status: Summary | null; branch: BranchRow | null; isMain: boolean; ahead: number | null; port: number | null; stale: boolean; time: number | null };
+type WtRow = { key: string; label: string; sub: string | null; worktree: Worktree; status: Summary | null; branch: BranchRow | null; isMain: boolean; ahead: number | null; stale: boolean; time: number | null };
 
 export function Overview({ root, data, onRefresh: refresh, onOpenDetail, onError }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
@@ -64,7 +64,7 @@ export function Overview({ root, data, onRefresh: refresh, onOpenDetail, onError
 
   const rows: WtRow[] = [];
   for (const d of data?.detached ?? []) if (d.is_main_worktree) rows.push(detachedRow(d));
-  for (const b of data?.branches ?? []) if (b.worktree) rows.push({ key: b.branch.name, label: b.branch.name, sub: null, worktree: b.worktree, status: b.status, branch: b, isMain: b.is_main_worktree, ahead: b.ahead_of_base, port: b.port, stale: b.stale, time: b.branch.last_commit?.time ?? null });
+  for (const b of data?.branches ?? []) if (b.worktree) rows.push({ key: b.branch.name, label: b.branch.name, sub: null, worktree: b.worktree, status: b.status, branch: b, isMain: b.is_main_worktree, ahead: b.ahead_of_base, stale: b.stale, time: b.branch.last_commit?.time ?? null });
   for (const d of data?.detached ?? []) if (!d.is_main_worktree) rows.push(detachedRow(d));
 
   const without = data?.branches.filter((r) => !r.worktree) ?? [];
@@ -224,7 +224,6 @@ function detachedRow(d: DetachedRow): WtRow {
     branch: null,
     isMain: d.is_main_worktree,
     ahead: null,
-    port: null,
     stale: false,
     time: null,
   };

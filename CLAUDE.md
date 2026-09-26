@@ -18,6 +18,7 @@ Read `docs/architecture.md` first. The plan and status are the Crunchy board (pr
 - Keep docs minimal. Plain language. No filler.
 - Use git's words in the UI and CLI: "add worktree", "remove worktree", "merge", "branch". Never invent verbs (no land, open, close, workspace).
 - One screen per repo: the branch list. Don't add sidebars, filters, or rails without Chris asking.
+- No settings, no config file, no ports, no hooks. Pando adds nothing to a repo. New worktrees go next to the repo as `<repo>-<branch>`. Chris removed all of this on 27 Sep 2026; don't bring it back.
 
 ## Commands
 

@@ -251,20 +251,8 @@ fn types_round_trip_through_json() {
 }
 
 #[test]
-fn create_uses_config_hooks_and_port() {
+fn create_defaults_to_sibling_folder() {
     let f = fixture();
-    std::fs::write(
-        f.root.join(".pando.toml"),
-        r#"
-[worktree]
-location = "../ws/{branch_slug}"
-[hooks]
-post_create = ["echo hi > hook.txt", "echo $PANDO_BRANCH > branch.txt"]
-[runtime]
-port = { env = "PORT", start = 4100 }
-"#,
-    )
-    .unwrap();
     let repo = Repo::discover(&f.root).unwrap();
     let created = worktree::create(
         &repo,
@@ -273,59 +261,13 @@ port = { env = "PORT", start = 4100 }
             base: None,
             path: None,
             existing_branch: false,
-            run_hooks: true,
         },
     )
     .unwrap();
-    let expected = dunce::canonicalize(f.root.parent().unwrap().join("ws").join("feat-x")).unwrap();
+    let expected = dunce::canonicalize(f.root.parent().unwrap().join("work-feat-x")).unwrap();
     assert_eq!(created.worktree.path, expected);
-    assert_eq!(created.port, Some(4100));
-    assert_eq!(created.hooks.len(), 2);
-    assert!(created.hooks.iter().all(|h| h.ok()));
-    assert!(expected.join("hook.txt").exists());
-
-    // Second worktree gets the next port; removing frees it.
-    let second = worktree::create(
-        &repo,
-        &pando_core::CreateWorktree {
-            branch: "feat/y".into(),
-            base: None,
-            path: None,
-            existing_branch: false,
-            run_hooks: false,
-        },
-    )
-    .unwrap();
-    assert_eq!(second.port, Some(4101));
-    worktree::remove(&repo, &created.worktree.path, true).unwrap();
-    assert_eq!(
-        pando_core::runtime::port_for(&repo, "feat/x").unwrap(),
-        None
-    );
-}
-
-#[test]
-fn failing_hook_stops_and_reports() {
-    let f = fixture();
-    std::fs::write(
-        f.root.join(".pando.toml"),
-        "[worktree]\nlocation = \"../ws/{branch_slug}\"\n[hooks]\npost_create = [\"exit 3\", \"echo never\"]\n",
-    )
-    .unwrap();
-    let repo = Repo::discover(&f.root).unwrap();
-    let created = worktree::create(
-        &repo,
-        &pando_core::CreateWorktree {
-            branch: "feat/z".into(),
-            base: None,
-            path: None,
-            existing_branch: false,
-            run_hooks: true,
-        },
-    )
-    .unwrap();
-    assert_eq!(created.hooks.len(), 1);
-    assert_eq!(created.hooks[0].exit_code, Some(3));
+    assert_eq!(created.worktree.branch.as_deref(), Some("feat/x"));
+    assert_eq!(worktree::list(&repo).unwrap().len(), 4);
 }
 
 #[test]
