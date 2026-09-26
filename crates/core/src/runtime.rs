@@ -32,13 +32,23 @@ pub fn assign_port(repo: &Repo, branch: &str, cfg: &PortConfig) -> Result<u16> {
     if let Some(p) = map.get(branch) {
         return Ok(*p);
     }
+    let port = lowest_free(&map, cfg);
+    map.insert(branch.to_string(), port);
+    save(repo, &map)?;
+    Ok(port)
+}
+
+/// The port a new branch would get. Does not reserve it.
+pub fn next_port(repo: &Repo, cfg: &PortConfig) -> Result<u16> {
+    Ok(lowest_free(&load(repo)?, cfg))
+}
+
+fn lowest_free(map: &BTreeMap<String, u16>, cfg: &PortConfig) -> u16 {
     let mut port = cfg.start;
     while map.values().any(|p| *p == port) {
         port += 1;
     }
-    map.insert(branch.to_string(), port);
-    save(repo, &map)?;
-    Ok(port)
+    port
 }
 
 pub fn port_for(repo: &Repo, branch: &str) -> Result<Option<u16>> {

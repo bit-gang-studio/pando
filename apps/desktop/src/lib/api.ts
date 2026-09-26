@@ -52,12 +52,45 @@ export type Board = {
 
 export type UserConfig = { repos: string[]; editor: string | null };
 
+export type RepoConfig = {
+  workspace: { location: string; base: string | null };
+  hooks: { post_create: string[]; pre_land: string[]; post_land: string[] };
+  runtime: { port: { env: string; start: number } | null; share: string[] };
+  land: { strategy: string; delete_branch: boolean; remove_worktree: boolean };
+  agents: Record<string, { command: string }>;
+};
+
+export type CreateDefaults = {
+  config: RepoConfig;
+  default_branch: string | null;
+  next_port: number | null;
+  branches: Branch[];
+};
+
+export type CreateWorkspace = {
+  branch: string;
+  base: string | null;
+  path: string | null;
+  existing_branch: boolean;
+  run_hooks: boolean;
+};
+
+export type HookResult = { command: string; exit_code: number | null; stdout: string; stderr: string };
+
+export type Created = { workspace: Workspace; port: number | null; hooks: HookResult[] };
+
 export const api = {
   version: () => invoke<string>("version"),
   reposList: () => invoke<UserConfig>("repos_list"),
   reposAdd: (path: string) => invoke<UserConfig>("repos_add", { path }),
   reposRemove: (path: string) => invoke<UserConfig>("repos_remove", { path }),
   boardLoad: (root: string) => invoke<Board>("board_load", { root }),
+  branchesList: (root: string) => invoke<Branch[]>("branches_list", { root }),
+  createDefaults: (root: string) => invoke<CreateDefaults>("create_defaults", { root }),
+  workspacePathPreview: (root: string, branch: string) =>
+    invoke<string>("workspace_path_preview", { root, branch }),
+  workspaceCreate: (root: string, req: CreateWorkspace) =>
+    invoke<Created>("workspace_create", { root, req }),
   workspaceRemove: (root: string, path: string, force: boolean) =>
     invoke<void>("workspace_remove", { root, path, force }),
   openInEditor: (path: string) => invoke<void>("open_in_editor", { path }),

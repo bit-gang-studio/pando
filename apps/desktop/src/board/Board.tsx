@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { api, repoName, type Board as BoardData } from "../lib/api";
+import { NewWorkspaceDialog } from "./NewWorkspaceDialog";
 import { RightRail } from "./RightRail";
 import { WorkspaceRow } from "./WorkspaceRow";
 import { matches, VIEWS, type ViewId } from "./views";
@@ -15,6 +16,7 @@ export function Board() {
   const [view, setView] = useState<ViewId>("all");
   const [scope, setScope] = useState<string | null>(null);
   const [version, setVersion] = useState("");
+  const [creating, setCreating] = useState(false);
 
   const refresh = useCallback(async () => {
     const cfg = await api.reposList();
@@ -37,8 +39,12 @@ export function Board() {
     refresh();
     const t = setInterval(() => { if (document.hasFocus()) refresh(); }, REFRESH_MS);
     const onFocus = () => refresh();
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") { e.preventDefault(); setCreating(true); }
+    };
     window.addEventListener("focus", onFocus);
-    return () => { clearInterval(t); window.removeEventListener("focus", onFocus); };
+    window.addEventListener("keydown", onKey);
+    return () => { clearInterval(t); window.removeEventListener("focus", onFocus); window.removeEventListener("keydown", onKey); };
   }, [refresh]);
 
   async function addRepo() {
@@ -96,10 +102,16 @@ export function Board() {
           <span className="text-xs text-stone-400">v{version}</span>
         </div>
         <div className="grow" />
-        <button onClick={addRepo} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800">
+        <button onClick={addRepo} className="h-8 rounded-lg border border-stone-300 bg-white px-3 dark:border-stone-600 dark:bg-stone-700">
           Add repository
         </button>
+        <button onClick={() => setCreating(true)} disabled={repos.length === 0} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800 disabled:opacity-50">
+          New workspace<span className="ml-2 text-xs opacity-70">⌘N</span>
+        </button>
       </header>
+      {creating && (
+        <NewWorkspaceDialog repos={repos} initialRepo={scope} onClose={() => setCreating(false)} onCreated={refresh} />
+      )}
 
       <div className="flex min-h-0 grow">
         <aside className="flex w-[232px] shrink-0 flex-col gap-5 border-r border-stone-300 bg-stone-200/70 p-3 dark:border-stone-700 dark:bg-stone-900">
@@ -160,7 +172,7 @@ export function Board() {
                     onRemove={() => removeWorkspace(b.repo.root, r.workspace.path, r.workspace.branch)}
                   />
                 ))}
-                {rows.length === 0 && <div className="px-1 text-xs text-stone-500">Only the main worktree. Use the CLI: pando new feat/x</div>}
+                {rows.length === 0 && <div className="px-1 text-xs text-stone-500">Only the main worktree. <button onClick={() => { setScope(b.repo.root); setCreating(true); }} className="text-teal-700 underline">New workspace</button></div>}
               </section>
             );
           })}
