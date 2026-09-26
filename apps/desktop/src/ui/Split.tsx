@@ -2,9 +2,14 @@ import { useEffect, useRef, useState } from "react";
 
 type Axis = "x" | "y";
 
-function zoom(): number {
-  const z = Number((document.documentElement.style as unknown as { zoom: string }).zoom);
-  return z > 0 ? z : 1;
+/// Screen pixels per layout pixel, measured on the box itself. Immune to how
+/// the webview reports mouse coordinates under CSS zoom.
+function scaleOf(el: HTMLElement | null, axis: Axis): number {
+  if (!el) return 1;
+  const r = el.getBoundingClientRect();
+  const layout = axis === "x" ? el.clientWidth : el.clientHeight;
+  const screen = axis === "x" ? r.width : r.height;
+  return layout > 0 && screen > 0 ? screen / layout : 1;
 }
 
 /// A remembered, draggable size. `size` is px for "x" or percent for "y".
@@ -12,14 +17,14 @@ function zoom(): number {
 /// handle stays under the mouse at any zoom level.
 export function useSplit(key: string, initial: number, axis: Axis, min: number, max: number) {
   const [size, setSize] = useState<number>(() => { try { return Number(localStorage.getItem(key)) || initial; } catch { return initial; } });
-  const drag = useRef<{ startPos: number; startSize: number; boxPx: number } | null>(null);
+  const drag = useRef<{ startPos: number; startSize: number; boxPx: number; scale: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const move = (e: MouseEvent) => {
       const d = drag.current;
       if (!d) return;
-      const delta = ((axis === "x" ? e.clientX : e.clientY) - d.startPos) / zoom();
+      const delta = ((axis === "x" ? e.clientX : e.clientY) - d.startPos) / d.scale;
       const next = axis === "x" ? d.startSize + delta : d.startSize + (delta / d.boxPx) * 100;
       setSize(Math.min(max, Math.max(min, next)));
     };
@@ -38,7 +43,7 @@ export function useSplit(key: string, initial: number, axis: Axis, min: number, 
   const start = (e: React.MouseEvent) => {
     e.preventDefault();
     const boxPx = box.current ? (axis === "x" ? box.current.clientWidth : box.current.clientHeight) : 1;
-    drag.current = { startPos: axis === "x" ? e.clientX : e.clientY, startSize: size, boxPx };
+    drag.current = { startPos: axis === "x" ? e.clientX : e.clientY, startSize: size, boxPx, scale: scaleOf(box.current, axis) };
     document.body.style.userSelect = "none";
     document.body.style.cursor = axis === "x" ? "col-resize" : "row-resize";
   };
