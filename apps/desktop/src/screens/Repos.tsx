@@ -75,10 +75,10 @@ export function Repos({ onError }: Props) {
         <table className="w-full border-collapse text-[13px]">
           <thead>
             <tr className="text-left text-[11px] font-semibold tracking-wider text-stone-500">
-              <th className="px-2 py-1.5 font-semibold">NAME</th>
+              <th className="w-[220px] px-2 py-1.5 font-semibold">NAME</th>
               <th className="px-2 py-1.5 font-semibold">PATH</th>
-              <th className="px-2 py-1.5 text-right font-semibold">WORKTREES</th>
-              <th className="px-2 py-1.5 text-right font-semibold">CHANGES</th>
+              <th className="w-[110px] px-2 py-1.5 text-right font-semibold">WORKTREES</th>
+              <th className="w-[130px] px-2 py-1.5 text-right font-semibold">CHANGES</th>
             </tr>
           </thead>
           <tbody>
@@ -111,7 +111,7 @@ export function Repos({ onError }: Props) {
           </tbody>
         </table>
       )}
-      {cfg && cfg.repos.length > 0 && <div className="px-1 text-xs text-stone-500">⌘-click a repository to open it in a new window.</div>}
+      {cfg && cfg.repos.length > 0 && <div className="px-1 text-xs text-stone-500">⌘-click a row to open it in a new window. Right-click for more.</div>}
     </main>
   );
 }
