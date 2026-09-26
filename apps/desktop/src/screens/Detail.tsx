@@ -129,8 +129,8 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
     return (
       <div key={`${stagedSide}-${f.path}`} onClick={() => setSel({ path: f.path, staged: stagedSide, untracked: f.untracked })} className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${active ? "bg-teal-100 dark:bg-teal-900/40" : "hover:bg-stone-100 dark:hover:bg-stone-700"}`}>
         <input type="checkbox" checked={stagedSide} onChange={() => run("stage", () => (stagedSide ? api.unstagePaths(wt, [f.path]) : api.stagePaths(wt, [f.path])))} onClick={(e) => e.stopPropagation()} aria-label={stagedSide ? `Unstage ${f.path}` : `Stage ${f.path}`} className="m-0" />
-        <span className={`w-3 text-center font-mono text-[11px] ${f.conflicted ? "text-red-700" : "text-stone-500"}`}>{f.conflicted ? "U" : code}</span>
-        <span className="grow truncate font-mono text-xs" title={f.path}>{f.path}</span>
+        <span className={`w-3 shrink-0 text-center font-mono text-[11px] ${f.conflicted ? "text-red-700" : "text-stone-500"}`}>{f.conflicted ? "U" : code}</span>
+        <span className="min-w-0 grow truncate font-mono text-xs" title={f.path}>{f.path}</span>
         {!stagedSide && <button onClick={(e) => { e.stopPropagation(); discard(f); }} className={`${small} invisible text-red-700 group-hover:visible`}>Discard</button>}
       </div>
     );

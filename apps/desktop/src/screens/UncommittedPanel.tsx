@@ -60,8 +60,8 @@ export function UncommittedPanel({ root, worktrees }: { root: string; worktrees:
               const code = f.conflicted ? "U" : f.untracked ? "?" : f.unstaged ?? f.staged ?? "";
               return (
                 <button key={f.path} onClick={() => setSel({ path: d.worktree.path, file: f })} className={`flex w-full items-center gap-2 px-3 py-1 text-left ${active ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
-                  <span className={`w-3 text-center font-mono text-[11px] ${f.conflicted ? "text-red-700" : "text-stone-500"}`}>{code}</span>
-                  <span className="grow truncate font-mono text-xs" title={f.path}>{f.path}</span>
+                  <span className={`w-3 shrink-0 text-center font-mono text-[11px] ${f.conflicted ? "text-red-700" : "text-stone-500"}`}>{code}</span>
+                  <span className="min-w-0 grow truncate font-mono text-xs" title={f.path}>{f.path}</span>
                   {f.staged && f.unstaged && <span className="text-[10px] text-stone-400">partly staged</span>}
                   {f.staged && !f.unstaged && !f.untracked && <span className="text-[10px] text-stone-400">staged</span>}
                 </button>
