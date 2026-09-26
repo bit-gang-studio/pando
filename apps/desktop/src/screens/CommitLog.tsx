@@ -6,9 +6,8 @@ import { useMemo } from "react";
 
 type Props = {
   root: string;
-  branches: string[];
-  /// Branch to show at first. Empty means all branches.
-  defaultScope?: string;
+  /// Branch to show. Empty means all branches.
+  scope: string;
   dirtyWorktrees: number;
   uncommittedLabel?: string;
   selected: string | null;
@@ -19,9 +18,7 @@ type Props = {
 
 const PAGE = 200;
 
-export function CommitLog({ root, branches, defaultScope, dirtyWorktrees, uncommittedLabel, selected, onSelect, onUncommitted, refreshKey }: Props) {
-  const [scope, setScope] = useState<string>(defaultScope ?? "");
-  useEffect(() => { if (defaultScope !== undefined) setScope(defaultScope); }, [defaultScope]);
+export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, selected, onSelect, onUncommitted, refreshKey }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -46,11 +43,7 @@ export function CommitLog({ root, branches, defaultScope, dirtyWorktrees, uncomm
   return (
     <div className="flex min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-4 py-1.5 dark:border-stone-700 dark:bg-stone-800">
-        <select value={scope} onChange={(e) => setScope(e.target.value)} className="h-7 rounded-md border border-stone-300 bg-white px-2 text-xs dark:border-stone-600 dark:bg-stone-700">
-          <option value="">All branches</option>
-          {branches.map((b) => <option key={b} value={b}>{b}</option>)}
-        </select>
-        <span className="text-xs text-stone-500">{entries.length}{truncated ? "+" : ""} commits</span>
+        <span className="text-xs text-stone-500">{scope ? <span className="font-mono">{scope}</span> : "All branches"} · {entries.length}{truncated ? "+" : ""} commits</span>
         {error && <span className="text-xs text-red-700">{error}</span>}
       </div>
       <div className="min-h-0 grow overflow-auto bg-white dark:bg-stone-800">

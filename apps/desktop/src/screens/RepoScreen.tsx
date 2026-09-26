@@ -29,7 +29,6 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
     return () => { clearInterval(t); window.removeEventListener("focus", onFocus); };
   }, [refresh]);
 
-  const branches = data?.branches.map((b) => b.branch.name) ?? [];
   const dirty = (data?.branches.filter((b) => b.worktree && changed(b.status) > 0).length ?? 0) + (data?.detached.filter((d) => changed(d.status) > 0).length ?? 0);
   const firstDirty = data?.branches.find((b) => b.worktree && changed(b.status) > 0)?.worktree?.path ?? data?.detached.find((d) => changed(d.status) > 0)?.worktree.path ?? null;
 
@@ -45,8 +44,7 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
       <div style={{ height: split.size, flex: "0 0 auto" }} className="flex min-h-0 flex-col">
         <CommitLog
           root={root}
-          branches={branches}
-          defaultScope={worktree ? wtBranch : undefined}
+          scope={worktree ? wtBranch : ""}
           dirtyWorktrees={worktree ? (wtDirty > 0 ? 1 : 0) : dirty}
           uncommittedLabel={worktree ? `${wtDirty} in this worktree` : undefined}
           selected={selected}
