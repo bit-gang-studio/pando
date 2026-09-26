@@ -1,4 +1,5 @@
-//! Land a branch into its base: preflight, then a job made of steps.
+//! Merge a branch into its base: preflight, then a job made of steps.
+//! Rebase first, optionally squash, fast-forward the base, remove the worktree.
 
 use crate::backup;
 use crate::branch::count_only_in;
@@ -44,7 +45,7 @@ pub enum Destination {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LandPlan {
+pub struct MergePlan {
     pub branch: String,
     pub base: String,
     pub squash: bool,
@@ -65,7 +66,7 @@ pub struct Step {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct LandResult {
+pub struct MergeResult {
     pub landed: bool,
     pub steps: Vec<Step>,
     pub backup_ref: Option<String>,
@@ -180,10 +181,10 @@ pub fn preflight(repo: &Repo, wt: &Path, branch: &str, base: &str) -> Result<Pre
     })
 }
 
-pub fn run(repo: &Repo, wt: &Path, plan: &LandPlan) -> Result<LandResult> {
+pub fn run(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
     let cfg = RepoConfig::load(repo)?;
     let mut steps: Vec<Step> = vec![];
-    let mut r = LandResult {
+    let mut r = MergeResult {
         landed: false,
         steps: vec![],
         backup_ref: None,
@@ -270,7 +271,7 @@ pub fn run(repo: &Repo, wt: &Path, plan: &LandPlan) -> Result<LandResult> {
                 .message
                 .clone()
                 .filter(|m| !m.trim().is_empty())
-                .unwrap_or_else(|| format!("Land {branch}"));
+                .unwrap_or_else(|| format!("Merge {branch}"));
             git(wt, ["reset", "-q", "--soft", base])?;
             git(wt, ["commit", "-q", "-m", &msg])?;
             Ok(git(wt, ["rev-parse", "--short", "HEAD"])?

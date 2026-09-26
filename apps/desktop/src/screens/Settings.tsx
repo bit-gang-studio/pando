@@ -7,7 +7,7 @@ const TABS: { id: Tab; label: string; group: "repo" | "you" }[] = [
   { id: "hooks", label: "Setup hooks", group: "repo" },
   { id: "runtime", label: "Runtime", group: "repo" },
   { id: "agents", label: "Agents and launchers", group: "repo" },
-  { id: "land", label: "Land defaults", group: "repo" },
+  { id: "land", label: "Merge defaults", group: "repo" },
   { id: "editor", label: "Editor", group: "you" },
 ];
 
@@ -116,10 +116,10 @@ export function Settings({ root, userConfig, onUserConfig }: { root: string; use
             <Section title="After create" hint="Run in order in the new worktree. Stops on the first failure. Hooks get PORT, PANDO_MAIN, PANDO_BRANCH and PANDO_WORKTREE.">
               <CommandList items={cfg.hooks.post_create} onChange={(v) => up((c) => { c.hooks.post_create = v; return c; })} placeholder="pnpm install --prefer-offline" />
             </Section>
-            <Section title="Before land" hint="Must pass before Land continues.">
+            <Section title="Before merge" hint="Must pass before Merge continues.">
               <CommandList items={cfg.hooks.pre_land} onChange={(v) => up((c) => { c.hooks.pre_land = v; return c; })} placeholder="pnpm test" />
             </Section>
-            <Section title="After land">
+            <Section title="After merge">
               <CommandList items={cfg.hooks.post_land} onChange={(v) => up((c) => { c.hooks.post_land = v; return c; })} placeholder="" />
             </Section>
           </>
@@ -136,14 +136,14 @@ export function Settings({ root, userConfig, onUserConfig }: { root: string; use
                 </div>
               )}
             </Section>
-            <Section title="Share between worktrees" hint="Copied from the main worktree with copy-on-write where the filesystem allows. Not wired into create yet.">
+            <Section title="Share between worktrees" hint="Copied from the main worktree with copy-on-write where the filesystem allows. Not used yet.">
               <CommandList items={cfg.runtime.share} onChange={(v) => up((c) => { c.runtime.share = v; return c; })} placeholder="node_modules" />
             </Section>
           </>
         )}
 
         {cfg && tab === "agents" && (
-          <Section title="Agents" hint="Name and command. The command runs in the worktree with PORT set. Launching from the app lands with the M4 launchers card.">
+          <Section title="Agents" hint="Name and command. The command runs in the worktree with PORT set. Launching from the app is not built yet.">
             <div className="flex flex-col gap-1.5">
               {Object.entries(cfg.agents).map(([name, a]) => (
                 <div key={name} className="flex items-center gap-2">
@@ -162,14 +162,14 @@ export function Settings({ root, userConfig, onUserConfig }: { root: string; use
         )}
 
         {cfg && tab === "land" && (
-          <Section title="Land defaults" hint="What the Land dialog starts with. You can change them per land.">
+          <Section title="Merge defaults" hint="What the Merge dialog starts with. You can change them each time.">
             <label className="flex items-center gap-2 text-xs">Strategy
               <select value={cfg.land.strategy} onChange={(e) => up((c) => { c.land.strategy = e.target.value; return c; })} className={`${input} w-32`}>
                 <option value="squash">squash</option><option value="rebase">rebase</option><option value="merge">merge</option>
               </select>
             </label>
-            <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.land.remove_worktree} onChange={(e) => up((c) => { c.land.remove_worktree = e.target.checked; return c; })} /> Remove the worktree after landing</label>
-            <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.land.delete_branch} onChange={(e) => up((c) => { c.land.delete_branch = e.target.checked; return c; })} /> Delete the local branch after landing</label>
+            <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.land.remove_worktree} onChange={(e) => up((c) => { c.land.remove_worktree = e.target.checked; return c; })} /> Remove the worktree after merging</label>
+            <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.land.delete_branch} onChange={(e) => up((c) => { c.land.delete_branch = e.target.checked; return c; })} /> Delete the local branch after merging</label>
           </Section>
         )}
 

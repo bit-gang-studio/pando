@@ -3,9 +3,7 @@
 //! future daemon speak the same contract.
 
 pub mod backup;
-pub mod board;
 pub mod branch;
-pub mod clean;
 mod cmd;
 pub mod commit;
 pub mod config;
@@ -17,9 +15,10 @@ pub mod git;
 pub mod history;
 pub mod hooks;
 pub mod index;
-pub mod land;
 pub mod launch;
+pub mod merge;
 pub mod operation;
+pub mod overview;
 pub mod repo;
 pub mod runtime;
 pub mod stash;
@@ -31,9 +30,7 @@ pub mod worktree;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
-pub use board::{Board, Row};
 pub use branch::{Branch, RemoteBranch};
-pub use clean::{Candidate, CleanRequest};
 pub use commit::CommitInfo;
 pub use config::RepoConfig;
 pub use conflict::{ConflictFile, Side};
@@ -43,8 +40,9 @@ pub use error::{Error, Result};
 pub use git::{doctor, Doctor};
 pub use history::{CommitDiff, History};
 pub use hooks::HookResult;
-pub use land::{Destination, LandPlan, LandResult, Preflight};
+pub use merge::{Destination, MergePlan, MergeResult, Preflight};
 pub use operation::{OpKind, Operation};
+pub use overview::{BranchRow, Overview};
 pub use repo::Repo;
 pub use stash::Stash;
 pub use status::{FileStatus, Summary};

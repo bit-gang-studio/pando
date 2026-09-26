@@ -1,10 +1,9 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
 use pando_core::{
-    board, branch, clean, commit, conflict, detail, diff, history, index, land, launch, operation,
-    runtime, stash, sync, tag, user_config, worktree, Board, Branch, Candidate, CleanRequest,
-    CommitDiff, ConflictFile, CreateWorktree, Created, Detail, FileDiff, History, Hunk, LandPlan,
-    LandResult, Operation, Preflight, RemoteBranch, Repo, RepoConfig, Side, Stash, SyncResult, Tag,
+    branch, commit, conflict, detail, diff, index, launch, merge, operation, overview, runtime,
+    sync, user_config, worktree, ConflictFile, CreateWorktree, Created, Detail, FileDiff, Hunk,
+    MergePlan, MergeResult, Operation, Overview, Preflight, Repo, RepoConfig, Side, SyncResult,
     UserConfig,
 };
 use std::path::PathBuf;
@@ -20,6 +19,10 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> R<T> + Send + 'static) 
     tauri::async_runtime::spawn_blocking(f).await.map_err(err)?
 }
 
+fn repo(root: &std::path::Path) -> R<Repo> {
+    Repo::discover(root).map_err(err)
+}
+
 #[tauri::command]
 fn version() -> &'static str {
     pando_core::VERSION
@@ -30,16 +33,18 @@ fn doctor() -> pando_core::Doctor {
     pando_core::doctor()
 }
 
+// ---- repos ---------------------------------------------------------------
+
 #[tauri::command]
 async fn repos_list() -> R<UserConfig> {
-    blocking(move || user_config::load().map_err(err)).await
+    blocking(|| user_config::load().map_err(err)).await
 }
 
 #[tauri::command]
 async fn repos_add(path: PathBuf) -> R<UserConfig> {
     blocking(move || {
-        let repo = Repo::discover(&path).map_err(err)?;
-        user_config::add_repo(&repo.root).map_err(err)
+        let r = repo(&path)?;
+        user_config::add_repo(&r.root).map_err(err)
     })
     .await
 }
@@ -50,59 +55,47 @@ async fn repos_remove(path: PathBuf) -> R<UserConfig> {
 }
 
 #[tauri::command]
-async fn board_load(root: PathBuf) -> R<Board> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        board::load(&repo).map_err(err)
-    })
-    .await
+async fn user_config_save(config: UserConfig) -> R<()> {
+    blocking(move || user_config::save(&config).map_err(err)).await
+}
+
+// ---- the list --------------------------------------------------------------
+
+#[tauri::command]
+async fn overview_load(root: PathBuf) -> R<Overview> {
+    blocking(move || overview::load(&repo(&root)?).map_err(err)).await
 }
 
 #[tauri::command]
-async fn worktree_remove(root: PathBuf, path: PathBuf, force: bool) -> R<()> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        worktree::remove(&repo, &path, force).map_err(err)
-    })
-    .await
+async fn fetch_all(root: PathBuf) -> R<()> {
+    blocking(move || branch::fetch_all(&repo(&root)?).map_err(err)).await
 }
 
-#[tauri::command]
-async fn branches_list(root: PathBuf) -> R<Vec<Branch>> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        branch::list(&repo).map_err(err)
-    })
-    .await
-}
-
-/// What the New worktree dialog needs up front.
+/// What the New branch dialog needs up front.
 #[derive(serde::Serialize)]
-struct CreateDefaults {
-    config: RepoConfig,
-    default_branch: Option<String>,
+struct BranchDefaults {
+    base: Option<String>,
     next_port: Option<u16>,
-    branches: Vec<Branch>,
+    hooks: Vec<String>,
 }
 
 #[tauri::command]
-async fn create_defaults(root: PathBuf) -> R<CreateDefaults> {
+async fn branch_defaults(root: PathBuf) -> R<BranchDefaults> {
     blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        let config = RepoConfig::load(&repo).map_err(err)?;
-        let next_port = match &config.runtime.port {
-            Some(pc) => Some(runtime::next_port(&repo, pc).map_err(err)?),
+        let r = repo(&root)?;
+        let cfg = RepoConfig::load(&r).map_err(err)?;
+        let next_port = match &cfg.runtime.port {
+            Some(pc) => Some(runtime::next_port(&r, pc).map_err(err)?),
             None => None,
         };
-        Ok(CreateDefaults {
-            default_branch: config
+        Ok(BranchDefaults {
+            base: cfg
                 .worktree
                 .base
                 .clone()
-                .or_else(|| repo.default_branch.clone()),
+                .or_else(|| r.default_branch.clone()),
             next_port,
-            branches: branch::list(&repo).map_err(err)?,
-            config,
+            hooks: cfg.hooks.post_create,
         })
     })
     .await
@@ -111,10 +104,10 @@ async fn create_defaults(root: PathBuf) -> R<CreateDefaults> {
 #[tauri::command]
 async fn worktree_path_preview(root: PathBuf, branch: String) -> R<String> {
     blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        let config = RepoConfig::load(&repo).map_err(err)?;
-        Ok(config
-            .worktree_path(&repo, &branch)
+        let r = repo(&root)?;
+        let cfg = RepoConfig::load(&r).map_err(err)?;
+        Ok(cfg
+            .worktree_path(&r, &branch)
             .to_string_lossy()
             .into_owned())
     })
@@ -122,206 +115,20 @@ async fn worktree_path_preview(root: PathBuf, branch: String) -> R<String> {
 }
 
 #[tauri::command]
-async fn worktree_create(root: PathBuf, req: CreateWorktree) -> R<Created> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        worktree::create(&repo, &req).map_err(err)
-    })
-    .await
+async fn worktree_add(root: PathBuf, req: CreateWorktree) -> R<Created> {
+    blocking(move || worktree::create(&repo(&root)?, &req).map_err(err)).await
 }
 
 #[tauri::command]
-async fn branches_remote(root: PathBuf) -> R<Vec<RemoteBranch>> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        branch::list_remote(&repo).map_err(err)
-    })
-    .await
+async fn worktree_remove(root: PathBuf, path: PathBuf, force: bool) -> R<()> {
+    blocking(move || worktree::remove(&repo(&root)?, &path, force).map_err(err)).await
 }
 
-#[tauri::command]
-async fn history_linear(root: PathBuf, rev: String, limit: usize) -> R<History> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        history::linear(&repo, &rev, limit).map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn commit_diff(root: PathBuf, id: String) -> R<CommitDiff> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        history::commit_diff(&repo, &id).map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn stashes_list(root: PathBuf) -> R<Vec<Stash>> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        stash::list(&repo).map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn stash_apply(worktree: PathBuf, index: u32, pop: bool) -> R<()> {
-    blocking(move || {
-        if pop {
-            stash::pop(&worktree, index).map_err(err)
-        } else {
-            stash::apply(&worktree, index).map_err(err)
-        }
-    })
-    .await
-}
-
-#[tauri::command]
-async fn stash_drop(root: PathBuf, index: u32) -> R<()> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        stash::drop(&repo, index).map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn tags_list(root: PathBuf) -> R<Vec<Tag>> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        tag::list(&repo).map_err(err)
-    })
-    .await
-}
-
-/// Switch the main worktree. With `stash_first`, dirty changes are stashed and re-applied.
-#[tauri::command]
-async fn branch_switch_main(root: PathBuf, name: String, stash_first: bool) -> R<()> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        let stashed = if stash_first {
-            stash::save(&repo.root, Some(&format!("pando: switch to {name}"))).map_err(err)?
-        } else {
-            false
-        };
-        branch::switch_in_main(&repo, &name).map_err(err)?;
-        if stashed {
-            stash::pop(&repo.root, 0).map_err(err)?;
-        }
-        Ok(())
-    })
-    .await
-}
-
-#[tauri::command]
-async fn branch_create(root: PathBuf, name: String, base: Option<String>) -> R<()> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        branch::create(&repo, &name, base.as_deref()).map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn branch_track_remote(root: PathBuf, remote_branch: String, local: String) -> R<()> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        branch::track_remote(&repo, &remote_branch, &local).map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn branch_rename(root: PathBuf, old: String, new: String) -> R<()> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        branch::rename(&repo, &old, &new).map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn branch_delete(root: PathBuf, name: String, force: bool, remote: Option<String>) -> R<()> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        branch::delete(&repo, &name, force).map_err(err)?;
-        if let Some(r) = remote {
-            branch::delete_remote(&repo, &r, &name).map_err(err)?;
-        }
-        Ok(())
-    })
-    .await
-}
-
-#[tauri::command]
-async fn fetch_all(root: PathBuf) -> R<()> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        branch::fetch_all(&repo).map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn branch_push(root: PathBuf, name: String, force_with_lease: bool) -> R<()> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        branch::push(&repo, &name, "origin", force_with_lease).map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn branch_pull(worktree: PathBuf, rebase: bool) -> R<()> {
-    blocking(move || branch::pull(&worktree, rebase).map_err(err)).await
-}
-
-#[tauri::command]
-async fn config_load(root: PathBuf) -> R<RepoConfig> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        RepoConfig::load(&repo).map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn config_render(config: RepoConfig) -> R<String> {
-    blocking(move || config.to_toml().map_err(err)).await
-}
-
-#[tauri::command]
-async fn config_save(root: PathBuf, config: RepoConfig) -> R<String> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        config.save(&repo).map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn config_commit(root: PathBuf) -> R<()> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        pando_core::config::commit(&repo, "chore: update .pando.toml").map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn user_config_save(config: UserConfig) -> R<()> {
-    blocking(move || user_config::save(&config).map_err(err)).await
-}
+// ---- detail: changes and commits -------------------------------------------
 
 #[tauri::command]
 async fn detail_load(root: PathBuf, path: PathBuf) -> R<Detail> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        detail::load(&repo, &path).map_err(err)
-    })
-    .await
+    blocking(move || detail::load(&repo(&root)?, &path).map_err(err)).await
 }
 
 #[tauri::command]
@@ -371,57 +178,27 @@ async fn sync_rebase(
     branch: String,
     base: String,
 ) -> R<SyncResult> {
+    blocking(move || sync::rebase_onto(&repo(&root)?, &worktree, &branch, &base).map_err(err)).await
+}
+
+// ---- merge -----------------------------------------------------------------
+
+#[tauri::command]
+async fn merge_preflight(root: PathBuf, path: PathBuf, branch: String) -> R<Preflight> {
     blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        sync::rebase_onto(&repo, &worktree, &branch, &base).map_err(err)
+        let r = repo(&root)?;
+        let base = merge::default_base(&r).map_err(err)?;
+        merge::preflight(&r, &path, &branch, &base).map_err(err)
     })
     .await
 }
 
 #[tauri::command]
-async fn land_preflight(
-    root: PathBuf,
-    path: PathBuf,
-    branch: String,
-    base: Option<String>,
-) -> R<Preflight> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        let base = match base {
-            Some(b) => b,
-            None => land::default_base(&repo).map_err(err)?,
-        };
-        land::preflight(&repo, &path, &branch, &base).map_err(err)
-    })
-    .await
+async fn merge_run(root: PathBuf, path: PathBuf, plan: MergePlan) -> R<MergeResult> {
+    blocking(move || merge::run(&repo(&root)?, &path, &plan).map_err(err)).await
 }
 
-#[tauri::command]
-async fn land_run(root: PathBuf, path: PathBuf, plan: LandPlan) -> R<LandResult> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        land::run(&repo, &path, &plan).map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn clean_plan(root: PathBuf) -> R<Vec<Candidate>> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        clean::plan(&repo).map_err(err)
-    })
-    .await
-}
-
-#[tauri::command]
-async fn clean_run(root: PathBuf, req: CleanRequest) -> R<Vec<land::Step>> {
-    blocking(move || {
-        let repo = Repo::discover(&root).map_err(err)?;
-        clean::run(&repo, &req).map_err(err)
-    })
-    .await
-}
+// ---- conflicts -------------------------------------------------------------
 
 #[tauri::command]
 async fn conflict_file(worktree: PathBuf, path: String) -> R<ConflictFile> {
@@ -453,6 +230,31 @@ async fn op_abort(worktree: PathBuf) -> R<()> {
     blocking(move || operation::abort(&worktree).map_err(err)).await
 }
 
+// ---- settings --------------------------------------------------------------
+
+#[tauri::command]
+async fn config_load(root: PathBuf) -> R<RepoConfig> {
+    blocking(move || RepoConfig::load(&repo(&root)?).map_err(err)).await
+}
+
+#[tauri::command]
+async fn config_render(config: RepoConfig) -> R<String> {
+    blocking(move || config.to_toml().map_err(err)).await
+}
+
+#[tauri::command]
+async fn config_save(root: PathBuf, config: RepoConfig) -> R<String> {
+    blocking(move || config.save(&repo(&root)?).map_err(err)).await
+}
+
+#[tauri::command]
+async fn config_commit(root: PathBuf) -> R<()> {
+    blocking(move || {
+        pando_core::config::commit(&repo(&root)?, "chore: update .pando.toml").map_err(err)
+    })
+    .await
+}
+
 #[tauri::command]
 async fn open_in_editor(path: PathBuf) -> R<()> {
     blocking(move || {
@@ -472,32 +274,13 @@ pub fn run() {
             repos_list,
             repos_add,
             repos_remove,
-            board_load,
-            branches_list,
-            create_defaults,
-            worktree_path_preview,
-            worktree_create,
-            worktree_remove,
-            branches_remote,
-            history_linear,
-            commit_diff,
-            stashes_list,
-            stash_apply,
-            stash_drop,
-            tags_list,
-            branch_switch_main,
-            branch_create,
-            branch_track_remote,
-            branch_rename,
-            branch_delete,
-            fetch_all,
-            branch_push,
-            branch_pull,
-            config_load,
-            config_render,
-            config_save,
-            config_commit,
             user_config_save,
+            overview_load,
+            fetch_all,
+            branch_defaults,
+            worktree_path_preview,
+            worktree_add,
+            worktree_remove,
             detail_load,
             diff_file,
             stage_paths,
@@ -508,16 +291,18 @@ pub fn run() {
             apply_hunk,
             commit_create,
             sync_rebase,
-            land_preflight,
-            land_run,
-            clean_plan,
-            clean_run,
+            merge_preflight,
+            merge_run,
             conflict_file,
             conflict_take,
             conflict_resolve,
             conflict_reset,
             op_continue,
             op_abort,
+            config_load,
+            config_render,
+            config_save,
+            config_commit,
             open_in_editor
         ])
         .run(tauri::generate_context!())

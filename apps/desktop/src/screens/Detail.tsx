@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
 import { ago, api, repoName, type Detail as DetailData, type FileDiff, type FileStatus, type Hunk } from "../lib/api";
-import { Chip } from "../board/Chip";
+import { Chip } from "../ui/Chip";
 import { DiffView } from "./DiffView";
 import { ConflictView } from "./ConflictView";
-import { LandDialog } from "../land/LandDialog";
+import { MergeDialog } from "../dialogs/MergeDialog";
 
 type Props = { root: string; path: string; onBack: () => void; onChanged: () => void };
 type Sel = { path: string; staged: boolean; untracked: boolean } | null;
@@ -24,11 +24,11 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const msgRef = useRef<HTMLTextAreaElement>(null);
-  const [landing, setLanding] = useState(false);
+  const [merging, setMerging] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
-      const next = await api.detailLoad(root, path);
+      const next = await api.detail(root, path);
       setD(next);
       setError(null);
       setSel((s) => {
@@ -65,8 +65,8 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && document.activeElement !== msgRef.current) onBack();
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !landing) { e.preventDefault(); doCommit(); }
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "l" && d && d.worktree.kind === "linked" && d.worktree.branch) { e.preventDefault(); setLanding(true); }
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !merging) { e.preventDefault(); doCommit(); }
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "l" && d && d.worktree.kind === "linked" && d.worktree.branch) { e.preventDefault(); setMerging(true); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -136,11 +136,11 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
 
   return (
     <div className="flex min-h-0 min-w-0 grow flex-col">
-      {landing && d.worktree.branch && (
-        <LandDialog root={root} path={wt} branch={d.worktree.branch} headSummary={d.head_summary} onClose={() => setLanding(false)} onLanded={() => { onChanged(); }} />
+      {merging && d.worktree.branch && (
+        <MergeDialog root={root} path={wt} branch={d.worktree.branch} headSummary={d.head_summary} onClose={() => setMerging(false)} onMerged={() => { onChanged(); onBack(); }} />
       )}
       <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-stone-300 bg-white px-4 dark:border-stone-700 dark:bg-stone-800">
-        <button onClick={onBack} className="text-xs text-stone-500 hover:text-stone-800 dark:hover:text-stone-200">Worktrees</button>
+        <button onClick={onBack} className="text-xs text-stone-500 hover:text-stone-800 dark:hover:text-stone-200">← Back</button>
         <span className="text-stone-400">/</span>
         <span className="font-mono text-xs text-stone-500">{repoName(root)}</span>
         <span className="text-stone-400">/</span>
@@ -153,7 +153,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
         <div className="grow" />
         {!isMain && d.base_branch && !d.operation && <button onClick={syncNow} disabled={!!busy} className={btn}>{busy === "sync" ? "Syncing…" : `Sync with ${d.base_branch}`}</button>}
         <button onClick={() => api.openInEditor(wt)} className={btn}>Open in editor <span className="text-xs text-stone-400">⌘E</span></button>
-        <button onClick={() => setLanding(true)} disabled={isMain || !d.worktree.branch || !!d.operation} className="h-8 rounded-lg bg-teal-700 px-3.5 text-[13px] font-medium text-white hover:bg-teal-800 disabled:opacity-40" title={isMain ? "The main worktree is the base; land linked worktrees into it" : "Land"}>Land <span className="text-xs opacity-70">⌘L</span></button>
+        {!isMain && <button onClick={() => setMerging(true)} disabled={!d.worktree.branch || !!d.operation} className="h-8 rounded-lg bg-teal-700 px-3.5 text-[13px] font-medium text-white hover:bg-teal-800 disabled:opacity-40">Merge <span className="text-xs opacity-70">⌘L</span></button>}
       </div>
 
       {d.operation && (
@@ -244,39 +244,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
           ) : (
             <DiffView diff={diff} loading={diffLoading} mode={mode} onMode={setMode} onHunk={hunk} onOpenFile={() => sel && api.openInEditor(`${wt}/${sel.path}`)} />
           )}
-          <div className="flex h-8 shrink-0 items-center gap-3 border-t border-stone-300 bg-stone-50 px-4 text-xs text-stone-500 dark:border-stone-700 dark:bg-stone-900/40">
-            <span>Terminal drawer (v1.1) docks here</span>
-            <div className="grow" />
-            <span className="font-mono text-[11px]">⌘J</span>
-          </div>
         </main>
-
-        <aside className="flex w-[280px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-stone-300 bg-stone-100 p-4 dark:border-stone-700 dark:bg-stone-900">
-          <div className="flex flex-col gap-1.5 rounded-lg border border-stone-300 bg-white p-3 text-xs dark:border-stone-700 dark:bg-stone-800">
-            <div className="font-semibold">Worktree</div>
-            <div className="grid grid-cols-[56px_1fr] gap-x-2 gap-y-1">
-              <span className="text-stone-500">Path</span><button onClick={() => api.openInEditor(wt)} className="truncate text-left font-mono text-[11px] text-teal-700" title={wt}>{wt}</button>
-              <span className="text-stone-500">Base</span><span className="font-mono text-[11px]">{d.base_branch ?? "—"}</span>
-              <span className="text-stone-500">Tracks</span><span className="font-mono text-[11px]">{b?.upstream ?? "no upstream"}</span>
-              <span className="text-stone-500">Port</span><span className="font-mono text-[11px]">{d.port != null ? `PORT=${d.port}` : "—"}</span>
-              <span className="text-stone-500">HEAD</span><span className="truncate font-mono text-[11px]" title={d.worktree.head ?? ""}>{d.worktree.head?.slice(0, 7) ?? "—"}</span>
-            </div>
-          </div>
-          {d.operation && (
-            <div className="flex flex-col gap-1 rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs dark:border-amber-800 dark:bg-amber-900/30">
-              <div className="font-semibold">Safety</div>
-              <span>Your branch tip was saved as <span className="font-mono">refs/pando/backup/{d.worktree.branch}</span> before this started. Abort restores it exactly.</span>
-            </div>
-          )}
-          <div className="flex flex-col gap-1 rounded-lg border border-stone-300 bg-white p-3 text-xs dark:border-stone-700 dark:bg-stone-800">
-            <div className="font-semibold">Agent</div>
-            <span className="text-stone-500">Session awareness lands with the M4 launchers card.</span>
-          </div>
-          <div className="flex flex-col gap-1 rounded-lg border border-stone-300 bg-white p-3 text-xs dark:border-stone-700 dark:bg-stone-800">
-            <div className="font-semibold">Overlaps</div>
-            <span className="text-stone-500">Overlap detection lands with the M4 card.</span>
-          </div>
-        </aside>
       </div>
     </div>
   );

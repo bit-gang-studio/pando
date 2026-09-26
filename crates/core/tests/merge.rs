@@ -1,4 +1,4 @@
-use pando_core::{land, Destination, LandPlan, Repo};
+use pando_core::{merge, Destination, MergePlan, Repo};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -85,12 +85,12 @@ fn fixture() -> Fx {
     }
 }
 
-fn plan(squash: bool) -> LandPlan {
-    LandPlan {
+fn plan(squash: bool) -> MergePlan {
+    MergePlan {
         branch: "feat/x".into(),
         base: "main".into(),
         squash,
-        message: Some("Land feat/x squashed".into()),
+        message: Some("Merge feat/x squashed".into()),
         destination: Destination::LocalMerge,
         push_base: true,
         run_hooks: true,
@@ -104,7 +104,7 @@ fn plan(squash: bool) -> LandPlan {
 fn preflight_reports_state() {
     let f = fixture();
     let repo = Repo::discover(&f.root).unwrap();
-    let p = land::preflight(&repo, &f.wt, "feat/x", "main").unwrap();
+    let p = merge::preflight(&repo, &f.wt, "feat/x", "main").unwrap();
     assert!(p.clean);
     assert_eq!((p.ahead, p.behind), (2, 1));
     assert!(!p.conflict_predicted);
@@ -113,7 +113,7 @@ fn preflight_reports_state() {
     assert!(p.problems.is_empty(), "{:?}", p.problems);
 
     write(&f.wt, "dirty.txt", "x");
-    let p = land::preflight(&repo, &f.wt, "feat/x", "main").unwrap();
+    let p = merge::preflight(&repo, &f.wt, "feat/x", "main").unwrap();
     assert!(!p.clean);
     assert_eq!(p.problems.len(), 1);
 }
@@ -126,21 +126,21 @@ fn preflight_predicts_conflicts() {
     git(&f.wt, &["commit", "-q", "-am", "edit one"]);
     write(&f.root, "one", "ours");
     git(&f.root, &["commit", "-q", "-am", "edit one on main"]);
-    let p = land::preflight(&repo, &f.wt, "feat/x", "main").unwrap();
+    let p = merge::preflight(&repo, &f.wt, "feat/x", "main").unwrap();
     assert!(p.conflict_predicted);
     assert_eq!(p.conflict_files, vec!["one"]);
 }
 
 #[test]
-fn land_squash_into_local_main_and_push() {
+fn merge_squash_into_local_main_and_push() {
     let f = fixture();
     let repo = Repo::discover(&f.root).unwrap();
-    let r = land::run(&repo, &f.wt, &plan(true)).unwrap();
+    let r = merge::run(&repo, &f.wt, &plan(true)).unwrap();
     assert!(r.landed, "{:#?}", r.steps);
     assert!(r.steps.iter().all(|s| s.ok), "{:#?}", r.steps);
     assert_eq!(
         git(&f.root, &["log", "-1", "--format=%s"]),
-        "Land feat/x squashed"
+        "Merge feat/x squashed"
     );
     assert_eq!(
         git(&f.root, &["rev-list", "--count", "HEAD"]),
@@ -157,12 +157,12 @@ fn land_squash_into_local_main_and_push() {
 }
 
 #[test]
-fn land_keep_commits() {
+fn merge_keep_commits() {
     let f = fixture();
     let repo = Repo::discover(&f.root).unwrap();
     let mut p = plan(false);
     p.push_base = false;
-    let r = land::run(&repo, &f.wt, &p).unwrap();
+    let r = merge::run(&repo, &f.wt, &p).unwrap();
     assert!(r.landed, "{:#?}", r.steps);
     assert_eq!(
         git(&f.root, &["log", "--format=%s", "-3"]),
@@ -171,11 +171,11 @@ fn land_keep_commits() {
 }
 
 #[test]
-fn land_stops_on_failing_hook() {
+fn merge_stops_on_failing_hook() {
     let f = fixture();
     write(&f.root, ".pando.toml", "[hooks]\npre_land = [\"exit 2\"]\n");
     let repo = Repo::discover(&f.root).unwrap();
-    let r = land::run(&repo, &f.wt, &plan(true)).unwrap();
+    let r = merge::run(&repo, &f.wt, &plan(true)).unwrap();
     assert!(!r.landed);
     assert_eq!(r.steps.len(), 2);
     assert!(!r.steps[1].ok);
