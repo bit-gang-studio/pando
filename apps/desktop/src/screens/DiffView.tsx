@@ -8,13 +8,12 @@ type Props = {
   mode: "unified" | "split";
   onMode: (m: "unified" | "split") => void;
   onHunk: (hunk: Hunk, reverse: boolean) => void;
-  onOpenFile: () => void;
   readOnly?: boolean;
 };
 
 const MAX_LINES = 4000;
 
-export function DiffView({ diff, loading, mode, onMode, onHunk, onOpenFile, readOnly }: Props) {
+export function DiffView({ diff, loading, mode, onMode, onHunk, readOnly }: Props) {
   const [tokens, setTokens] = useState<{ old: Tok[][]; new: Tok[][] } | null>(null);
   const [showAll, setShowAll] = useState(false);
 
@@ -72,7 +71,6 @@ export function DiffView({ diff, loading, mode, onMode, onHunk, onOpenFile, read
             <button key={m} onClick={() => onMode(m)} className={`h-6.5 px-2.5 text-xs capitalize ${mode === m ? "bg-stone-200 dark:bg-stone-600" : "bg-white dark:bg-stone-700"}`}>{m}</button>
           ))}
         </div>
-        <button onClick={onOpenFile} className="h-6.5 rounded-md border border-stone-300 bg-white px-2.5 text-xs dark:border-stone-600 dark:bg-stone-700">Open file</button>
       </div>
       <div className="min-h-0 grow overflow-auto font-mono text-[12px] leading-5">
         {mode === "unified" ? <Unified rows={shown} diff={diff} onHunk={readOnly ? undefined : onHunk} /> : <Split rows={shown} diff={diff} onHunk={readOnly ? undefined : onHunk} />}

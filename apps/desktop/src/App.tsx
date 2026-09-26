@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, type UserConfig } from "./lib/api";
+
 import { fromHash, navigate, type Route } from "./lib/routes";
 import { openInNewWindow, setWindowTitle } from "./lib/windows";
 import { Detail } from "./screens/Detail";
@@ -10,7 +10,6 @@ import { Header } from "./ui/Header";
 
 export default function App() {
   const [route, setRoute] = useState<Route>(() => fromHash(window.location.hash));
-  const [userConfig, setUserConfig] = useState<UserConfig>({ repos: [], editor: null });
   const [fatal, setFatal] = useState<string | null>(null);
 
   useEffect(() => {
@@ -33,7 +32,6 @@ export default function App() {
     window.addEventListener("hashchange", onHash);
     window.addEventListener("error", onErr);
     window.addEventListener("unhandledrejection", onRej);
-    api.reposList().then(setUserConfig).catch(() => {});
     return () => { window.removeEventListener("keydown", onZoomKey); window.removeEventListener("hashchange", onHash); window.removeEventListener("error", onErr); window.removeEventListener("unhandledrejection", onRej); };
   }, []);
 
@@ -58,7 +56,7 @@ export default function App() {
         {route.kind === "repo" && <RepoScreen key={route.root} root={route.root} commit={null} onError={setFatal} />}
         {route.kind === "commit" && <RepoScreen key={route.root} root={route.root} commit={route.id} onError={setFatal} />}
         {route.kind === "worktree" && <Detail root={route.root} path={route.path} onBack={() => navigate({ kind: "repo", root: route.root })} onChanged={() => {}} />}
-        {route.kind === "settings" && <Settings root={route.root} userConfig={userConfig} onUserConfig={setUserConfig} />}
+        {route.kind === "settings" && <Settings root={route.root} />}
       </div>
     </div>
   );

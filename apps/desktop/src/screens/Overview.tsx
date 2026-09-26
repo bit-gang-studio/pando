@@ -55,7 +55,6 @@ export function Overview({ root, data, onRefresh: refresh, onOpenDetail, onError
     const items: MenuItem[] = [
       { label: "Open", onClick: () => onOpenDetail(row.worktree.path) },
       { label: "Open in new window", onClick: () => openWin(row.worktree.path) },
-      { label: "Open in editor", onClick: () => api.openInEditor(row.worktree.path) },
     ];
     if (!row.isMain && row.branch) items.push({ label: "Merge", onClick: () => setMerging(row.branch!) });
     if (!row.isMain) items.push({ label: "Remove worktree", onClick: () => removeWorktree(row), danger: true });
@@ -117,7 +116,7 @@ export function Overview({ root, data, onRefresh: refresh, onOpenDetail, onError
                     {r.sub && <span className="ml-2 font-sans text-xs font-normal text-stone-500">{r.sub}</span>}
                   </td>
                   <td className={`${td} max-w-0 truncate`}>
-                    <button onClick={(e) => { e.stopPropagation(); api.openInEditor(r.worktree.path); }} className="max-w-full truncate text-left text-xs text-stone-500 hover:text-teal-700 hover:underline" title={`Open ${r.worktree.path} in your editor`}>{r.worktree.path}</button>
+                    <span className="text-xs text-stone-500" title={r.worktree.path}>{r.worktree.path}</span>
                   </td>
                   <td className={td}>
                     {r.worktree.prunable ? <Chip tone="red">folder missing</Chip> : conflicts > 0 ? <Chip tone="red">{conflicts} conflicts</Chip> : r.status ? (n === 0 ? <span className="text-xs text-stone-500">clean</span> : <Chip tone="amber">{n} changed</Chip>) : null}

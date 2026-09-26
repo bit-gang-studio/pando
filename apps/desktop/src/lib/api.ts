@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 // ---- types (mirror crates/core) -------------------------------------------
 
 export type Repo = { root: string; common_git_dir: string; default_branch: string | null; bare: boolean };
-export type UserConfig = { repos: string[]; editor: string | null };
+export type UserConfig = { repos: string[] };
 
 export type WorktreeKind = "main" | "linked";
 export type Worktree = {
@@ -140,7 +140,6 @@ export const api = {
   configRender: (config: RepoConfig) => invoke<string>("config_render", { config }),
   configSave: (root: string, config: RepoConfig) => invoke<string>("config_save", { root, config }),
   configCommit: (root: string) => invoke<void>("config_commit", { root }),
-  openInEditor: (path: string) => invoke<void>("open_in_editor", { path }),
 };
 
 // ---- helpers -----------------------------------------------------------------

@@ -15,7 +15,6 @@ pub mod git;
 pub mod history;
 pub mod hooks;
 pub mod index;
-pub mod launch;
 pub mod log;
 pub mod merge;
 pub mod operation;

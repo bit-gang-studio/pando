@@ -96,7 +96,6 @@ export function Repos({ onError }: Props) {
                   onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, items: [
                     { label: "Open", onClick: () => navigate(route) },
                     { label: "Open in new window", onClick: () => openInNewWindow(route).catch((err) => onError(String(err))) },
-                    { label: "Open in editor", onClick: () => api.openInEditor(root) },
                     { label: "Remove from Pando", onClick: () => removeRepo(root), danger: true },
                   ] }); }}
                   className="cursor-pointer border-t border-stone-200 hover:bg-white dark:border-stone-700 dark:hover:bg-stone-800"

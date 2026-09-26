@@ -150,7 +150,6 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
         {d.port != null && <Chip mono>:{d.port}</Chip>}
         <div className="grow" />
         {!isMain && d.base_branch && !d.operation && <button onClick={syncNow} disabled={!!busy} className={btn}>{busy === "sync" ? "Syncing…" : `Sync with ${d.base_branch}`}</button>}
-        <button onClick={() => api.openInEditor(wt)} className={btn}>Open in editor <span className="text-xs text-stone-400">⌘E</span></button>
         {!isMain && <button onClick={() => setMerging(true)} disabled={!d.worktree.branch || !!d.operation} className="h-8 rounded-lg bg-teal-700 px-3.5 text-[13px] font-medium text-white hover:bg-teal-800 disabled:opacity-40">Merge <span className="text-xs opacity-70">⌘L</span></button>}
       </div>
 
@@ -239,9 +238,9 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
         <SplitHandle axis="x" onMouseDown={split.start} handleRef={split.handle} />
         <main className="flex min-w-0 grow flex-col bg-white dark:bg-stone-800">
           {d.operation && sel && (d.operation.conflicted.includes(sel.path) || d.operation.resolved.includes(sel.path)) ? (
-            <ConflictView worktree={wt} path={sel.path} op={d.operation} onChanged={refresh} onOpenFile={() => api.openInEditor(`${wt}/${sel!.path}`)} />
+            <ConflictView worktree={wt} path={sel.path} op={d.operation} onChanged={refresh} />
           ) : (
-            <DiffView diff={diff} loading={diffLoading} mode={mode} onMode={setMode} onHunk={hunk} onOpenFile={() => sel && api.openInEditor(`${wt}/${sel.path}`)} />
+            <DiffView diff={diff} loading={diffLoading} mode={mode} onMode={setMode} onHunk={hunk} />
           )}
         </main>
       </div>

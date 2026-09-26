@@ -1,10 +1,10 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
 use pando_core::{
-    branch, commit, conflict, detail, diff, history, index, launch, log, merge, operation,
-    overview, runtime, sync, user_config, worktree, CommitDiff, ConflictFile, CreateWorktree,
-    Created, Detail, FileDiff, Hunk, Log, MergePlan, MergeResult, Operation, Overview, Preflight,
-    Repo, RepoConfig, Side, SyncResult, UserConfig,
+    branch, commit, conflict, detail, diff, history, index, log, merge, operation, overview,
+    runtime, sync, user_config, worktree, CommitDiff, ConflictFile, CreateWorktree, Created,
+    Detail, FileDiff, Hunk, Log, MergePlan, MergeResult, Operation, Overview, Preflight, Repo,
+    RepoConfig, Side, SyncResult, UserConfig,
 };
 use std::path::PathBuf;
 
@@ -272,15 +272,6 @@ async fn config_commit(root: PathBuf) -> R<()> {
     .await
 }
 
-#[tauri::command]
-async fn open_in_editor(path: PathBuf) -> R<()> {
-    blocking(move || {
-        let editor = user_config::load().ok().and_then(|c| c.editor);
-        launch::open_in_editor(&path, editor.as_deref()).map_err(err)
-    })
-    .await
-}
-
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
@@ -322,8 +313,7 @@ pub fn run() {
             config_load,
             config_render,
             config_save,
-            config_commit,
-            open_in_editor
+            config_commit
         ])
         .run(tauri::generate_context!())
         .expect("failed to start Pando");

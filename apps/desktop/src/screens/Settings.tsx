@@ -1,14 +1,13 @@
 import { useEffect, useState } from "react";
-import { api, repoName, type RepoConfig, type UserConfig } from "../lib/api";
+import { api, repoName, type RepoConfig } from "../lib/api";
 
-type Tab = "general" | "hooks" | "runtime" | "agents" | "land" | "editor";
+type Tab = "general" | "hooks" | "runtime" | "agents" | "land";
 const TABS: { id: Tab; label: string; group: "repo" | "you" }[] = [
   { id: "general", label: "General", group: "repo" },
   { id: "hooks", label: "Setup hooks", group: "repo" },
   { id: "runtime", label: "Runtime", group: "repo" },
   { id: "agents", label: "Agents and launchers", group: "repo" },
   { id: "land", label: "Merge defaults", group: "repo" },
-  { id: "editor", label: "Editor", group: "you" },
 ];
 
 const input = "h-8 rounded-md border border-stone-300 bg-white px-2.5 font-mono text-xs focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700";
@@ -39,14 +38,13 @@ function CommandList({ items, onChange, placeholder }: { items: string[]; onChan
   );
 }
 
-export function Settings({ root, userConfig, onUserConfig }: { root: string; userConfig: UserConfig; onUserConfig: (c: UserConfig) => void }) {
+export function Settings({ root }: { root: string }) {
   const [tab, setTab] = useState<Tab>("hooks");
   const [cfg, setCfg] = useState<RepoConfig | null>(null);
   const [saved, setSaved] = useState<string>("");
   const [toml, setToml] = useState("");
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [editor, setEditor] = useState(userConfig.editor ?? "");
 
   useEffect(() => {
     api.configLoad(root).then((c) => { setCfg(c); api.configRender(c).then((t) => { setToml(t); setSaved(t); }); }).catch((e) => setError(String(e)));
@@ -70,11 +68,6 @@ export function Settings({ root, userConfig, onUserConfig }: { root: string; use
     try { await api.configCommit(root); setStatus("Committed .pando.toml on the main worktree"); }
     catch (e) { setError(String(e)); }
   }
-  async function saveEditor() {
-    const next = { ...userConfig, editor: editor.trim() || null };
-    try { await api.userConfigSave(next); onUserConfig(next); setStatus("Saved editor"); }
-    catch (e) { setError(String(e)); }
-  }
 
   const up = (patch: (c: RepoConfig) => RepoConfig) => setCfg((c) => (c ? patch(structuredClone(c)) : c));
 
@@ -83,10 +76,6 @@ export function Settings({ root, userConfig, onUserConfig }: { root: string; use
       <nav className="flex w-[200px] shrink-0 flex-col gap-0.5 border-r border-stone-300 bg-stone-200/70 p-3 dark:border-stone-700 dark:bg-stone-900">
         <div className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-stone-500">REPOSITORY</div>
         {TABS.filter((t) => t.group === "repo").map((t) => (
-          <button key={t.id} onClick={() => setTab(t.id)} className={`rounded-md px-2 py-1.5 text-left ${tab === t.id ? "bg-white font-medium dark:bg-stone-700" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>{t.label}</button>
-        ))}
-        <div className="px-2 pb-1 pt-4 text-[11px] font-semibold tracking-wider text-stone-500">YOU</div>
-        {TABS.filter((t) => t.group === "you").map((t) => (
           <button key={t.id} onClick={() => setTab(t.id)} className={`rounded-md px-2 py-1.5 text-left ${tab === t.id ? "bg-white font-medium dark:bg-stone-700" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>{t.label}</button>
         ))}
       </nav>
@@ -172,18 +161,9 @@ export function Settings({ root, userConfig, onUserConfig }: { root: string; use
             <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={cfg.land.delete_branch} onChange={(e) => up((c) => { c.land.delete_branch = e.target.checked; return c; })} /> Delete the local branch after merging</label>
           </Section>
         )}
-
-        {tab === "editor" && (
-          <Section title="Editor" hint="Command used by Open. Examples: code, cursor, zed, idea. Empty uses $VISUAL or $EDITOR, then the system opener. This is yours, not the repo's.">
-            <div className="flex items-center gap-2">
-              <input value={editor} onChange={(e) => setEditor(e.target.value)} placeholder="code" className={`${input} w-64`} />
-              <button onClick={saveEditor} className={btn}>Save</button>
-            </div>
-          </Section>
-        )}
       </main>
 
-      {tab !== "editor" && (
+      {(
         <aside className="flex w-[400px] shrink-0 flex-col gap-2 border-l border-stone-300 bg-white p-5 dark:border-stone-700 dark:bg-stone-800">
           <div className="flex items-center gap-2">
             <span className="font-mono text-xs font-medium">.pando.toml</span>

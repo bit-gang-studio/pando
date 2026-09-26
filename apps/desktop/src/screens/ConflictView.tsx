@@ -6,12 +6,11 @@ type Props = {
   path: string;
   op: Operation;
   onChanged: () => void;
-  onOpenFile: () => void;
 };
 
 const btn = "h-6.5 rounded border border-stone-300 bg-white px-2 text-[11px] hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 
-export function ConflictView({ worktree, path, op, onChanged, onOpenFile }: Props) {
+export function ConflictView({ worktree, path, op, onChanged }: Props) {
   const [f, setF] = useState<ConflictFile | null>(null);
   const [result, setResult] = useState("");
   const [busy, setBusy] = useState(false);
@@ -40,7 +39,6 @@ export function ConflictView({ worktree, path, op, onChanged, onOpenFile }: Prop
         <span className="font-mono text-xs font-medium">{path}</span>
         <span className="text-[11px] text-stone-500">{stillConflicted ? "conflicted" : "resolved"}</span>
         <div className="grow" />
-        <button onClick={onOpenFile} className={btn}>Open in editor</button>
         <button onClick={() => run(() => api.conflictReset(worktree, path))} disabled={busy || stillConflicted} className={btn}>Back to conflicted</button>
         <button onClick={() => run(() => api.conflictResolve(worktree, path, result))} disabled={busy || hasMarkers} className="h-6.5 rounded bg-teal-700 px-2.5 text-[11px] font-medium text-white disabled:opacity-40" title={hasMarkers ? "Remove the conflict markers first" : "Save and mark resolved"}>
           Mark resolved

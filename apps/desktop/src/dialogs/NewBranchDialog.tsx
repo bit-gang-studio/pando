@@ -22,7 +22,6 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, onClos
   const [path, setPath] = useState("");
   const [pathEdited, setPathEdited] = useState(false);
   const [runHooks, setRunHooks] = useState(true);
-  const [openAfter, setOpenAfter] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Created | null>(null);
@@ -75,7 +74,6 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, onClos
       onCreated();
       const failed = r.hooks.some((h) => h.exit_code !== 0);
       if (!failed) {
-        if (openAfter) api.openInEditor(r.worktree.path).catch(() => {});
         onClose();
       }
     } catch (e) {
@@ -139,8 +137,6 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, onClos
             {hooks.map((h, i) => <div key={i} className={`font-mono text-xs ${runHooks ? "" : "line-through opacity-50"}`}>{h}</div>)}
             {port != null && <div className="font-mono text-xs">PORT={port}</div>}
           </div>
-
-          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={openAfter} onChange={(e) => setOpenAfter(e.target.checked)} /> Open in editor after create</label>
 
           {error && <div className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
           {result && result.hooks.some((h) => h.exit_code !== 0) && (
