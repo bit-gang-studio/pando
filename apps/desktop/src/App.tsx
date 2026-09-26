@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api, type UserConfig } from "./lib/api";
 import { fromHash, navigate, type Route } from "./lib/routes";
-import { setWindowTitle } from "./lib/windows";
+import { openInNewWindow, setWindowTitle } from "./lib/windows";
 import { Detail } from "./screens/Detail";
 import { RepoScreen } from "./screens/RepoScreen";
 import { Repos } from "./screens/Repos";
@@ -21,6 +21,7 @@ export default function App() {
     apply(zoom);
     const onZoomKey = (e: KeyboardEvent) => {
       if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.shiftKey && e.key.toLowerCase() === "n") { e.preventDefault(); openInNewWindow(fromHash(window.location.hash)).catch((err) => setFatal(String(err))); return; }
       if (e.key === "=" || e.key === "+") { e.preventDefault(); zoom = Math.min(2, Math.round((zoom + 0.1) * 10) / 10); apply(zoom); }
       else if (e.key === "-") { e.preventDefault(); zoom = Math.max(0.6, Math.round((zoom - 0.1) * 10) / 10); apply(zoom); }
       else if (e.key === "0") { e.preventDefault(); zoom = 1; apply(zoom); }
