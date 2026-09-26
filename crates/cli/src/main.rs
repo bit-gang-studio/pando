@@ -107,6 +107,30 @@ fn run(cli: Cli) -> pando_core::Result<()> {
                         .unwrap_or_default();
                     println!("{:<28} {state:<11} {ahead:<9} {path}", r.branch.name);
                 }
+                for d in &o.detached {
+                    let head = d
+                        .worktree
+                        .head
+                        .as_deref()
+                        .map(|h| &h[..7.min(h.len())])
+                        .unwrap_or("?");
+                    let state = d
+                        .status
+                        .map(|s| {
+                            if s.is_clean() {
+                                "clean".to_string()
+                            } else {
+                                format!("{} changed", s.changed())
+                            }
+                        })
+                        .unwrap_or_default();
+                    println!(
+                        "{:<28} {state:<11} {:<9} {}",
+                        format!("(detached {head})"),
+                        "",
+                        d.worktree.path.display()
+                    );
+                }
                 for r in &o.remote_only {
                     println!("{:<28} remote only", r.name);
                 }

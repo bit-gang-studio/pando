@@ -72,17 +72,24 @@ export default function App() {
         </div>
         <div role="tablist" className="flex items-end gap-1 overflow-x-auto">
           {userConfig.repos.map((r) => (
-            <button
+            <div
               key={r}
               role="tab"
               aria-selected={r === repo}
               onClick={() => pick(r)}
-              onContextMenu={(e) => { e.preventDefault(); removeRepo(r); }}
-              title={`${r}\nRight-click to remove from Pando`}
-              className={`h-8 rounded-t-md border border-b-0 px-3 font-mono text-xs ${r === repo ? "border-stone-300 bg-stone-100 font-medium dark:border-stone-600 dark:bg-stone-700" : "border-transparent text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-700"}`}
+              title={r}
+              className={`group flex h-8 cursor-pointer items-center gap-1.5 rounded-t-md border border-b-0 pl-3 pr-1.5 font-mono text-xs ${r === repo ? "border-stone-300 bg-stone-100 font-medium dark:border-stone-600 dark:bg-stone-700" : "border-transparent text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-700"}`}
             >
-              {repoName(r)}
-            </button>
+              <span>{repoName(r)}</span>
+              <button
+                onClick={(e) => { e.stopPropagation(); removeRepo(r); }}
+                aria-label={`Remove ${repoName(r)} from Pando`}
+                title="Remove from Pando"
+                className={`h-5 w-5 rounded text-stone-400 hover:bg-stone-300 hover:text-stone-800 dark:hover:bg-stone-600 dark:hover:text-stone-100 ${r === repo ? "" : "invisible group-hover:visible"}`}
+              >
+                ×
+              </button>
+            </div>
           ))}
           <button onClick={addRepo} title="Add repository" className="h-8 rounded-t-md px-3 text-stone-500 hover:bg-stone-100 dark:hover:bg-stone-700">+</button>
         </div>

@@ -327,3 +327,56 @@ fn failing_hook_stops_and_reports() {
     assert_eq!(created.hooks.len(), 1);
     assert_eq!(created.hooks[0].exit_code, Some(3));
 }
+
+#[test]
+fn submodule_is_its_own_repo() {
+    let f = fixture();
+    let base = f.root.parent().unwrap();
+    // A separate repo that we add as a submodule of `work`.
+    let sub_src = base.join("sub-src");
+    git(base, &["init", "-q", "-b", "main", "sub-src"]);
+    git(&sub_src, &["config", "user.name", "Test"]);
+    git(&sub_src, &["config", "user.email", "test@example.com"]);
+    commit(&sub_src, "s1");
+    git(
+        &f.root,
+        &["submodule", "add", "-q", sub_src.to_str().unwrap(), "web"],
+    );
+    git(&f.root, &["commit", "-q", "-m", "add submodule"]);
+
+    let web = f.root.join("web");
+    let repo = Repo::discover(&web).unwrap();
+    assert_eq!(
+        repo.root, web,
+        "submodule folder is the root, not the parent repo"
+    );
+    assert!(repo
+        .common_git_dir
+        .ends_with(std::path::Path::new(".git").join("modules").join("web")));
+
+    let ws = workspace_list(&repo);
+    assert_eq!(ws.len(), 1);
+    assert_eq!(ws[0].kind, WorktreeKind::Main);
+    assert_eq!(ws[0].path, web);
+
+    // Worktrees of the submodule work too.
+    let sub_wt = base.join("web-feature");
+    git(
+        &web,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "feat/sub",
+            sub_wt.to_str().unwrap(),
+        ],
+    );
+    let ws = workspace_list(&repo);
+    assert_eq!(ws.len(), 2);
+    assert_eq!(ws[1].path, sub_wt);
+}
+
+fn workspace_list(repo: &Repo) -> Vec<pando_core::Worktree> {
+    worktree::list(repo).unwrap()
+}

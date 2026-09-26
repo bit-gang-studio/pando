@@ -26,9 +26,7 @@ impl Repo {
         let root = if bare {
             common_git_dir.clone()
         } else {
-            common_git_dir
-                .parent()
-                .map(Path::to_path_buf)
+            main_worktree_root(&common_git_dir, path)
                 .ok_or_else(|| Error::NotARepo(path.to_path_buf()))?
         };
         let default_branch = default_branch(&common_git_dir)?;
@@ -43,6 +41,18 @@ impl Repo {
     pub(crate) fn open_gix(&self) -> Result<gix::Repository> {
         gix::open(&self.common_git_dir).map_err(gix_err)
     }
+}
+
+/// The main worktree for a git dir. Usually its parent, but a submodule keeps
+/// its git dir under the parent's `.git/modules/` and points back with `core.worktree`.
+fn main_worktree_root(common_git_dir: &Path, from: &Path) -> Option<PathBuf> {
+    if let Some(rel) = git_opt(common_git_dir, ["config", "--get", "core.worktree"]) {
+        return Some(canon(&common_git_dir.join(rel)));
+    }
+    if common_git_dir.file_name().is_some_and(|n| n == ".git") {
+        return common_git_dir.parent().map(Path::to_path_buf);
+    }
+    git_opt(from, ["rev-parse", "--show-toplevel"]).map(|t| canon(Path::new(&t)))
 }
 
 fn default_branch(git_dir: &Path) -> Result<Option<String>> {

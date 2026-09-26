@@ -74,8 +74,25 @@ fn worktree_branches_first_then_others_then_remote() {
     commit(&wt, "a1");
     std::fs::write(wt.join("dirty.txt"), "x").unwrap();
 
+    let det = base.join("wt-detached");
+    git(
+        &root,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "--detach",
+            det.to_str().unwrap(),
+            "main",
+        ],
+    );
+
     let repo = Repo::discover(&root).unwrap();
     let o = overview::load(&repo).unwrap();
+    assert_eq!(o.detached.len(), 1);
+    assert_eq!(o.detached[0].worktree.path, det);
+    assert!(!o.detached[0].is_main_worktree);
+    assert!(o.detached[0].status.unwrap().is_clean());
     assert_eq!(o.base.as_deref(), Some("main"));
     let names: Vec<_> = o.branches.iter().map(|r| r.branch.name.as_str()).collect();
     assert_eq!(names, ["main", "feat/a", "zz/no-worktree"]);

@@ -125,7 +125,14 @@ pub fn create(repo: &Repo, req: &CreateWorktree) -> Result<Created> {
 
 pub fn list(repo: &Repo) -> Result<Vec<Worktree>> {
     let out = git_bytes(&repo.root, ["worktree", "list", "--porcelain", "-z"])?;
-    Ok(parse_porcelain(&out))
+    let mut all = parse_porcelain(&out);
+    // A submodule reports its git dir as the main worktree path. Use the real root.
+    if let Some(main) = all.iter_mut().find(|w| w.kind == WorktreeKind::Main) {
+        if !repo.bare && main.path != repo.root {
+            main.path = repo.root.clone();
+        }
+    }
+    Ok(all)
 }
 
 pub fn add(repo: &Repo, req: &AddWorktree) -> Result<Worktree> {

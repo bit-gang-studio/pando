@@ -27,12 +27,22 @@ pub struct BranchRow {
     pub stale: bool,
 }
 
+/// A worktree with no branch checked out (detached HEAD). Common for submodules.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DetachedRow {
+    pub worktree: Worktree,
+    pub is_main_worktree: bool,
+    pub status: Option<Summary>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Overview {
     pub repo: Repo,
     pub base: Option<String>,
     /// Local branches, worktree ones first, then by name.
     pub branches: Vec<BranchRow>,
+    /// Worktrees on a detached HEAD.
+    pub detached: Vec<DetachedRow>,
     /// Remote branches with no local branch.
     pub remote_only: Vec<RemoteBranch>,
 }
@@ -45,7 +55,21 @@ pub fn load(repo: &Repo) -> Result<Overview> {
         .and_then(|b| g.rev_parse_single(b).ok())
         .map(|id| id.detach());
     let ports = runtime::ports(repo)?;
-    let worktrees: BTreeMap<String, Worktree> = worktree::list(repo)?
+    let all_worktrees = worktree::list(repo)?;
+    let detached = all_worktrees
+        .iter()
+        .filter(|w| w.branch.is_none() && !w.bare)
+        .map(|w| DetachedRow {
+            is_main_worktree: w.kind == WorktreeKind::Main,
+            status: if w.prunable.is_none() && w.path.is_dir() {
+                status::summary(&w.path).ok()
+            } else {
+                None
+            },
+            worktree: w.clone(),
+        })
+        .collect();
+    let worktrees: BTreeMap<String, Worktree> = all_worktrees
         .into_iter()
         .filter_map(|w| w.branch.clone().map(|b| (b, w)))
         .collect();
@@ -108,6 +132,7 @@ pub fn load(repo: &Repo) -> Result<Overview> {
         repo: repo.clone(),
         base,
         branches: rows,
+        detached,
         remote_only,
     })
 }

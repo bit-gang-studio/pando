@@ -39,7 +39,8 @@ export type BranchRow = {
   ahead_of_base: number | null;
   stale: boolean;
 };
-export type Overview = { repo: Repo; base: string | null; branches: BranchRow[]; remote_only: RemoteBranch[] };
+export type DetachedRow = { worktree: Worktree; is_main_worktree: boolean; status: Summary | null };
+export type Overview = { repo: Repo; base: string | null; branches: BranchRow[]; detached: DetachedRow[]; remote_only: RemoteBranch[] };
 
 export type BranchDefaults = { base: string | null; next_port: number | null; hooks: string[] };
 export type CreateWorktree = { branch: string; base: string | null; path: string | null; existing_branch: boolean; run_hooks: boolean };

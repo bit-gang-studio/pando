@@ -42,7 +42,7 @@ pub use history::{CommitDiff, History};
 pub use hooks::HookResult;
 pub use merge::{Destination, MergePlan, MergeResult, Preflight};
 pub use operation::{OpKind, Operation};
-pub use overview::{BranchRow, Overview};
+pub use overview::{BranchRow, DetachedRow, Overview};
 pub use repo::Repo;
 pub use stash::Stash;
 pub use status::{FileStatus, Summary};

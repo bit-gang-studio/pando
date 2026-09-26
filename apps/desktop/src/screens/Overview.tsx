@@ -52,6 +52,7 @@ export function Overview({ root, onOpenDetail, onError }: Props) {
   }
 
   const withWt = data?.branches.filter((r) => r.worktree) ?? [];
+  const detached = data?.detached ?? [];
   const without = data?.branches.filter((r) => !r.worktree) ?? [];
   const remote = data?.remote_only ?? [];
   const remoteShown = showAllRemote ? remote : remote.slice(0, 5);
@@ -68,16 +69,25 @@ export function Overview({ root, onOpenDetail, onError }: Props) {
       <section className="flex flex-col gap-1.5">
         <div className="flex items-baseline gap-3">
           <h1 className="text-base font-semibold">Worktrees</h1>
-          <span className="text-xs text-stone-500">{data ? `${withWt.length} on this machine` : "…"}</span>
+          <span className="text-xs text-stone-500">{data ? `${withWt.length + detached.length} on this machine` : "…"}</span>
           <div className="grow" />
           <button onClick={() => run("fetch", () => api.fetchAll(root))} disabled={!!busy} className={btn}>{busy === "fetch" ? "Fetching…" : "Fetch"}</button>
           <button onClick={() => setCreating({})} className="h-7 rounded-md bg-teal-700 px-3 text-xs font-medium text-white hover:bg-teal-800">New branch<span className="ml-2 opacity-70">⌘N</span></button>
         </div>
+        {detached.filter((d) => d.is_main_worktree).map((d) => <DetachedRowView key={d.worktree.path} d={d} onOpen={() => onOpenDetail(d.worktree.path)} />)}
         {withWt.map((r) => (
           <Row key={r.branch.name} r={r} base={data?.base ?? null} busy={busy}
             onOpen={() => onOpenDetail(r.worktree!.path)}
             onMerge={r.is_main_worktree ? undefined : () => setMerging(r)}
             onRemove={r.is_main_worktree ? undefined : () => removeWorktree(r)} />
+        ))}
+        {detached.filter((d) => !d.is_main_worktree).map((d) => (
+          <DetachedRowView key={d.worktree.path} d={d} onOpen={() => onOpenDetail(d.worktree.path)}
+            onRemove={async () => {
+              const n = changed(d.status);
+              if (!(await ask(n > 0 ? `This worktree has ${n} uncommitted changes and no branch. Remove it anyway?` : "Remove this worktree?", { title: "Remove worktree", kind: "warning" }))) return;
+              await run("remove", () => api.worktreeRemove(root, d.worktree.path, n > 0));
+            }} />
         ))}
       </section>
 
@@ -144,6 +154,29 @@ function Row({ r, base, busy, onOpen, onMerge, onRemove }: { r: BranchRow; base:
         {onMerge && <button onClick={onMerge} disabled={!!busy} className={`${btn} border-teal-700 font-medium text-teal-700`}>Merge</button>}
         {onRemove && <button onClick={onRemove} disabled={!!busy} className={btn}>Remove worktree</button>}
       </div>
+    </div>
+  );
+}
+
+function DetachedRowView({ d, onOpen, onRemove }: { d: import("../lib/api").DetachedRow; onOpen: () => void; onRemove?: () => void }) {
+  const n = changed(d.status);
+  const head = d.worktree.head?.slice(0, 7) ?? "?";
+  return (
+    <div onClick={onOpen} className="flex cursor-pointer items-center gap-3 rounded-lg border border-stone-300 bg-white px-3 py-2.5 hover:border-stone-400 dark:border-stone-700 dark:bg-stone-800">
+      <span className={`h-2 w-2 shrink-0 rounded-full ${n > 0 ? "bg-amber-700" : "bg-stone-400"}`} />
+      <div className="min-w-0">
+        <div className="truncate font-mono text-[13px] font-medium">
+          detached at {head}
+          {d.is_main_worktree && <span className="ml-2 font-sans text-xs font-normal text-stone-500">main worktree</span>}
+        </div>
+        <button onClick={(e) => { e.stopPropagation(); api.openInEditor(d.worktree.path); }} className="truncate text-left text-xs text-stone-500 hover:text-teal-700 hover:underline">{d.worktree.path}</button>
+      </div>
+      <div className="flex flex-wrap items-center gap-1.5">
+        <Chip>no branch</Chip>
+        {d.status && (n === 0 ? <Chip>clean</Chip> : <Chip tone="amber">{n} changed</Chip>)}
+      </div>
+      <div className="grow" />
+      {onRemove && <div className="flex shrink-0 gap-1.5" onClick={(e) => e.stopPropagation()}><button onClick={onRemove} className={btn}>Remove worktree</button></div>}
     </div>
   );
 }
