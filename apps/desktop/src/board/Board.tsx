@@ -22,6 +22,15 @@ export function Board() {
   const [creating, setCreating] = useState<false | { branch?: string }>(false);
   const [screen, setScreen] = useState<"worktrees" | "branches" | "settings">("worktrees");
   const [detail, setDetail] = useState<{ root: string; path: string } | null>(null);
+  const [fatal, setFatal] = useState<string | null>(null);
+
+  useEffect(() => {
+    const onErr = (e: ErrorEvent) => setFatal(e.message);
+    const onRej = (e: PromiseRejectionEvent) => setFatal(String(e.reason));
+    window.addEventListener("error", onErr);
+    window.addEventListener("unhandledrejection", onRej);
+    return () => { window.removeEventListener("error", onErr); window.removeEventListener("unhandledrejection", onRej); };
+  }, []);
   const [userConfig, setUserConfig] = useState<UserConfig>({ repos: [], editor: null });
 
   const refresh = useCallback(async () => {
@@ -116,6 +125,13 @@ export function Board() {
           New worktree<span className="ml-2 text-xs opacity-70">⌘N</span>
         </button>
       </header>
+      {fatal && (
+        <div className="flex items-center gap-3 bg-red-100 px-4 py-2 text-xs text-red-900 dark:bg-red-900/40 dark:text-red-100">
+          <span className="font-medium">Error:</span><span className="truncate">{fatal}</span>
+          <div className="grow" />
+          <button onClick={() => setFatal(null)} className="underline">dismiss</button>
+        </div>
+      )}
       {creating && (
         <NewWorktreeDialog repos={repos} initialRepo={scope} initialBranch={creating.branch ?? null} onClose={() => setCreating(false)} onCreated={refresh} />
       )}
@@ -125,7 +141,7 @@ export function Board() {
           <nav className="flex flex-col gap-0.5">
             <div className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-stone-500">VIEWS</div>
             {VIEWS.map((v) => (
-              <button key={v.id} onClick={() => setView(v.id)} className={`flex justify-between rounded-md px-2 py-1.5 text-left ${view === v.id ? "bg-white font-medium dark:bg-stone-700" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>
+              <button key={v.id} onClick={() => { setView(v.id); setScreen("worktrees"); setDetail(null); }} className={`flex justify-between rounded-md px-2 py-1.5 text-left ${view === v.id && screen === "worktrees" && !detail ? "bg-white font-medium dark:bg-stone-700" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>
                 <span>{v.label}</span>
                 <span className={v.id === "attention" && counts[v.id] > 0 ? "font-medium text-amber-700" : "text-stone-500"}>{counts[v.id] ?? 0}</span>
               </button>
@@ -133,18 +149,18 @@ export function Board() {
           </nav>
           <nav className="flex flex-col gap-0.5">
             <div className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-stone-500">REPOSITORIES</div>
-            <button onClick={() => { setScope(null); setScreen("worktrees"); }} className={`rounded-md px-2 py-1.5 text-left ${scope === null ? "bg-white font-medium dark:bg-stone-700" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>All</button>
+            <button onClick={() => { setScope(null); setScreen("worktrees"); setDetail(null); }} className={`rounded-md px-2 py-1.5 text-left ${scope === null ? "bg-white font-medium dark:bg-stone-700" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>All</button>
             {repos.map((r) => (
               <div key={r} className={`flex flex-col rounded-md ${scope === r ? "bg-white dark:bg-stone-700" : ""}`}>
-                <button onClick={() => { setScope(r); if (scope !== r) setScreen("worktrees"); }} className={`flex justify-between rounded-md px-2 py-1.5 text-left ${scope === r ? "font-medium" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>
+                <button onClick={() => { setScope(r); setScreen("worktrees"); setDetail(null); }} className={`flex justify-between rounded-md px-2 py-1.5 text-left ${scope === r ? "font-medium" : "hover:bg-white/60 dark:hover:bg-stone-800"}`}>
                   <span className="truncate font-mono text-xs">{repoName(r)}</span>
                   <span className="text-stone-500">{boards[r]?.rows.length ?? (errors[r] ? "!" : "…")}</span>
                 </button>
                 {scope === r && (
                   <>
-                    <button onClick={() => setScreen("worktrees")} className={`px-2 py-1 pl-5 text-left text-xs ${screen === "worktrees" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Worktrees</button>
-                    <button onClick={() => setScreen("branches")} className={`px-2 py-1 pl-5 text-left text-xs ${screen === "branches" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Branches</button>
-                    <button onClick={() => setScreen("settings")} className={`px-2 py-1 pb-1.5 pl-5 text-left text-xs ${screen === "settings" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Settings</button>
+                    <button onClick={() => { setScreen("worktrees"); setDetail(null); }} className={`px-2 py-1 pl-5 text-left text-xs ${screen === "worktrees" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Worktrees</button>
+                    <button onClick={() => { setScreen("branches"); setDetail(null); }} className={`px-2 py-1 pl-5 text-left text-xs ${screen === "branches" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Branches</button>
+                    <button onClick={() => { setScreen("settings"); setDetail(null); }} className={`px-2 py-1 pb-1.5 pl-5 text-left text-xs ${screen === "settings" ? "text-teal-700 font-medium" : "text-stone-600 dark:text-stone-300"}`}>Settings</button>
                   </>
                 )}
               </div>
