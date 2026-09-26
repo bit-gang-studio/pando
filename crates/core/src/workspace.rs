@@ -3,8 +3,11 @@
 
 use crate::backup;
 use crate::cmd::{git, git_bytes};
+use crate::config::RepoConfig;
 use crate::error::Result;
+use crate::hooks::{self, HookResult};
 use crate::repo::{canon, Repo};
+use crate::runtime;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
 
@@ -41,6 +44,85 @@ pub struct AddWorkspace {
     pub create_branch: bool,
 }
 
+/// High-level create: path from config, worktree add, port, hooks.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CreateWorkspace {
+    pub branch: String,
+    /// Start point for a new branch. Defaults to config base, then the repo default branch.
+    pub base: Option<String>,
+    /// Overrides the configured location template.
+    pub path: Option<PathBuf>,
+    /// Check out an existing branch instead of creating one.
+    pub existing_branch: bool,
+    pub run_hooks: bool,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Created {
+    pub workspace: Workspace,
+    pub port: Option<u16>,
+    pub hooks: Vec<HookResult>,
+}
+
+pub fn create(repo: &Repo, req: &CreateWorkspace) -> Result<Created> {
+    let cfg = RepoConfig::load(repo)?;
+    let path = req
+        .path
+        .clone()
+        .unwrap_or_else(|| cfg.workspace_path(repo, &req.branch));
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let base = if req.existing_branch {
+        None
+    } else {
+        req.base
+            .clone()
+            .or_else(|| cfg.workspace.base.clone())
+            .or_else(|| repo.default_branch.clone())
+    };
+    let workspace = add(
+        repo,
+        &AddWorkspace {
+            path,
+            branch: req.branch.clone(),
+            base,
+            create_branch: !req.existing_branch,
+        },
+    )?;
+
+    let port = match &cfg.runtime.port {
+        Some(pc) => Some(runtime::assign_port(repo, &req.branch, pc)?),
+        None => None,
+    };
+
+    let mut env = vec![
+        (
+            "PANDO_MAIN".to_string(),
+            repo.root.to_string_lossy().into_owned(),
+        ),
+        ("PANDO_BRANCH".to_string(), req.branch.clone()),
+        (
+            "PANDO_WORKSPACE".to_string(),
+            workspace.path.to_string_lossy().into_owned(),
+        ),
+    ];
+    if let (Some(pc), Some(p)) = (&cfg.runtime.port, port) {
+        env.push((pc.env.clone(), p.to_string()));
+    }
+    let hooks = if req.run_hooks {
+        hooks::run(&cfg.hooks.post_create, &workspace.path, &env)?
+    } else {
+        Vec::new()
+    };
+
+    Ok(Created {
+        workspace,
+        port,
+        hooks,
+    })
+}
+
 pub fn list(repo: &Repo) -> Result<Vec<Workspace>> {
     let out = git_bytes(&repo.root, ["worktree", "list", "--porcelain", "-z"])?;
     Ok(parse_porcelain(&out))
@@ -67,7 +149,7 @@ pub fn add(repo: &Repo, req: &AddWorkspace) -> Result<Workspace> {
         })
 }
 
-/// Remove a worktree. Writes a backup ref for its branch first.
+/// Remove a worktree. Writes a backup ref for its branch first and frees its port.
 pub fn remove(repo: &Repo, path: &Path, force: bool) -> Result<()> {
     let want = canon(path);
     if let Some(branch) = list(repo)?
@@ -76,6 +158,7 @@ pub fn remove(repo: &Repo, path: &Path, force: bool) -> Result<()> {
         .and_then(|w| w.branch.clone())
     {
         backup::write(repo, &branch)?;
+        runtime::release_port(repo, &branch)?;
     }
     let mut args = vec!["worktree", "remove"];
     if force {

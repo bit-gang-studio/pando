@@ -245,3 +245,81 @@ fn types_round_trip_through_json() {
     let repo_json = serde_json::to_string(&repo).unwrap();
     assert_eq!(repo, serde_json::from_str::<Repo>(&repo_json).unwrap());
 }
+
+#[test]
+fn create_uses_config_hooks_and_port() {
+    let f = fixture();
+    std::fs::write(
+        f.root.join(".pando.toml"),
+        r#"
+[workspace]
+location = "../ws/{branch_slug}"
+[hooks]
+post_create = ["echo hi > hook.txt", "echo $PANDO_BRANCH > branch.txt"]
+[runtime]
+port = { env = "PORT", start = 4100 }
+"#,
+    )
+    .unwrap();
+    let repo = Repo::discover(&f.root).unwrap();
+    let created = workspace::create(
+        &repo,
+        &pando_core::CreateWorkspace {
+            branch: "feat/x".into(),
+            base: None,
+            path: None,
+            existing_branch: false,
+            run_hooks: true,
+        },
+    )
+    .unwrap();
+    let expected = dunce::canonicalize(f.root.parent().unwrap().join("ws").join("feat-x")).unwrap();
+    assert_eq!(created.workspace.path, expected);
+    assert_eq!(created.port, Some(4100));
+    assert_eq!(created.hooks.len(), 2);
+    assert!(created.hooks.iter().all(|h| h.ok()));
+    assert!(expected.join("hook.txt").exists());
+
+    // Second workspace gets the next port; removing frees it.
+    let second = workspace::create(
+        &repo,
+        &pando_core::CreateWorkspace {
+            branch: "feat/y".into(),
+            base: None,
+            path: None,
+            existing_branch: false,
+            run_hooks: false,
+        },
+    )
+    .unwrap();
+    assert_eq!(second.port, Some(4101));
+    workspace::remove(&repo, &created.workspace.path, true).unwrap();
+    assert_eq!(
+        pando_core::runtime::port_for(&repo, "feat/x").unwrap(),
+        None
+    );
+}
+
+#[test]
+fn failing_hook_stops_and_reports() {
+    let f = fixture();
+    std::fs::write(
+        f.root.join(".pando.toml"),
+        "[workspace]\nlocation = \"../ws/{branch_slug}\"\n[hooks]\npost_create = [\"exit 3\", \"echo never\"]\n",
+    )
+    .unwrap();
+    let repo = Repo::discover(&f.root).unwrap();
+    let created = workspace::create(
+        &repo,
+        &pando_core::CreateWorkspace {
+            branch: "feat/z".into(),
+            base: None,
+            path: None,
+            existing_branch: false,
+            run_hooks: true,
+        },
+    )
+    .unwrap();
+    assert_eq!(created.hooks.len(), 1);
+    assert_eq!(created.hooks[0].exit_code, Some(3));
+}

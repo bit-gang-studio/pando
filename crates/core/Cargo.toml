@@ -10,7 +10,9 @@ repository.workspace = true
 dunce = "1.0.5"
 gix = { version = "0.88", default-features = false, features = ["revision", "sha1"] }
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
+toml = "1.1.6"
 
 [dev-dependencies]
 dunce = "1.0.5"
