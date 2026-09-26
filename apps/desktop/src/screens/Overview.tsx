@@ -21,7 +21,8 @@ export function Overview({ root, data, onRefresh: refresh, onOpenDetail, onError
   const [busy, setBusy] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ branch?: string } | null>(null);
   const [merging, setMerging] = useState<BranchRow | null>(null);
-  const [showAllRemote, setShowAllRemote] = useState(false);
+  const [remoteOpen, setRemoteOpen] = useState(false);
+  const [remoteQuery, setRemoteQuery] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
 
   useEffect(() => {
@@ -68,7 +69,8 @@ export function Overview({ root, data, onRefresh: refresh, onOpenDetail, onError
 
   const without = data?.branches.filter((r) => !r.worktree) ?? [];
   const remote = data?.remote_only ?? [];
-  const remoteShown = showAllRemote ? remote : remote.slice(0, 5);
+  const q = remoteQuery.trim().toLowerCase();
+  const remoteShown = q ? remote.filter((r) => r.name.toLowerCase().includes(q)) : remote.slice(0, 8);
   const base = data?.base ?? "main";
 
   return (
@@ -141,44 +143,72 @@ export function Overview({ root, data, onRefresh: refresh, onOpenDetail, onError
 
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline gap-3">
-          <h2 className="text-base font-semibold">Other branches</h2>
-          <span className="text-xs text-stone-500">{data ? `${without.length} local · ${remote.length} on the remote only` : ""}</span>
+          <h2 className="text-base font-semibold">Branches</h2>
+          <span className="text-xs text-stone-500">{data ? `${without.length} local without a worktree` : ""}</span>
         </div>
-        <table className="w-full border-collapse text-[13px]">
-          <thead>
-            <tr>
-              <th className={`${th} w-[360px]`}>BRANCH</th>
-              <th className={`${th} w-[130px]`}>AHEAD OF {base.toUpperCase()}</th>
-              <th className={th}>LAST COMMIT</th>
-              <th className={`${th} w-[80px] text-right`}>LAST</th>
-              <th className={`${th} w-[130px]`}></th>
-            </tr>
-          </thead>
-          <tbody>
-            {without.map((r) => (
-              <tr key={r.branch.name} className="border-t border-stone-200 dark:border-stone-700">
-                <td className={`${td} font-mono`}>{r.branch.name}</td>
-                <td className={`${td} tabular-nums`}>{r.ahead_of_base ? r.ahead_of_base : <span className="text-stone-400">0</span>}</td>
-                <td className={`${td} max-w-0 truncate text-xs text-stone-500`} title={r.branch.last_commit?.summary}>{r.branch.last_commit?.summary}</td>
-                <td className={`${td} text-right text-xs text-stone-500`}>{r.branch.last_commit && ago(r.branch.last_commit.time)}</td>
-                <td className={`${td} text-right`}><button onClick={() => setCreating({ branch: r.branch.name })} disabled={!!busy} className={btn}>Add worktree</button></td>
+        {without.length > 0 ? (
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr>
+                <th className={`${th} w-[360px]`}>BRANCH</th>
+                <th className={`${th} w-[130px]`}>AHEAD OF {base.toUpperCase()}</th>
+                <th className={th}>LAST COMMIT</th>
+                <th className={`${th} w-[80px] text-right`}>LAST</th>
+                <th className={`${th} w-[130px]`}></th>
               </tr>
-            ))}
-            {remoteShown.map((r: RemoteBranch) => (
-              <tr key={r.name} className="border-t border-stone-200 dark:border-stone-700">
-                <td className={`${td} font-mono text-stone-600 dark:text-stone-300`}>{r.name}</td>
-                <td className={td}></td>
-                <td className={`${td} max-w-0 truncate text-xs text-stone-500`} title={r.last_commit?.summary}>{r.last_commit && `${r.last_commit.author} · ${r.last_commit.summary}`}</td>
-                <td className={`${td} text-right text-xs text-stone-500`}>{r.last_commit && ago(r.last_commit.time)}</td>
-                <td className={`${td} text-right`}><button onClick={() => setCreating({ branch: r.short })} disabled={!!busy} className={btn}>Add worktree</button></td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {remote.length > 5 && (
-          <button onClick={() => setShowAllRemote((v) => !v)} className="self-start px-1 text-xs text-teal-700 underline">{showAllRemote ? "Show fewer" : `Show all ${remote.length} remote branches`}</button>
+            </thead>
+            <tbody>
+              {without.map((r) => (
+                <tr key={r.branch.name} className="border-t border-stone-200 dark:border-stone-700">
+                  <td className={`${td} font-mono`}>{r.branch.name}</td>
+                  <td className={`${td} tabular-nums`}>{r.ahead_of_base ? r.ahead_of_base : <span className="text-stone-400">0</span>}</td>
+                  <td className={`${td} max-w-0 truncate text-xs text-stone-500`} title={r.branch.last_commit?.summary}>{r.branch.last_commit?.summary}</td>
+                  <td className={`${td} text-right text-xs text-stone-500`}>{r.branch.last_commit && ago(r.branch.last_commit.time)}</td>
+                  <td className={`${td} text-right`}><button onClick={() => setCreating({ branch: r.branch.name })} disabled={!!busy} className={btn}>Add worktree</button></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        ) : (
+          data && <span className="px-1 text-xs text-stone-500">Every local branch has a worktree.</span>
         )}
-        {data && without.length + remote.length === 0 && <span className="px-1 text-xs text-stone-500">Every branch has a worktree.</span>}
+      </section>
+
+      <section className="flex flex-col gap-2">
+        <div className="flex items-baseline gap-3">
+          <button onClick={() => setRemoteOpen((v) => !v)} className="flex items-baseline gap-2 text-base font-semibold">
+            <span className="text-xs text-stone-400">{remoteOpen ? "▾" : "▸"}</span>Remote branches
+          </button>
+          <span className="text-xs text-stone-500">{data ? `${remote.length} on the remote with no local branch` : ""}</span>
+          <div className="grow" />
+          {remoteOpen && <input value={remoteQuery} onChange={(e) => setRemoteQuery(e.target.value)} placeholder="Search remote branches" className="h-7 w-64 rounded-md border border-stone-300 bg-white px-2 text-xs dark:border-stone-600 dark:bg-stone-700" />}
+        </div>
+        {remoteOpen && (
+          <>
+            <table className="w-full border-collapse text-[13px]">
+              <thead>
+                <tr>
+                  <th className={`${th} w-[360px]`}>BRANCH</th>
+                  <th className={th}>LAST COMMIT</th>
+                  <th className={`${th} w-[80px] text-right`}>LAST</th>
+                  <th className={`${th} w-[130px]`}></th>
+                </tr>
+              </thead>
+              <tbody>
+                {remoteShown.map((r: RemoteBranch) => (
+                  <tr key={r.name} className="border-t border-stone-200 dark:border-stone-700">
+                    <td className={`${td} font-mono text-stone-600 dark:text-stone-300`}>{r.name}</td>
+                    <td className={`${td} max-w-0 truncate text-xs text-stone-500`} title={r.last_commit?.summary}>{r.last_commit && `${r.last_commit.author} · ${r.last_commit.summary}`}</td>
+                    <td className={`${td} text-right text-xs text-stone-500`}>{r.last_commit && ago(r.last_commit.time)}</td>
+                    <td className={`${td} text-right`}><button onClick={() => setCreating({ branch: r.short })} disabled={!!busy} className={btn}>Add worktree</button></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!q && remote.length > 8 && <span className="px-1 text-xs text-stone-500">Showing 8 of {remote.length}. Type to search the rest.</span>}
+            {q && remoteShown.length === 0 && <span className="px-1 text-xs text-stone-500">No remote branch matches.</span>}
+          </>
+        )}
       </section>
     </main>
   );
