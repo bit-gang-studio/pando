@@ -1,7 +1,13 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Main window defaults",
-  "windows": ["main"],
-  "permissions": ["core:default", "opener:default", "dialog:default"]
+  "description": "All Pando windows",
+  "windows": ["main", "pando-*"],
+  "permissions": [
+    "core:default",
+    "core:window:allow-set-title",
+    "core:webview:allow-create-webview-window",
+    "opener:default",
+    "dialog:default"
+  ]
 }

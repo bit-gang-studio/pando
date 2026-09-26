@@ -4,6 +4,8 @@ import { ago, api, changed, type BranchRow, type Overview as OverviewData, type 
 import { Chip } from "../ui/Chip";
 import { MergeDialog } from "../dialogs/MergeDialog";
 import { NewBranchDialog } from "../dialogs/NewBranchDialog";
+import { openInNewWindow, wantsNewWindow } from "../lib/windows";
+import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 
 type Props = { root: string; onOpenDetail: (path: string) => void; onError: (msg: string) => void };
 
@@ -16,6 +18,22 @@ export function Overview({ root, onOpenDetail, onError }: Props) {
   const [creating, setCreating] = useState<{ branch?: string; remote?: string } | null>(null);
   const [merging, setMerging] = useState<BranchRow | null>(null);
   const [showAllRemote, setShowAllRemote] = useState(false);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+
+  function rowMenu(e: React.MouseEvent, path: string, extra: MenuItem[] = []) {
+    e.preventDefault();
+    const route = { kind: "worktree" as const, root, path };
+    setMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: "Open", onClick: () => onOpenDetail(path) },
+      { label: "Open in new window", onClick: () => openInNewWindow(route).catch((err) => onError(String(err))) },
+      { label: "Open in editor", onClick: () => api.openInEditor(path) },
+      ...extra,
+    ] });
+  }
+  function openRow(e: React.MouseEvent, path: string) {
+    if (wantsNewWindow(e)) openInNewWindow({ kind: "worktree", root, path }).catch((err) => onError(String(err)));
+    else onOpenDetail(path);
+  }
 
   const refresh = useCallback(async () => {
     try { setData(await api.overview(root)); }
@@ -59,6 +77,7 @@ export function Overview({ root, onOpenDetail, onError }: Props) {
 
   return (
     <main className="flex min-w-0 grow flex-col gap-6 overflow-auto p-6">
+      {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
       {creating && data && (
         <NewBranchDialog root={root} base={data.base} initialBranch={creating.branch ?? null} onClose={() => setCreating(null)} onCreated={refresh} />
       )}
@@ -74,15 +93,19 @@ export function Overview({ root, onOpenDetail, onError }: Props) {
           <button onClick={() => run("fetch", () => api.fetchAll(root))} disabled={!!busy} className={btn}>{busy === "fetch" ? "Fetching…" : "Fetch"}</button>
           <button onClick={() => setCreating({})} className="h-7 rounded-md bg-teal-700 px-3 text-xs font-medium text-white hover:bg-teal-800">New branch<span className="ml-2 opacity-70">⌘N</span></button>
         </div>
-        {detached.filter((d) => d.is_main_worktree).map((d) => <DetachedRowView key={d.worktree.path} d={d} onOpen={() => onOpenDetail(d.worktree.path)} />)}
+        {detached.filter((d) => d.is_main_worktree).map((d) => <DetachedRowView key={d.worktree.path} d={d} onOpen={(e) => openRow(e, d.worktree.path)} onMenu={(e) => rowMenu(e, d.worktree.path)} />)}
         {withWt.map((r) => (
           <Row key={r.branch.name} r={r} base={data?.base ?? null} busy={busy}
-            onOpen={() => onOpenDetail(r.worktree!.path)}
+            onOpen={(e) => openRow(e, r.worktree!.path)}
+            onMenu={(e) => rowMenu(e, r.worktree!.path, r.is_main_worktree ? [] : [
+              { label: "Merge", onClick: () => setMerging(r) },
+              { label: "Remove worktree", onClick: () => removeWorktree(r), danger: true },
+            ])}
             onMerge={r.is_main_worktree ? undefined : () => setMerging(r)}
             onRemove={r.is_main_worktree ? undefined : () => removeWorktree(r)} />
         ))}
         {detached.filter((d) => !d.is_main_worktree).map((d) => (
-          <DetachedRowView key={d.worktree.path} d={d} onOpen={() => onOpenDetail(d.worktree.path)}
+          <DetachedRowView key={d.worktree.path} d={d} onOpen={(e) => openRow(e, d.worktree.path)} onMenu={(e) => rowMenu(e, d.worktree.path)}
             onRemove={async () => {
               const n = changed(d.status);
               if (!(await ask(n > 0 ? `This worktree has ${n} uncommitted changes and no branch. Remove it anyway?` : "Remove this worktree?", { title: "Remove worktree", kind: "warning" }))) return;
@@ -124,13 +147,13 @@ export function Overview({ root, onOpenDetail, onError }: Props) {
   );
 }
 
-function Row({ r, base, busy, onOpen, onMerge, onRemove }: { r: BranchRow; base: string | null; busy: string | null; onOpen: () => void; onMerge?: () => void; onRemove?: () => void }) {
+function Row({ r, base, busy, onOpen, onMenu, onMerge, onRemove }: { r: BranchRow; base: string | null; busy: string | null; onOpen: (e: React.MouseEvent) => void; onMenu: (e: React.MouseEvent) => void; onMerge?: () => void; onRemove?: () => void }) {
   const wt = r.worktree!;
   const n = changed(r.status);
   const conflicts = r.status?.conflicts ?? 0;
   const dot = wt.prunable || conflicts ? "bg-red-700" : n > 0 ? "bg-amber-700" : "bg-teal-700";
   return (
-    <div onClick={onOpen} className="flex cursor-pointer items-center gap-3 rounded-lg border border-stone-300 bg-white px-3 py-2.5 hover:border-stone-400 dark:border-stone-700 dark:bg-stone-800">
+    <div onClick={onOpen} onContextMenu={onMenu} className="flex cursor-pointer items-center gap-3 rounded-lg border border-stone-300 bg-white px-3 py-2.5 hover:border-stone-400 dark:border-stone-700 dark:bg-stone-800">
       <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
       <div className="min-w-0">
         <div className="truncate font-mono text-[13px] font-medium">
@@ -158,11 +181,11 @@ function Row({ r, base, busy, onOpen, onMerge, onRemove }: { r: BranchRow; base:
   );
 }
 
-function DetachedRowView({ d, onOpen, onRemove }: { d: import("../lib/api").DetachedRow; onOpen: () => void; onRemove?: () => void }) {
+function DetachedRowView({ d, onOpen, onMenu, onRemove }: { d: import("../lib/api").DetachedRow; onOpen: (e: React.MouseEvent) => void; onMenu: (e: React.MouseEvent) => void; onRemove?: () => void }) {
   const n = changed(d.status);
   const head = d.worktree.head?.slice(0, 7) ?? "?";
   return (
-    <div onClick={onOpen} className="flex cursor-pointer items-center gap-3 rounded-lg border border-stone-300 bg-white px-3 py-2.5 hover:border-stone-400 dark:border-stone-700 dark:bg-stone-800">
+    <div onClick={onOpen} onContextMenu={onMenu} className="flex cursor-pointer items-center gap-3 rounded-lg border border-stone-300 bg-white px-3 py-2.5 hover:border-stone-400 dark:border-stone-700 dark:bg-stone-800">
       <span className={`h-2 w-2 shrink-0 rounded-full ${n > 0 ? "bg-amber-700" : "bg-stone-400"}`} />
       <div className="min-w-0">
         <div className="truncate font-mono text-[13px] font-medium">
