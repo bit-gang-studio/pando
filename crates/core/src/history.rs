@@ -64,9 +64,19 @@ pub struct CommitDiff {
 pub fn commit_diff(repo: &Repo, id: &str) -> Result<CommitDiff> {
     let g = repo.open_gix()?;
     let info = commit::info(&g, commit::parse_id(id)?)?;
+    // -m --first-parent: for merge commits, diff against the first parent
+    // instead of git's combined format, which hides most files.
     let stat = git(
         &repo.common_git_dir,
-        ["show", "--format=", "--numstat", "--no-renames", id],
+        [
+            "show",
+            "-m",
+            "--first-parent",
+            "--format=",
+            "--numstat",
+            "--no-renames",
+            id,
+        ],
     )?;
     let files = stat
         .lines()
