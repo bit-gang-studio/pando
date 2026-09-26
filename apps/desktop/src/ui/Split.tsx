@@ -64,7 +64,7 @@ export function SplitHandle({ axis, onMouseDown, handleRef }: { axis: Axis; onMo
     >
       {/* wider invisible grab area so a 1px bar is still easy to hit */}
       <div className={`absolute ${vertical ? "inset-y-0 -left-1.5 w-3" : "inset-x-0 -top-1.5 h-3"}`} />
-      <div className={`rounded-full bg-stone-400 group-hover:bg-teal-600 ${vertical ? "h-8 w-[3px]" : "h-[3px] w-8"}`} />
+      <div className={`rounded-full bg-stone-400 group-hover:bg-teal-600 ${vertical ? "h-8 w-[5px]" : "h-[5px] w-8"}`} />
     </div>
   );
 }
