@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ask } from "@tauri-apps/plugin-dialog";
-import { ago, api, repoName, type Detail as DetailData, type FileDiff, type FileStatus, type Hunk } from "../lib/api";
+import { ago, api, type Detail as DetailData, type FileDiff, type FileStatus, type Hunk } from "../lib/api";
 import { Chip } from "../ui/Chip";
 import { DiffView } from "./DiffView";
 import { ConflictView } from "./ConflictView";
@@ -140,10 +140,6 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
         <MergeDialog root={root} path={wt} branch={d.worktree.branch} headSummary={d.head_summary} onClose={() => setMerging(false)} onMerged={() => { onChanged(); onBack(); }} />
       )}
       <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-stone-300 bg-white px-4 dark:border-stone-700 dark:bg-stone-800">
-        <button onClick={onBack} className="text-xs text-stone-500 hover:text-stone-800 dark:hover:text-stone-200">← Back</button>
-        <span className="text-stone-400">/</span>
-        <span className="font-mono text-xs text-stone-500">{repoName(root)}</span>
-        <span className="text-stone-400">/</span>
         <span className="font-mono text-xs font-medium">{d.worktree.branch ?? "(detached)"}</span>
         {isMain && <Chip>main worktree</Chip>}
         {b && b.ahead != null && <Chip tone={(b.behind ?? 0) > 0 ? "amber" : "grey"}>↑{b.ahead} ↓{b.behind}</Chip>}
