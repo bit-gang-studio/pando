@@ -51,6 +51,7 @@ fn fixture() -> Fx {
     git(&base, &["init", "-q", "-b", "main", "work"]);
     git(&root, &["config", "user.name", "Test"]);
     git(&root, &["config", "user.email", "test@example.com"]);
+    git(&root, &["config", "core.autocrlf", "false"]);
     commit(&root, "one");
     git(
         &root,

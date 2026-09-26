@@ -52,6 +52,7 @@ fn fixture() -> Fx {
     // CI runners have no global identity; core commands must find one.
     git(&root, &["config", "user.name", "Test"]);
     git(&root, &["config", "user.email", "test@example.com"]);
+    git(&root, &["config", "core.autocrlf", "false"]);
     commit(&root, "one");
     git(
         &root,

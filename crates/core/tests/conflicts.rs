@@ -38,6 +38,7 @@ fn paused() -> (tempfile::TempDir, PathBuf, PathBuf) {
     git(&base, &["init", "-q", "-b", "main", "work"]);
     git(&root, &["config", "user.name", "Test"]);
     git(&root, &["config", "user.email", "test@example.com"]);
+    git(&root, &["config", "core.autocrlf", "false"]);
     write(&root, "a.txt", "line\n");
     git(&root, &["add", "."]);
     git(&root, &["commit", "-q", "-m", "init"]);
