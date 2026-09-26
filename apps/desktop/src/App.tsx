@@ -14,6 +14,18 @@ export default function App() {
   const [fatal, setFatal] = useState<string | null>(null);
 
   useEffect(() => {
+    const ZOOM_KEY = "pando.zoom";
+    const apply = (z: number) => { (document.documentElement.style as unknown as { zoom: string }).zoom = String(z); try { localStorage.setItem(ZOOM_KEY, String(z)); } catch { /* ignore */ } };
+    let zoom = 1;
+    try { zoom = Number(localStorage.getItem(ZOOM_KEY)) || 1; } catch { /* ignore */ }
+    apply(zoom);
+    const onZoomKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      if (e.key === "=" || e.key === "+") { e.preventDefault(); zoom = Math.min(2, Math.round((zoom + 0.1) * 10) / 10); apply(zoom); }
+      else if (e.key === "-") { e.preventDefault(); zoom = Math.max(0.6, Math.round((zoom - 0.1) * 10) / 10); apply(zoom); }
+      else if (e.key === "0") { e.preventDefault(); zoom = 1; apply(zoom); }
+    };
+    window.addEventListener("keydown", onZoomKey);
     const onHash = () => setRoute(fromHash(window.location.hash));
     const onErr = (e: ErrorEvent) => setFatal(e.message);
     const onRej = (e: PromiseRejectionEvent) => setFatal(String(e.reason));
@@ -21,7 +33,7 @@ export default function App() {
     window.addEventListener("error", onErr);
     window.addEventListener("unhandledrejection", onRej);
     api.reposList().then(setUserConfig).catch(() => {});
-    return () => { window.removeEventListener("hashchange", onHash); window.removeEventListener("error", onErr); window.removeEventListener("unhandledrejection", onRej); };
+    return () => { window.removeEventListener("keydown", onZoomKey); window.removeEventListener("hashchange", onHash); window.removeEventListener("error", onErr); window.removeEventListener("unhandledrejection", onRej); };
   }, []);
 
   useEffect(() => { setWindowTitle(route); setFatal(null); }, [route]);

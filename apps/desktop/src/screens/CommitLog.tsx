@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ago, api, type LogEntry } from "../lib/api";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
+import { colorFor, LANE_W, layoutGraph, ROW_H, type GraphRow } from "../lib/graph";
+import { useMemo } from "react";
 
 type Props = {
   root: string;
@@ -33,6 +35,10 @@ export function CommitLog({ root, branches, dirtyWorktrees, selected, onSelect, 
 
   useEffect(() => { load(0); }, [load, refreshKey]);
 
+  const graph = useMemo(() => layoutGraph(entries), [entries]);
+  const maxLanes = Math.max(1, ...graph.map((g) => g.lanes));
+  const graphW = maxLanes * LANE_W + 6;
+
   return (
     <div className="flex min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-4 py-1.5 dark:border-stone-700 dark:bg-stone-800">
@@ -51,13 +57,14 @@ export function CommitLog({ root, branches, dirtyWorktrees, selected, onSelect, 
             <span className="text-xs text-stone-500">in {dirtyWorktrees} {dirtyWorktrees === 1 ? "worktree" : "worktrees"}</span>
           </button>
         )}
-        {entries.map((e) => (
+        {entries.map((e, i) => (
           <div
             key={e.id}
+            style={{ height: ROW_H }}
             onClick={(ev) => (wantsNewWindow(ev) ? openInNewWindow({ kind: "commit", root, id: e.id }) : onSelect(selected === e.id ? null : e.id))}
-            className={`flex cursor-pointer items-center gap-3 border-b border-stone-100 px-4 py-1.5 dark:border-stone-700 ${selected === e.id ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}
+            className={`flex cursor-pointer items-center gap-3 border-b border-stone-100 pl-2 pr-4 dark:border-stone-700 ${selected === e.id ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}
           >
-            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${e.is_head ? "bg-teal-700" : e.parents.length > 1 ? "bg-stone-300 dark:bg-stone-600" : "bg-stone-400"}`} />
+            <GraphCell row={graph[i]} width={graphW} head={e.is_head} />
             <span className="flex shrink-0 gap-1">
               {e.refs.map((r) => <RefChip key={r} name={r} />)}
             </span>
@@ -84,4 +91,20 @@ function RefChip({ name }: { name: string }) {
       ? "bg-stone-200 text-stone-700 dark:bg-stone-700 dark:text-stone-200"
       : "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200";
   return <span className={`rounded px-1.5 py-px font-mono text-[11px] ${cls}`} title={name}>{label}</span>;
+}
+
+function GraphCell({ row, width, head }: { row: GraphRow; width: number; head: boolean }) {
+  const x = (lane: number) => lane * LANE_W + LANE_W / 2 + 2;
+  const mid = ROW_H / 2;
+  return (
+    <svg width={width} height={ROW_H} className="shrink-0" aria-hidden="true">
+      {row.through.map((l) => <line key={`t${l}`} x1={x(l)} y1={0} x2={x(l)} y2={ROW_H} stroke={colorFor(l)} strokeWidth={2} />)}
+      {row.into.map((l) => <path key={`i${l}`} d={`M ${x(l)} 0 C ${x(l)} ${mid} ${x(row.lane)} ${mid} ${x(row.lane)} ${mid}`} fill="none" stroke={colorFor(l)} strokeWidth={2} />)}
+      <line x1={x(row.lane)} y1={0} x2={x(row.lane)} y2={mid} stroke={colorFor(row.lane)} strokeWidth={2} />
+      {row.down.map((d, k) => d.from === d.to
+        ? <line key={`d${k}`} x1={x(d.to)} y1={mid} x2={x(d.to)} y2={ROW_H} stroke={colorFor(d.to)} strokeWidth={2} />
+        : <path key={`d${k}`} d={`M ${x(d.from)} ${mid} C ${x(d.from)} ${ROW_H} ${x(d.to)} ${mid} ${x(d.to)} ${ROW_H}`} fill="none" stroke={colorFor(d.to)} strokeWidth={2} />)}
+      <circle cx={x(row.lane)} cy={mid} r={head ? 5 : 4} fill={head ? "#FFFFFF" : colorFor(row.lane)} stroke={colorFor(row.lane)} strokeWidth={2} />
+    </svg>
+  );
 }
