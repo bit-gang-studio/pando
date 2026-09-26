@@ -11,6 +11,20 @@ body {
   color: #1a1a18;
 }
 
+button:not(:disabled),
+a[href],
+select,
+[role="button"],
+[role="tab"],
+[role="menuitem"],
+summary {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: default;
+}
+
 @media (prefers-color-scheme: dark) {
   body {
     background: #1a1a18;
