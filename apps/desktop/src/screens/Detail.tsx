@@ -4,6 +4,7 @@ import { ago, api, type Detail as DetailData, type FileDiff, type FileStatus, ty
 import { Chip } from "../ui/Chip";
 import { DiffView } from "./DiffView";
 import { ConflictView } from "./ConflictView";
+import { SplitHandle, useSplit } from "../ui/Split";
 import { MergeDialog } from "../dialogs/MergeDialog";
 
 type Props = { root: string; path: string; onBack: () => void; onChanged: () => void };
@@ -25,6 +26,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const msgRef = useRef<HTMLTextAreaElement>(null);
   const [merging, setMerging] = useState(false);
+  const split = useSplit("pando.split.worktree", 300, "x", 200, 700);
 
   const refresh = useCallback(async () => {
     try {
@@ -172,8 +174,8 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
         </div>
       )}
 
-      <div className="flex min-h-0 min-w-0 grow">
-        <aside className="flex w-[300px] shrink-0 flex-col border-r border-stone-300 bg-white dark:border-stone-700 dark:bg-stone-800">
+      <div ref={split.box} className="flex min-h-0 min-w-0 grow">
+        <aside style={{ width: split.size }} className="flex shrink-0 flex-col bg-white dark:bg-stone-800">
           <div className="flex min-h-0 grow flex-col gap-0.5 overflow-y-auto p-2">
             {d.operation && (
               <>
@@ -234,6 +236,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
           </div>
         </aside>
 
+        <SplitHandle axis="x" onMouseDown={split.start} />
         <main className="flex min-w-0 grow flex-col bg-white dark:bg-stone-800">
           {d.operation && sel && (d.operation.conflicted.includes(sel.path) || d.operation.resolved.includes(sel.path)) ? (
             <ConflictView worktree={wt} path={sel.path} op={d.operation} onChanged={refresh} onOpenFile={() => api.openInEditor(`${wt}/${sel!.path}`)} />

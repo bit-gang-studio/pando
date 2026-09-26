@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { ago, api, type CommitDiff, type FileDiff } from "../lib/api";
 import { DiffView } from "./DiffView";
+import { SplitHandle, useSplit } from "../ui/Split";
 
 export function CommitDetail({ root, id, onBack }: { root: string; id: string; onBack?: () => void }) {
   const [c, setC] = useState<CommitDiff | null>(null);
@@ -9,6 +10,7 @@ export function CommitDetail({ root, id, onBack }: { root: string; id: string; o
   const [loading, setLoading] = useState(false);
   const [mode, setMode] = useState<"unified" | "split">("unified");
   const [error, setError] = useState<string | null>(null);
+  const split = useSplit("pando.split.commit", 300, "x", 180, 700);
 
   useEffect(() => {
     setC(null); setSel(null); setDiff(null);
@@ -41,8 +43,8 @@ export function CommitDetail({ root, id, onBack }: { root: string; id: string; o
         <span className="text-stone-500">{c.commit.author} · {ago(c.commit.time)}</span>
         <span className="text-stone-500">{c.files.length} {c.files.length === 1 ? "file" : "files"}</span>
       </div>
-      <div className="flex min-h-0 grow">
-        <aside className="flex w-[300px] shrink-0 flex-col overflow-y-auto border-r border-stone-200 bg-white dark:border-stone-700 dark:bg-stone-800">
+      <div ref={split.box} className="flex min-h-0 grow">
+        <aside style={{ width: split.size }} className="flex shrink-0 flex-col overflow-y-auto bg-white dark:bg-stone-800">
           <pre className="whitespace-pre-wrap border-b border-stone-200 p-3 font-sans text-[13px] dark:border-stone-700">{c.message}</pre>
           {c.files.map((f) => (
             <button key={f.path} onClick={() => setSel(f.path)} className={`flex items-center gap-2 px-3 py-1.5 text-left ${sel === f.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
@@ -52,6 +54,7 @@ export function CommitDetail({ root, id, onBack }: { root: string; id: string; o
             </button>
           ))}
         </aside>
+        <SplitHandle axis="x" onMouseDown={split.start} />
         <main className="flex min-w-0 grow flex-col bg-white dark:bg-stone-800">
           <DiffView diff={diff} loading={loading} mode={mode} onMode={setMode} onHunk={() => {}} onOpenFile={() => sel && api.openInEditor(`${root}/${sel}`)} readOnly />
         </main>
