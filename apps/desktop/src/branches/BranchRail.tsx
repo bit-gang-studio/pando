@@ -57,7 +57,7 @@ export function BranchRail({ root, branch, mainBranch, refreshKey, onChanged }: 
   const ahead = history?.base_index ?? null;
 
   return (
-    <aside className="flex w-[360px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-stone-300 bg-stone-100 p-4 dark:border-stone-700 dark:bg-stone-900">
+    <aside className="flex w-[320px] shrink-0 flex-col gap-3 overflow-y-auto border-l border-stone-300 bg-stone-100 p-4 dark:border-stone-700 dark:bg-stone-900">
       {error && <div className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
 
       {branch ? (

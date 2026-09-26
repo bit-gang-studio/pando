@@ -120,7 +120,7 @@ export function Board() {
         <NewWorktreeDialog repos={repos} initialRepo={scope} initialBranch={creating.branch ?? null} onClose={() => setCreating(false)} onCreated={refresh} />
       )}
 
-      <div className="flex min-h-0 grow">
+      <div className="flex min-h-0 min-w-0 grow">
         <aside className="flex w-[232px] shrink-0 flex-col gap-5 border-r border-stone-300 bg-stone-200/70 p-3 dark:border-stone-700 dark:bg-stone-900">
           <nav className="flex flex-col gap-0.5">
             <div className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-stone-500">VIEWS</div>
@@ -163,7 +163,7 @@ export function Board() {
           <Branches root={scope} onOpenAsWorktree={(branch) => setCreating({ branch })} onChanged={refresh} />
         ) : (
         <>
-        <main className="flex min-w-0 grow flex-col gap-4 overflow-y-auto p-6">
+        <main className="flex min-w-0 grow flex-col gap-4 overflow-auto p-6">
           <div className="flex items-baseline gap-3">
             <h1 className="text-lg font-semibold">{VIEWS.find((v) => v.id === view)?.label}</h1>
             <span className="text-stone-500">{total} across {visible.length} {visible.length === 1 ? "repository" : "repositories"}</span>

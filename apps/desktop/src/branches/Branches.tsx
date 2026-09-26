@@ -11,7 +11,7 @@ type Props = {
 };
 
 const btn = "h-7 rounded-md border border-stone-300 bg-white px-2.5 text-xs hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
-const COLS = "grid-cols-[16px_minmax(200px,1fr)_150px_100px_minmax(160px,1fr)_auto]";
+const COLS = "grid-cols-[16px_minmax(160px,1fr)_130px_90px_minmax(120px,1fr)_minmax(0,auto)]";
 
 export function Branches({ root, onOpenAsWorktree, onChanged }: Props) {
   const [local, setLocal] = useState<Branch[]>([]);
@@ -92,8 +92,8 @@ export function Branches({ root, onOpenAsWorktree, onChanged }: Props) {
   }
 
   return (
-    <div className="flex min-h-0 grow">
-      <main className="flex min-w-0 grow flex-col gap-3 overflow-y-auto p-6">
+    <div className="flex min-h-0 min-w-0 grow">
+      <main className="flex min-w-0 grow flex-col gap-3 overflow-auto p-6">
         <div className="flex items-baseline gap-3">
           <h1 className="text-lg font-semibold">Branches</h1>
           <span className="text-stone-500">
@@ -151,7 +151,7 @@ export function Branches({ root, onOpenAsWorktree, onChanged }: Props) {
                 <span className="truncate text-xs">
                   {b.last_commit && <><span className="font-mono text-stone-500">{b.last_commit.id.slice(0, 7)}</span> {b.last_commit.summary} <span className="text-stone-500">· {ago(b.last_commit.time)}</span></>}
                 </span>
-                <div className="flex justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
+                <div className="flex flex-wrap justify-end gap-1.5" onClick={(e) => e.stopPropagation()}>
                   {inMain && <button onClick={() => run("pull", () => api.branchPull(root, true))} disabled={!!busy || !b.upstream} className={btn}>Pull</button>}
                   {inWs && <button onClick={() => api.openInEditor(b.checked_out_in!)} className={btn}>Open worktree</button>}
                   {!checkedOut && (
@@ -184,7 +184,7 @@ export function Branches({ root, onOpenAsWorktree, onChanged }: Props) {
               <span className="truncate text-xs">
                 {r.last_commit && <><span className="font-mono text-stone-500">{r.last_commit.id.slice(0, 7)}</span> {r.last_commit.summary} <span className="text-stone-500">· {ago(r.last_commit.time)}</span></>}
               </span>
-              <div className="flex justify-end gap-1.5">
+              <div className="flex flex-wrap justify-end gap-1.5">
                 <button onClick={() => run("track", () => api.branchTrackRemote(root, r.name, r.short))} disabled={!!busy} className={btn}>Track locally</button>
                 <button onClick={() => run("track", async () => { await api.branchTrackRemote(root, r.name, r.short); onOpenAsWorktree(r.short); })} disabled={!!busy} className={`${btn} border-teal-700 font-medium text-teal-700`}>Open as worktree</button>
               </div>

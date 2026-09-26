@@ -79,7 +79,7 @@ export function Settings({ root, userConfig, onUserConfig }: { root: string; use
   const up = (patch: (c: RepoConfig) => RepoConfig) => setCfg((c) => (c ? patch(structuredClone(c)) : c));
 
   return (
-    <div className="flex min-h-0 grow">
+    <div className="flex min-h-0 min-w-0 grow">
       <nav className="flex w-[200px] shrink-0 flex-col gap-0.5 border-r border-stone-300 bg-stone-200/70 p-3 dark:border-stone-700 dark:bg-stone-900">
         <div className="px-2 pb-1 text-[11px] font-semibold tracking-wider text-stone-500">REPOSITORY</div>
         {TABS.filter((t) => t.group === "repo").map((t) => (
@@ -91,7 +91,7 @@ export function Settings({ root, userConfig, onUserConfig }: { root: string; use
         ))}
       </nav>
 
-      <main className="flex min-w-0 grow flex-col gap-4 overflow-y-auto p-6">
+      <main className="flex min-w-0 grow flex-col gap-4 overflow-auto p-6">
         <div className="flex items-baseline gap-3">
           <h1 className="text-lg font-semibold">{TABS.find((t) => t.id === tab)?.label}</h1>
           <span className="text-stone-500">{repoName(root)}</span>
