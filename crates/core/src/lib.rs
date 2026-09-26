@@ -5,6 +5,7 @@
 pub mod backup;
 pub mod board;
 pub mod branch;
+pub mod clean;
 mod cmd;
 pub mod commit;
 pub mod config;
@@ -30,6 +31,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub use board::{Board, Row};
 pub use branch::{Branch, RemoteBranch};
+pub use clean::{Candidate, CleanRequest};
 pub use commit::CommitInfo;
 pub use config::RepoConfig;
 pub use detail::Detail;

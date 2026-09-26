@@ -1,10 +1,10 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
 use pando_core::{
-    board, branch, commit, detail, diff, history, index, land, launch, runtime, stash, sync, tag,
-    user_config, worktree, Board, Branch, CommitDiff, CreateWorktree, Created, Detail, FileDiff,
-    History, Hunk, LandPlan, LandResult, Preflight, RemoteBranch, Repo, RepoConfig, Stash,
-    SyncResult, Tag, UserConfig,
+    board, branch, clean, commit, detail, diff, history, index, land, launch, runtime, stash, sync,
+    tag, user_config, worktree, Board, Branch, Candidate, CleanRequest, CommitDiff, CreateWorktree,
+    Created, Detail, FileDiff, History, Hunk, LandPlan, LandResult, Preflight, RemoteBranch, Repo,
+    RepoConfig, Stash, SyncResult, Tag, UserConfig,
 };
 use std::path::PathBuf;
 
@@ -405,6 +405,24 @@ async fn land_run(root: PathBuf, path: PathBuf, plan: LandPlan) -> R<LandResult>
 }
 
 #[tauri::command]
+async fn clean_plan(root: PathBuf) -> R<Vec<Candidate>> {
+    blocking(move || {
+        let repo = Repo::discover(&root).map_err(err)?;
+        clean::plan(&repo).map_err(err)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn clean_run(root: PathBuf, req: CleanRequest) -> R<Vec<land::Step>> {
+    blocking(move || {
+        let repo = Repo::discover(&root).map_err(err)?;
+        clean::run(&repo, &req).map_err(err)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn open_in_editor(path: PathBuf) -> R<()> {
     blocking(move || {
         let editor = user_config::load().ok().and_then(|c| c.editor);
@@ -461,6 +479,8 @@ pub fn run() {
             sync_rebase,
             land_preflight,
             land_run,
+            clean_plan,
+            clean_run,
             open_in_editor
         ])
         .run(tauri::generate_context!())

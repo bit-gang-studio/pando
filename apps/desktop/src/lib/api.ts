@@ -99,6 +99,18 @@ export type LandPlan = {
 };
 
 export type LandStep = { name: string; ok: boolean; output: string };
+
+export type Candidate = {
+  path: string;
+  branch: string | null;
+  reason: "merged" | "missing" | "empty" | "idle";
+  detail: string;
+  unpushed: boolean;
+  dirty: number;
+  disk_bytes: number;
+  last_commit_at: number | null;
+};
+export type CleanRequest = { paths: string[]; delete_branches: boolean; delete_remote: boolean; skip_unpushed: boolean };
 export type LandResult = { landed: boolean; steps: LandStep[]; backup_ref: string | null };
 export type Tag = { name: string; target: string };
 
@@ -216,7 +228,16 @@ export const api = {
   landPreflight: (root: string, path: string, branch: string, base: string | null) =>
     invoke<Preflight>("land_preflight", { root, path, branch, base }),
   landRun: (root: string, path: string, plan: LandPlan) => invoke<LandResult>("land_run", { root, path, plan }),
+  cleanPlan: (root: string) => invoke<Candidate[]>("clean_plan", { root }),
+  cleanRun: (root: string, req: CleanRequest) => invoke<LandStep[]>("clean_run", { root, req }),
 };
+
+export function bytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  if (n < 1024 * 1024 * 1024) return `${Math.round(n / 1024 / 1024)} MB`;
+  return `${(n / 1024 / 1024 / 1024).toFixed(1)} GB`;
+}
 
 export function changed(s: Summary | null): number {
   return s ? s.staged + s.unstaged + s.untracked + s.conflicts : 0;

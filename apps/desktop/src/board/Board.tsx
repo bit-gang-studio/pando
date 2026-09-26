@@ -5,6 +5,7 @@ import { api, repoName, type Board as BoardData, type UserConfig } from "../lib/
 import { Branches } from "../branches/Branches";
 import { Detail } from "../detail/Detail";
 import { LandDialog } from "../land/LandDialog";
+import { CleanDialog } from "../clean/CleanDialog";
 import { Settings } from "../settings/Settings";
 import { NewWorktreeDialog } from "./NewWorktreeDialog";
 import { RightRail } from "./RightRail";
@@ -25,6 +26,7 @@ export function Board() {
   const [detail, setDetail] = useState<{ root: string; path: string } | null>(null);
   const [fatal, setFatal] = useState<string | null>(null);
   const [landing, setLanding] = useState<{ root: string; path: string; branch: string } | null>(null);
+  const [cleaning, setCleaning] = useState(false);
 
   useEffect(() => {
     const onErr = (e: ErrorEvent) => setFatal(e.message);
@@ -59,6 +61,7 @@ export function Board() {
     const onFocus = () => refresh();
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "n") { e.preventDefault(); setCreating({}); }
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "c") { e.preventDefault(); setCleaning(true); }
     };
     window.addEventListener("focus", onFocus);
     window.addEventListener("keydown", onKey);
@@ -123,6 +126,9 @@ export function Board() {
         <button onClick={addRepo} className="h-8 rounded-lg border border-stone-300 bg-white px-3 dark:border-stone-600 dark:bg-stone-700">
           Add repository
         </button>
+        <button onClick={() => setCleaning(true)} disabled={repos.length === 0} className="h-8 rounded-lg border border-stone-300 bg-white px-3 disabled:opacity-50 dark:border-stone-600 dark:bg-stone-700">
+          Clean up<span className="ml-2 text-xs text-stone-400">⌘⇧C</span>
+        </button>
         <button onClick={() => setCreating({})} disabled={repos.length === 0} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800 disabled:opacity-50">
           New worktree<span className="ml-2 text-xs opacity-70">⌘N</span>
         </button>
@@ -134,6 +140,7 @@ export function Board() {
           <button onClick={() => setFatal(null)} className="underline">dismiss</button>
         </div>
       )}
+      {cleaning && <CleanDialog repos={scope ? [scope] : repos} onClose={() => setCleaning(false)} onDone={refresh} />}
       {landing && (
         <LandDialog root={landing.root} path={landing.path} branch={landing.branch} onClose={() => setLanding(null)} onLanded={refresh} />
       )}
