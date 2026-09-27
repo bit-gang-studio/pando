@@ -15,7 +15,8 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
   const [tick, setTick] = useState(0);
   const [wtCommit, setWtCommit] = useState<string | null>(null); // selected commit while on a worktree
   const [firstId, setFirstId] = useState<string | null>(null); // newest commit, shown by default on the repo page
-  const [showUncommitted, setShowUncommitted] = useState(false);
+  // null = not chosen yet: show uncommitted changes if there are any, else the newest commit.
+  const [uncommittedChoice, setShowUncommitted] = useState<boolean | null>(null);
   const split = useSplit(worktree ? "pando.split.worktree.px" : "pando.split.repo.px", worktree ? 240 : 320, "y", 120, 4000);
   const side = useSplit("pando.split.sidebar.px", 300, "x", 200, 700);
   const onLoaded = useCallback((id: string | null) => setFirstId(id), []);
@@ -45,6 +46,7 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
   const wtDetached = worktree ? data?.detached.find((d) => d.worktree.path === worktree) ?? null : null;
   const wtBranch = wtRow?.branch.name ?? "";
   const wtDirty = worktree ? changed(wtRow?.status ?? wtDetached?.status ?? null) : 0;
+  const showUncommitted = !worktree && (uncommittedChoice ?? (!commit && dirtyPaths.length > 0));
   const selected = worktree ? wtCommit : commit ?? firstId;
 
   const shown = worktree ? null : commit ?? firstId;
