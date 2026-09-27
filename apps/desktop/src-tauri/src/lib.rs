@@ -26,6 +26,15 @@ fn repo(root: &std::path::Path) -> R<Repo> {
     Repo::discover(root).map_err(err)
 }
 
+// ---- access ----------------------------------------------------------------
+
+/// Folders the OS won't let Pando read (macOS privacy). The app runs this
+/// before any git, so the user sees one prompt, not one per git command.
+#[tauri::command]
+async fn access_check(paths: Vec<PathBuf>) -> R<Vec<PathBuf>> {
+    blocking(move || Ok(pando_core::access::check(&paths))).await
+}
+
 // ---- repos ---------------------------------------------------------------
 
 #[tauri::command]
@@ -438,6 +447,7 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
+            access_check,
             repos_list,
             repos_add,
             repos_remove,

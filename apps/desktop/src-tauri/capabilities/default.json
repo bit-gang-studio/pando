@@ -15,6 +15,14 @@
     "core:webview:allow-set-webview-zoom",
     "updater:default",
     "process:allow-restart",
-    "opener:allow-reveal-item-in-dir"
+    "opener:allow-reveal-item-in-dir",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [
+        {
+          "url": "x-apple.systempreferences:*"
+        }
+      ]
+    }
   ]
 }

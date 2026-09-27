@@ -2,6 +2,7 @@
 //! Every public type is serde so the CLI, the desktop app, and any
 //! future daemon speak the same contract.
 
+pub mod access;
 pub mod backup;
 pub mod branch;
 mod cmd;

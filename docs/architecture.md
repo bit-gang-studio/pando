@@ -15,6 +15,10 @@ apps/desktop (Tauri 2 + React)     crates/cli (pando)
 
 Core is the only place that touches git. Its API is plain serde request and response types. In v1 both apps link core in-process. A daemon or hosted version can wrap the same API later.
 
+## Folder access
+
+On macOS, Documents, Desktop, Downloads and iCloud are protected and the first read asks the user. The app runs `access::check` on every repo folder first, alone, before any git; if a folder is blocked it shows how to allow it and runs nothing else. Otherwise each parallel git command would ask separately.
+
 ## Git backend
 
 - Mutations: the user's `git` CLI, porcelain and `-z` output. Hooks, credentials, signing, and fsmonitor keep working.

@@ -9,6 +9,7 @@ import { Header } from "./ui/Header";
 import { ConfirmHost } from "./ui/Confirm";
 import { ToastHost, toastError } from "./ui/Toast";
 import { UpdateNotice } from "./ui/UpdateNotice";
+import { AccessGate } from "./ui/AccessGate";
 
 export default function App() {
   const [route, setRoute] = useState<Route>(() => fromHash(window.location.hash));
@@ -38,6 +39,7 @@ export default function App() {
       <ToastHost />
       <UpdateNotice />
       <div className="flex min-h-0 min-w-0 grow bg-stone-100 dark:bg-stone-900">
+        <AccessGate root={route.kind === "repos" ? null : route.root}>
         {route.kind === "repos" && <Repos />}
         {route.kind !== "repos" && (
           // One instance per repo, so switching worktree or commit keeps the sidebar mounted.
@@ -49,6 +51,7 @@ export default function App() {
             branch={route.kind === "branch" ? route.name : null}
           />
         )}
+        </AccessGate>
       </div>
     </div>
   );

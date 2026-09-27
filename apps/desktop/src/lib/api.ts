@@ -92,6 +92,8 @@ export type MergeResult = { merged: boolean; steps: Step[]; backup_refs: string[
 // ---- calls -------------------------------------------------------------------
 
 export const api = {
+  /// Folders the OS won't let Pando read. Run before any git.
+  accessCheck: (paths: string[]) => invoke<string[]>("access_check", { paths }),
   reposList: () => invoke<UserConfig>("repos_list"),
   reposAdd: (path: string) => invoke<UserConfig>("repos_add", { path }),
   reposRemove: (path: string) => invoke<UserConfig>("repos_remove", { path }),

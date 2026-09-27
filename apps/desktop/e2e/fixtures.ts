@@ -95,6 +95,7 @@ export function typical() {
     diff_file: fileDiff("a.ts", 5),
     watch_repo: null,
     backups_list: [],
+    access_check: [],
   };
 }
 
