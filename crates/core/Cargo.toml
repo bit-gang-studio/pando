@@ -10,6 +10,7 @@ homepage.workspace = true
 [dependencies]
 dunce = "1.0.5"
 gix = { version = "0.88", default-features = false, features = ["revision", "sha1"] }
+notify = { version = "8", default-features = false, features = ["macos_fsevent"] }
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

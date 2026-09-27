@@ -2,11 +2,14 @@
 
 use pando_core::{
     branch, commit, conflict, detail, diff, history, index, log, merge, operation, overview, stash,
-    sync, tag, user_config, worktree, Applied, CommitDiff, ConflictFile, CreateWorktree, Created,
-    Detail, FileDiff, Hunk, Log, MergePlan, MergeResult, Operation, Overview, Preflight, Repo,
-    Side, Stash, SyncResult, UserConfig,
+    sync, tag, user_config, watch, worktree, Applied, CommitDiff, ConflictFile, CreateWorktree,
+    Created, Detail, FileDiff, Hunk, Log, MergePlan, MergeResult, Operation, Overview, Preflight,
+    Repo, Side, Stash, SyncResult, UserConfig,
 };
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::Mutex;
+use tauri::Emitter;
 
 type R<T> = Result<T, String>;
 
@@ -363,8 +366,47 @@ async fn op_abort(worktree: PathBuf) -> R<()> {
     blocking(move || operation::abort(&worktree).map_err(err)).await
 }
 
+// ---- file watching ---------------------------------------------------------
+
+/// One watcher per repo, shared by every window. Replaced when its worktrees change.
+#[derive(Default)]
+struct Watchers(Mutex<HashMap<PathBuf, (Vec<PathBuf>, watch::RepoWatcher)>>);
+
+/// Watch a repo and its worktrees; emits `repo-changed` with the root when
+/// something git would notice changes. Errors mean the app should keep polling.
+#[tauri::command]
+async fn watch_repo(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, Watchers>,
+    root: PathBuf,
+    mut worktrees: Vec<PathBuf>,
+) -> R<()> {
+    worktrees.sort();
+    if let Some((w, _)) = state.0.lock().map_err(err)?.get(&root) {
+        if *w == worktrees {
+            return Ok(());
+        }
+    }
+    let (r, wts) = (root.clone(), worktrees.clone());
+    let watcher = blocking(move || {
+        let emit_root = r.clone();
+        watch::watch(&repo(&r)?, &wts, move || {
+            let _ = app.emit("repo-changed", &emit_root);
+        })
+        .map_err(err)
+    })
+    .await?;
+    state
+        .0
+        .lock()
+        .map_err(err)?
+        .insert(root, (worktrees, watcher));
+    Ok(())
+}
+
 pub fn run() {
     tauri::Builder::default()
+        .manage(Watchers::default())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
@@ -385,6 +427,7 @@ pub fn run() {
             worktree_prune,
             branch_switch,
             branch_create_and_switch,
+            watch_repo,
             branch_rename,
             branch_set_upstream,
             branch_delete_remote,

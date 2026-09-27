@@ -10,6 +10,8 @@ fn base(cwd: &Path) -> Command {
     c.current_dir(cwd)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")
+        // Reads never rewrite the index, so the file watcher doesn't see its own refreshes.
+        .env("GIT_OPTIONAL_LOCKS", "0")
         .env_remove("GIT_DIR")
         .env_remove("GIT_WORK_TREE")
         .env_remove("GIT_INDEX_FILE");
@@ -75,4 +77,26 @@ where
         String::from_utf8_lossy(&out.stdout).into_owned(),
         String::from_utf8_lossy(&out.stderr).into_owned(),
     ))
+}
+
+/// Run git with `input` on stdin. Returns (exit code, stdout bytes).
+pub(crate) fn git_stdin<I, S>(cwd: &Path, args: I, input: &[u8]) -> Result<(i32, Vec<u8>)>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    use std::io::Write;
+    use std::process::Stdio;
+    let mut child = base(cwd)
+        .args(args)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null())
+        .spawn()?;
+    let mut stdin = child.stdin.take().expect("piped stdin");
+    let input = input.to_vec();
+    let writer = std::thread::spawn(move || stdin.write_all(&input));
+    let out = child.wait_with_output()?;
+    let _ = writer.join();
+    Ok((out.status.code().unwrap_or(-1), out.stdout))
 }

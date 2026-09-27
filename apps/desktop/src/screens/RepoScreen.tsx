@@ -14,6 +14,7 @@ import { SplitHandle, useSplit } from "../ui/Split";
 import { ErrorState, Loading } from "../ui/State";
 import { withToast } from "../ui/Toast";
 import { errorParts } from "../lib/errors";
+import { useRepoRefresh, watchRepo } from "../lib/watch";
 
 type Props = { root: string; commit: string | null; worktree?: string | null; branch?: string | null };
 
@@ -43,13 +44,10 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
     catch (e) { setLoadError(String(e)); }
   }, [root]);
 
-  useEffect(() => {
-    refresh();
-    const t = setInterval(() => { if (document.hasFocus()) refresh(); }, 6000);
-    const onFocus = () => refresh();
-    window.addEventListener("focus", onFocus);
-    return () => { clearInterval(t); window.removeEventListener("focus", onFocus); };
-  }, [refresh]);
+  useRepoRefresh(root, refresh);
+  // Watch every worktree folder; re-watch when the set changes.
+  const wtKey = [...(data?.branches.flatMap((b) => (b.worktree ? [b.worktree.path] : [])) ?? []), ...(data?.detached.map((d) => d.worktree.path) ?? [])].join("\0");
+  useEffect(() => { if (data) watchRepo(root, wtKey.split("\0").filter(Boolean)); }, [root, wtKey, !!data]);
 
   const dirty = (data?.branches.filter((b) => b.worktree && changed(b.status) > 0).length ?? 0) + (data?.detached.filter((d) => changed(d.status) > 0).length ?? 0);
   const dirtyPaths = [

@@ -23,6 +23,7 @@ pub mod status;
 pub mod sync;
 pub mod tag;
 pub mod user_config;
+pub mod watch;
 pub mod worktree;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");

@@ -97,6 +97,7 @@ export const api = {
   reposRemove: (path: string) => invoke<UserConfig>("repos_remove", { path }),
   userConfigSave: (config: UserConfig) => invoke<void>("user_config_save", { config }),
 
+  watchRepo: (root: string, worktrees: string[]) => invoke<void>("watch_repo", { root, worktrees }),
   overview: (root: string) => invoke<Overview>("overview_load", { root }),
   fetchAll: (root: string) => invoke<void>("fetch_all", { root }),
   branchCreate: (root: string, name: string, base: string | null) => invoke<void>("branch_create", { root, name, base }),

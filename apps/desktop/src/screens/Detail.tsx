@@ -8,6 +8,7 @@ import { MergeDialog } from "../dialogs/MergeDialog";
 import { confirm } from "../ui/Confirm";
 import { ErrorState, Loading } from "../ui/State";
 import { errorParts } from "../lib/errors";
+import { useRepoRefresh } from "../lib/watch";
 
 const STATUS_LABEL: Record<string, string> = { M: "Modified", A: "Added", D: "Deleted", R: "Renamed", C: "Copied", T: "Type changed", U: "Conflict", "?": "Untracked (new, not tracked by git yet)" };
 type Props = { root: string; path: string; onBack: () => void; onChanged: () => void };
@@ -48,13 +49,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
     }
   }, [root, path]);
 
-  useEffect(() => {
-    refresh();
-    const t = setInterval(() => { if (document.hasFocus()) refresh(); }, 4000);
-    const onFocus = () => refresh();
-    window.addEventListener("focus", onFocus);
-    return () => { clearInterval(t); window.removeEventListener("focus", onFocus); };
-  }, [refresh]);
+  useRepoRefresh(root, refresh);
 
   useEffect(() => {
     if (!d || !sel) { setDiff(null); return; }
