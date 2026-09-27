@@ -139,9 +139,10 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
         const n = changed(r.status);
         const conflicts = r.status?.conflicts ?? 0;
         const dot = r.worktree.prunable || conflicts ? "bg-red-700" : n > 0 ? "bg-amber-700" : r.isMain ? "bg-stone-400" : "bg-teal-700";
+        const dotTip = r.worktree.prunable ? "Folder is missing" : conflicts ? "Has conflicts" : n > 0 ? "Has uncommitted changes" : r.isMain ? "Main worktree, clean" : "Clean";
         return (
           <div key={r.key} onClick={(e) => openRow(e, r.worktree.path)} onContextMenu={(e) => rowMenu(e, r)} title={r.worktree.path} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${current === r.worktree.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
-            <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+            <span title={dotTip} className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
             <div className="min-w-0 grow">
               <div className="truncate font-mono text-body font-medium">{r.label}</div>
               <div className="truncate text-label text-stone-500">

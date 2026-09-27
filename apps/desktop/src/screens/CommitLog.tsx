@@ -14,6 +14,8 @@ type Props = {
   selected: string | null;
   onSelect: (id: string | null) => void;
   onUncommitted: () => void;
+  /// Commit id -> folder names of worktrees whose HEAD is that commit.
+  worktreeHeads?: Record<string, string[]>;
   /// Called with the newest commit id after each load.
   onLoaded?: (firstId: string | null) => void;
   refreshKey: number;
@@ -21,7 +23,7 @@ type Props = {
 
 const PAGE = 200;
 
-export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, onLoaded, refreshKey }: Props) {
+export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, worktreeHeads = {}, onLoaded, refreshKey }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,8 +67,11 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
             onClick={(ev) => (wantsNewWindow(ev) ? openInNewWindow({ kind: "commit", root, id: e.id }) : onSelect(selected === e.id ? null : e.id))}
             className={`flex cursor-pointer items-center gap-3 pl-2 pr-4 ${selected === e.id ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}
           >
-            <GraphCell row={graph[i]} width={graphW} head={e.is_head} />
+            <GraphCell row={graph[i]} width={graphW} head={!!worktreeHeads[e.id] || e.is_head} />
             <span className="flex shrink-0 gap-1">
+              {(worktreeHeads[e.id] ?? []).map((w) => (
+                <span key={`wt-${w}`} title={`Checked out in the worktree ${w}`} className="rounded border border-teal-700 px-1.5 py-px font-mono text-label text-teal-800 dark:text-teal-200">⌂ {w}</span>
+              ))}
               {e.refs.map((r) => <RefChip key={r} name={r} />)}
             </span>
             <span className="min-w-0 grow truncate">{e.summary}</span>

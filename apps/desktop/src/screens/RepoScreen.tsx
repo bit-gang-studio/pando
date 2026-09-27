@@ -48,6 +48,14 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
     ...(data?.detached.filter((d) => changed(d.status) > 0).map((d) => d.worktree.path) ?? []),
   ];
 
+  // Every worktree's checked-out commit, labelled with its folder name.
+  const worktreeHeads: Record<string, string[]> = {};
+  for (const w of [...(data?.branches.map((b) => b.worktree) ?? []), ...(data?.detached.map((d) => d.worktree) ?? [])]) {
+    if (!w?.head) continue;
+    const name = w.path.split(/[\\/]/).pop() ?? w.path;
+    (worktreeHeads[w.head] ??= []).push(name);
+  }
+
   // Worktree mode: scope the log to its branch and treat "Uncommitted changes" as this worktree's.
   const wtRow = worktree ? data?.branches.find((b) => b.worktree?.path === worktree) ?? null : null;
   const wtDetached = worktree ? data?.detached.find((d) => d.worktree.path === worktree) ?? null : null;
@@ -75,6 +83,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
           onSelect={(id) => { setShowUncommitted(false); if (branch) setBrCommit(id); else if (worktree) setWtCommit(id); else navigate(id ? { kind: "commit", root, id } : { kind: "repo", root }); }}
           onLoaded={branch ? onBranchLoaded : worktree ? undefined : onLoaded}
           onUncommitted={() => (worktree ? setWtCommit(null) : setShowUncommitted(true))}
+          worktreeHeads={worktreeHeads}
           refreshKey={tick}
         />
       </div>
