@@ -36,7 +36,11 @@ pub fn watch(
 
     let (tx, rx) = mpsc::channel::<PathBuf>();
     let mut watcher = notify::recommended_watcher(move |res: notify::Result<notify::Event>| {
+        // Linux also reports reads (git reading its own config); only writes matter.
         if let Ok(ev) = res {
+            if matches!(ev.kind, notify::EventKind::Access(_)) {
+                return;
+            }
             for p in ev.paths {
                 let _ = tx.send(p);
             }
