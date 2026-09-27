@@ -9,6 +9,15 @@
 
 :root {
   color-scheme: light dark;
+  --graph-bg: #ffffff;
+  --lane-0: #0e6b63;
+  --lane-1: #b45309;
+  --lane-2: #1d4ed8;
+  --lane-3: #7c3aed;
+  --lane-4: #be185d;
+  --lane-5: #15803d;
+  --lane-6: #0891b2;
+  --lane-7: #a16207;
 }
 
 body {
@@ -64,8 +73,25 @@ button:disabled {
 }
 
 @media (prefers-color-scheme: dark) {
+  :root {
+    --graph-bg: #292524; /* stone-800, the graph's background */
+    --lane-0: #2dd4bf;
+    --lane-1: #fbbf24;
+    --lane-2: #60a5fa;
+    --lane-3: #a78bfa;
+    --lane-4: #f472b6;
+    --lane-5: #4ade80;
+    --lane-6: #22d3ee;
+    --lane-7: #facc15;
+  }
   body {
     background: #1a1a18;
     color: #e8e6df;
   }
+  /* Status text is written as the -700 shade for light mode. On dark
+     backgrounds use the light shade instead, so it stays readable. */
+  :is(.text-red-700, .text-red-800):not([class*="dark:text-"]) { color: var(--color-red-400); }
+  :is(.text-teal-700, .text-teal-800):not([class*="dark:text-"]) { color: var(--color-teal-400); }
+  :is(.text-amber-700, .text-amber-800):not([class*="dark:text-"]) { color: var(--color-amber-400); }
+  .border-teal-700:not([class*="dark:border-"]) { border-color: var(--color-teal-500); }
 }

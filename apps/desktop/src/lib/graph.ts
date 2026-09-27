@@ -58,5 +58,6 @@ export function layoutGraph(entries: LogEntry[]): GraphRow[] {
 
 export const LANE_W = 14;
 export const ROW_H = 28;
-export const COLORS = ["#0E6B63", "#B45309", "#1D4ED8", "#7C3AED", "#BE185D", "#15803D", "#0891B2", "#A16207"];
-export const colorFor = (lane: number) => COLORS[lane % COLORS.length];
+/// Lane colours are CSS variables (index.css) so they switch with dark mode.
+const LANES = 8;
+export const colorFor = (lane: number) => `var(--lane-${lane % LANES})`;
