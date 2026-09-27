@@ -8,6 +8,7 @@ import { Repos } from "./screens/Repos";
 import { Header } from "./ui/Header";
 import { ConfirmHost } from "./ui/Confirm";
 import { ToastHost, toastError } from "./ui/Toast";
+import { UpdateNotice } from "./ui/UpdateNotice";
 
 export default function App() {
   const [route, setRoute] = useState<Route>(() => fromHash(window.location.hash));
@@ -35,6 +36,7 @@ export default function App() {
       <Header route={route} />
       <ConfirmHost />
       <ToastHost />
+      <UpdateNotice />
       <div className="flex min-h-0 min-w-0 grow bg-stone-100 dark:bg-stone-900">
         {route.kind === "repos" && <Repos />}
         {route.kind !== "repos" && (

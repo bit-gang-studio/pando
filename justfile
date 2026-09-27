@@ -23,6 +23,14 @@ lint:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings
 
-# Build installers into apps/desktop/src-tauri/target/release/bundle
+# Build installers into target/release/bundle. Signs update files if ~/.tauri has the key.
 build:
-    pnpm --filter @pando/desktop tauri build
+    #!/usr/bin/env bash
+    set -euo pipefail
+    if [ -f ~/.tauri/pando-updater.key ]; then
+      export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/pando-updater.key)"
+      export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(cat ~/.tauri/pando-updater.password)"
+      pnpm --filter @pando/desktop tauri build
+    else
+      pnpm --filter @pando/desktop tauri build --config '{"bundle":{"createUpdaterArtifacts":false}}'
+    fi
