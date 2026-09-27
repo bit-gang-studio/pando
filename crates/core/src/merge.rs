@@ -1,5 +1,6 @@
 //! Merge a branch into its base: preflight, then a job made of steps.
-//! Rebase first, optionally squash, fast-forward the base, remove the worktree.
+//! Three styles, named like GitHub's: merge commit, squash and merge,
+//! rebase and merge.
 
 use crate::backup;
 use crate::branch::count_only_in;
@@ -25,30 +26,35 @@ pub struct Preflight {
     pub base_checked_out_in: Option<PathBuf>,
     pub base_worktree_clean: Option<bool>,
     pub has_upstream: bool,
+    /// Summary of the branch's newest commit, for a default message.
+    pub last_summary: Option<String>,
+    /// Number of uncommitted changes in the worktree.
+    pub uncommitted: u32,
     /// Blocking problems. Empty means Merge can run.
     pub problems: Vec<String>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum Destination {
-    /// Fast-forward the local base branch to the landed commits, optionally push it.
-    LocalMerge,
-    /// Only push the branch (for a PR made elsewhere).
-    PushBranch,
+pub enum Strategy {
+    /// `git merge --no-ff`: keeps every commit and adds a merge commit.
+    MergeCommit,
+    /// One new commit on the base with all the branch's changes.
+    Squash,
+    /// Replay the branch's commits on top of the base, then fast-forward.
+    Rebase,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MergePlan {
     pub branch: String,
     pub base: String,
-    pub squash: bool,
+    pub strategy: Strategy,
+    /// Commit message for merge commit and squash. Ignored for rebase.
     pub message: Option<String>,
-    pub destination: Destination,
     pub push_base: bool,
-    pub remove_worktree: bool,
+    /// Remove the worktree and delete the local branch afterwards.
     pub delete_branch: bool,
-    pub delete_remote: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -85,7 +91,12 @@ pub fn preflight(repo: &Repo, wt: &Path, branch: &str, base: &str) -> Result<Pre
     let base_id = g.rev_parse_single(base).map_err(gix_err)?.detach();
     let ahead = count_only_in(&g, tip, base_id)?;
     let behind = count_only_in(&g, base_id, tip)?;
-    let clean = status::summary(wt)?.is_clean();
+    let summary = status::summary(wt)?;
+    let clean = summary.is_clean();
+    let last_summary = g
+        .find_commit(tip)
+        .ok()
+        .and_then(|c| c.message().ok().map(|m| m.summary().to_string()));
 
     let (code, out, _) = git_raw(
         &repo.common_git_dir,
@@ -132,7 +143,11 @@ pub fn preflight(repo: &Repo, wt: &Path, branch: &str, base: &str) -> Result<Pre
 
     let mut problems = vec![];
     if !clean {
-        problems.push("Uncommitted changes in this worktree. Commit or stash first.".into());
+        let n = summary.changed();
+        problems.push(format!(
+            "Commit or stash the {n} {} in this worktree first.",
+            if n == 1 { "change" } else { "changes" }
+        ));
     }
     if ahead == 0 {
         problems.push(format!("No commits ahead of {base}. Nothing to land."));
@@ -161,6 +176,8 @@ pub fn preflight(repo: &Repo, wt: &Path, branch: &str, base: &str) -> Result<Pre
         base_checked_out_in,
         base_worktree_clean,
         has_upstream,
+        last_summary,
+        uncommitted: summary.changed(),
         problems,
     })
 }
@@ -204,44 +221,42 @@ pub fn run(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
         Ok(name.unwrap_or_default())
     });
 
-    step!(format!("Rebase onto {base}"), {
-        if let Some((remote, _)) = base.split_once('/') {
-            let _ = git(wt, ["fetch", "-q", remote]);
-        }
-        match git(wt, ["rebase", base]) {
-            Ok(o) => Ok(o),
-            Err(e) => {
-                let _ = git(wt, ["rebase", "--abort"]);
-                Err(crate::Error::Config(format!(
-                    "Rebase hit conflicts and was undone. {e}"
-                )))
+    let message = plan
+        .message
+        .clone()
+        .filter(|m| !m.trim().is_empty())
+        .unwrap_or_else(|| format!("Merge branch '{branch}'"));
+    let base_wt = worktree::list(repo)?
+        .into_iter()
+        .find(|w| w.branch.as_deref() == Some(base_local.as_str()));
+
+    match plan.strategy {
+        Strategy::Rebase | Strategy::Squash => {
+            step!(format!("Rebase onto {base}"), {
+                if let Some((remote, _)) = base.split_once('/') {
+                    let _ = git(wt, ["fetch", "-q", remote]);
+                }
+                match git(wt, ["rebase", base]) {
+                    Ok(o) => Ok(o),
+                    Err(e) => {
+                        let _ = git(wt, ["rebase", "--abort"]);
+                        Err(crate::Error::Config(format!(
+                            "Rebase hit conflicts and was undone. Use Sync with base to resolve. {e}"
+                        )))
+                    }
+                }
+            });
+            if plan.strategy == Strategy::Squash {
+                step!("Squash into one commit", {
+                    git(wt, ["reset", "-q", "--soft", base])?;
+                    git(wt, ["commit", "-q", "-m", &message])?;
+                    Ok(git(wt, ["rev-parse", "--short", "HEAD"])?
+                        .trim()
+                        .to_string())
+                });
             }
-        }
-    });
-
-    if plan.squash {
-        step!("Squash commits", {
-            let msg = plan
-                .message
-                .clone()
-                .filter(|m| !m.trim().is_empty())
-                .unwrap_or_else(|| format!("Merge {branch}"));
-            git(wt, ["reset", "-q", "--soft", base])?;
-            git(wt, ["commit", "-q", "-m", &msg])?;
-            Ok(git(wt, ["rev-parse", "--short", "HEAD"])?
-                .trim()
-                .to_string())
-        });
-    }
-
-    match plan.destination {
-        Destination::LocalMerge => {
             step!(format!("Fast-forward {base_local}"), {
-                let wts = worktree::list(repo)?;
-                let base_wt = wts
-                    .iter()
-                    .find(|w| w.branch.as_deref() == Some(base_local.as_str()));
-                match base_wt {
+                match &base_wt {
                     Some(w) => {
                         git(&w.path, ["merge", "--ff-only", "-q", branch])?;
                         Ok(format!("{base_local} in {}", w.path.display()))
@@ -256,42 +271,80 @@ pub fn run(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
                     }
                 }
             });
-            if plan.push_base {
-                step!(format!("Push {base_local}"), {
-                    let remote = base.split_once('/').map(|(r, _)| r).unwrap_or("origin");
-                    git(
-                        &repo.root,
-                        ["push", "-q", remote, &format!("{base_local}:{base_local}")],
-                    )
-                });
-            }
         }
-        Destination::PushBranch => {
-            step!(format!("Push {branch}"), {
-                git(
-                    wt,
-                    ["push", "-q", "-u", "--force-with-lease", "origin", branch],
-                )
+        Strategy::MergeCommit => {
+            step!(format!("Merge into {base_local}"), {
+                match &base_wt {
+                    Some(w) => {
+                        match git(&w.path, ["merge", "--no-ff", "-q", "-m", &message, branch]) {
+                            Ok(o) => Ok(o),
+                            Err(e) => {
+                                let _ = git(&w.path, ["merge", "--abort"]);
+                                Err(crate::Error::Config(format!(
+                                "Merge hit conflicts and was undone. Use Sync with base to resolve. {e}"
+                            )))
+                            }
+                        }
+                    }
+                    None => {
+                        // Base isn't checked out anywhere: build the merge commit without a checkout.
+                        let (code, out, err) = git_raw(
+                            &repo.common_git_dir,
+                            ["merge-tree", "--write-tree", &base_local, branch],
+                        )?;
+                        if code != 0 {
+                            return Err(crate::Error::Config(format!(
+                                "Merge would conflict. {err}"
+                            )));
+                        }
+                        let tree = out.lines().next().unwrap_or("").trim().to_string();
+                        let commit = git(
+                            &repo.common_git_dir,
+                            [
+                                "commit-tree",
+                                &tree,
+                                "-p",
+                                &base_local,
+                                "-p",
+                                branch,
+                                "-m",
+                                &message,
+                            ],
+                        )?
+                        .trim()
+                        .to_string();
+                        git(
+                            &repo.common_git_dir,
+                            ["update-ref", &format!("refs/heads/{base_local}"), &commit],
+                        )?;
+                        Ok(format!("{base_local} -> {}", &commit[..7]))
+                    }
+                }
             });
         }
     }
 
-    if plan.remove_worktree && wt != repo.root {
-        step!("Remove worktree", {
-            worktree::remove(repo, wt, true)?;
-            Ok(wt.display().to_string())
+    if plan.push_base {
+        step!(format!("Push {base_local}"), {
+            let remote = base.split_once('/').map(|(r, _)| r).unwrap_or("origin");
+            git(
+                &repo.root,
+                ["push", "-q", remote, &format!("{base_local}:{base_local}")],
+            )
         });
     }
-    if plan.delete_branch && plan.destination == Destination::LocalMerge {
+
+    if plan.delete_branch {
+        if wt != repo.root {
+            step!("Remove worktree", {
+                worktree::remove(repo, wt, true)?;
+                Ok(wt.display().to_string())
+            });
+        }
         step!(format!("Delete branch {branch}"), {
             git(&repo.root, ["branch", "-D", "-q", branch])?;
             Ok(String::new())
         });
-        if plan.delete_remote {
-            step!("Delete remote branch", {
-                git(&repo.root, ["push", "-q", "origin", "--delete", branch])
-            });
-        }
     }
 
     r.landed = true;

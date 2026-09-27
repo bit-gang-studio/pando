@@ -10,23 +10,25 @@ type Props = {
   onMerged: () => void;
 };
 
-const btn = "h-8 rounded-lg border border-stone-300 bg-white px-3 text-[13px] dark:border-stone-600 dark:bg-stone-700";
+type Strategy = MergePlan["strategy"];
+const STRATEGIES: { id: Strategy; label: string; hint: string }[] = [
+  { id: "merge_commit", label: "Create a merge commit", hint: "Keeps every commit and adds a merge commit." },
+  { id: "squash", label: "Squash and merge", hint: "One new commit with all the changes." },
+  { id: "rebase", label: "Rebase and merge", hint: "Replays each commit on top, no merge commit." },
+];
+const LAST_KEY = "pando.mergeStrategy";
 
-function Check({ state, children }: { state: "ok" | "warn" | "bad" | "info"; children: React.ReactNode }) {
-  const mark = { ok: ["✓", "text-teal-700"], warn: ["!", "text-amber-700"], bad: ["✕", "text-red-700"], info: ["○", "text-stone-500"] }[state];
-  return <div className="flex items-start gap-2 text-[13px]"><span className={`w-4 font-semibold ${mark[1]}`}>{mark[0]}</span><span>{children}</span></div>;
-}
+const btn = "h-8 rounded-lg border border-stone-300 bg-white px-3 text-[13px] dark:border-stone-600 dark:bg-stone-700";
 
 export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged }: Props) {
   const [pf, setPf] = useState<Preflight | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [squash, setSquash] = useState(true);
+  const [strategy, setStrategy] = useState<Strategy>(() => {
+    try { return (localStorage.getItem(LAST_KEY) as Strategy) || "squash"; } catch { return "squash"; }
+  });
   const [message, setMessage] = useState("");
-  const [destination, setDestination] = useState<MergePlan["destination"]>("local_merge");
   const [pushBase, setPushBase] = useState(true);
-  const [removeWt, setRemoveWt] = useState(true);
   const [deleteBranch, setDeleteBranch] = useState(true);
-  const [deleteRemote, setDeleteRemote] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<MergeResult | null>(null);
 
@@ -34,9 +36,9 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
     api.mergePreflight(root, path, branch).then((p) => {
       setPf(p);
       setPushBase(p.has_upstream || p.base.includes("/"));
-      if (!message) setMessage(p.ahead === 1 && headSummary ? headSummary : `Merge ${branch}`);
+      setMessage((m) => m || p.last_summary || headSummary || "");
     }).catch((e) => setError(String(e)));
-  }, [root, path, branch]);
+  }, [root, path, branch, headSummary]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -47,16 +49,18 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  const canMerge = !!pf && pf.problems.length === 0 && !busy && !result;
+  const blocked = !!pf && pf.problems.length > 0;
+  const canMerge = !!pf && !blocked && !busy && !result && (strategy === "rebase" || message.trim().length > 0);
 
   async function merge() {
     if (!canMerge || !pf) return;
     setBusy(true);
     setError(null);
+    try { localStorage.setItem(LAST_KEY, strategy); } catch { /* ignore */ }
     try {
       const r = await api.mergeRun(root, path, {
-        branch, base: pf.base, squash, message: squash ? message : null, destination, push_base: pushBase,
-        remove_worktree: removeWt, delete_branch: deleteBranch, delete_remote: deleteRemote,
+        branch, base: pf.base, strategy, message: strategy === "rebase" ? null : message.trim(),
+        push_base: pushBase, delete_branch: deleteBranch,
       });
       setResult(r);
       if (r.landed) onMerged();
@@ -67,72 +71,60 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
     }
   }
 
+  const summary = pf
+    ? [
+        `${pf.ahead} ${pf.ahead === 1 ? "commit" : "commits"}`,
+        pf.behind > 0 ? `${pf.base_local} moved ${pf.behind} ahead` : `up to date with ${pf.base_local}`,
+        pf.conflict_predicted ? "conflicts" : "no conflicts",
+      ].join(" · ")
+    : "Checking…";
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
-      <div role="dialog" className="flex max-h-[90vh] w-[720px] flex-col overflow-hidden rounded-xl border border-stone-300 bg-white text-[13px] shadow-xl dark:border-stone-700 dark:bg-stone-800">
+      <div role="dialog" className="flex max-h-[90vh] w-[560px] flex-col overflow-hidden rounded-xl border border-stone-300 bg-white text-[13px] shadow-xl dark:border-stone-700 dark:bg-stone-800">
         <div className="flex flex-col gap-1 border-b border-stone-300 px-5 py-4 dark:border-stone-700">
-          <h2 className="text-base font-semibold">Merge <span className="font-mono text-sm">{branch}</span>{pf && <> into <span className="font-mono text-sm">{pf.base}</span></>}</h2>
-          {pf && <span className="text-xs text-stone-500">{pf.ahead} {pf.ahead === 1 ? "commit" : "commits"} ahead · {pf.behind} behind{pf.behind > 0 ? ", will rebase first" : ""}</span>}
+          <h2 className="text-base font-semibold">Merge <span className="font-mono text-sm">{branch}</span> into <span className="font-mono text-sm">{pf?.base_local ?? "…"}</span></h2>
+          <span className="text-xs text-stone-500">{summary}</span>
         </div>
 
         <div className="flex grow flex-col gap-4 overflow-y-auto p-5">
-          {error && <div className="rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
+          {error && <div className="selectable rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
 
-          {!result && (
-            <div className="flex flex-col gap-2 rounded-lg border border-stone-300 bg-stone-50 p-3 dark:border-stone-600 dark:bg-stone-900/40">
-              <span className="text-xs font-semibold tracking-wider text-stone-500">PREFLIGHT</span>
-              {!pf && <span className="text-xs text-stone-500">Checking…</span>}
-              {pf && (
-                <>
-                  <Check state={pf.clean ? "ok" : "bad"}>{pf.clean ? "No uncommitted changes" : "Uncommitted changes in this worktree. Commit or stash first."}</Check>
-                  <Check state={pf.ahead > 0 ? "ok" : "bad"}>{pf.ahead > 0 ? `${pf.ahead} ${pf.ahead === 1 ? "commit" : "commits"} to merge` : `Nothing ahead of ${pf.base}`}</Check>
-                  <Check state={pf.behind === 0 ? "ok" : "warn"}>{pf.behind === 0 ? `Up to date with ${pf.base}` : `${pf.behind} behind ${pf.base}. Will rebase first.`}</Check>
-                  <Check state={pf.conflict_predicted ? "bad" : "ok"}>{pf.conflict_predicted ? `Rebase will conflict in ${pf.conflict_files.join(", ")}. Sync and resolve first.` : "Rebase preview: no conflicts"}</Check>
-                  {pf.base_checked_out_in && <Check state={pf.base_worktree_clean ? "ok" : "bad"}>{pf.base_worktree_clean ? `${pf.base_local} is checked out and clean` : `The worktree with ${pf.base_local} has uncommitted changes.`}</Check>}
-                  
-                </>
-              )}
+          {!result && pf && blocked && (
+            <div className="flex flex-col gap-1 rounded-md border border-red-300 bg-red-50 p-3 text-red-800 dark:bg-red-900/30 dark:text-red-200">
+              {pf.problems.map((p, i) => <div key={i} className="flex gap-2"><span className="font-semibold">✕</span><span>{p}</span></div>)}
             </div>
           )}
 
           {!result && pf && (
             <>
-              <div className="grid grid-cols-2 gap-3">
-                <fieldset className="flex flex-col gap-2 rounded-lg border border-stone-300 p-3 dark:border-stone-600">
-                  <legend className="px-1 text-xs font-semibold tracking-wider text-stone-500">COMMITS</legend>
-                  <label className="flex items-center gap-2"><input type="radio" checked={squash} onChange={() => setSquash(true)} /> Squash into one commit</label>
-                  <label className="flex items-center gap-2"><input type="radio" checked={!squash} onChange={() => setSquash(false)} /> Keep {pf.ahead} {pf.ahead === 1 ? "commit" : "commits"}</label>
-                </fieldset>
-                <fieldset className="flex flex-col gap-2 rounded-lg border border-stone-300 p-3 dark:border-stone-600">
-                  <legend className="px-1 text-xs font-semibold tracking-wider text-stone-500">DESTINATION</legend>
-                  <label className="flex items-center gap-2"><input type="radio" checked={destination === "local_merge"} onChange={() => setDestination("local_merge")} /> Merge into {pf.base_local}</label>
-                  {destination === "local_merge" && <label className="ml-5 flex items-center gap-2 text-xs"><input type="checkbox" checked={pushBase} onChange={(e) => setPushBase(e.target.checked)} /> Push {pf.base_local} afterwards</label>}
-                  <label className="flex items-center gap-2"><input type="radio" checked={destination === "push_branch"} onChange={() => setDestination("push_branch")} /> Push the branch only</label>
-                  
-                </fieldset>
-              </div>
+              <fieldset className="flex flex-col gap-2">
+                {STRATEGIES.map((s) => (
+                  <label key={s.id} className="flex cursor-pointer items-start gap-2">
+                    <input type="radio" name="strategy" checked={strategy === s.id} onChange={() => setStrategy(s.id)} className="mt-0.5" />
+                    <span className="flex flex-col"><span>{s.label}</span><span className="text-xs text-stone-500">{s.hint}</span></span>
+                  </label>
+                ))}
+              </fieldset>
 
-              {squash && (
+              {strategy !== "rebase" && (
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-medium text-stone-600 dark:text-stone-300">Squash commit message</span>
-                  <textarea rows={3} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full resize-none rounded-md border border-stone-300 bg-white p-2 text-[13px] focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700" />
+                  <span className="text-xs font-medium text-stone-600 dark:text-stone-300">Message</span>
+                  <textarea rows={2} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full resize-none rounded-md border border-stone-300 bg-white p-2 text-[13px] focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700" />
                 </label>
               )}
 
-              <fieldset className="flex flex-col gap-2 rounded-lg border border-stone-300 p-3 dark:border-stone-600">
-                <legend className="px-1 text-xs font-semibold tracking-wider text-stone-500">AFTER MERGING</legend>
-                <label className="flex items-center gap-2"><input type="checkbox" checked={removeWt} onChange={(e) => setRemoveWt(e.target.checked)} /> Remove this worktree</label>
-                <label className="flex items-center gap-2"><input type="checkbox" checked={deleteBranch} disabled={destination !== "local_merge"} onChange={(e) => setDeleteBranch(e.target.checked)} /> Delete local branch <span className="font-mono text-xs">{branch}</span></label>
-                <label className="flex items-center gap-2"><input type="checkbox" checked={deleteRemote} disabled={destination !== "local_merge" || !deleteBranch || !pf.has_upstream} onChange={(e) => setDeleteRemote(e.target.checked)} /> Delete remote branch</label>
-              </fieldset>
+              <div className="flex flex-col gap-2">
+                <label className="flex items-center gap-2"><input type="checkbox" checked={pushBase} onChange={(e) => setPushBase(e.target.checked)} /> Push {pf.base_local} to origin</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={deleteBranch} onChange={(e) => setDeleteBranch(e.target.checked)} /> Delete <span className="font-mono text-xs">{branch}</span> and its worktree</label>
+              </div>
             </>
           )}
 
           {result && (
             <div className="flex flex-col gap-2">
-              <div className={`rounded-md p-3 text-[13px] font-medium ${result.landed ? "bg-teal-50 text-teal-800 dark:bg-teal-900/30 dark:text-teal-200" : "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200"}`}>
-                {result.landed ? `Merged ${branch} into ${pf?.base}.` : "Merge stopped. Nothing after the failed step ran."}
-                {result.backup_ref && <span className="ml-2 font-normal text-xs opacity-80">Backup: <span className="font-mono">{result.backup_ref}</span></span>}
+              <div className={`rounded-md p-3 font-medium ${result.landed ? "bg-teal-50 text-teal-800 dark:bg-teal-900/30 dark:text-teal-200" : "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200"}`}>
+                {result.landed ? `Merged ${branch} into ${pf?.base_local}.` : "Merge stopped. Nothing after the failed step ran."}
               </div>
               {result.steps.map((s, i) => (
                 <div key={i} className="flex flex-col gap-1 rounded-md border border-stone-200 p-2 dark:border-stone-700">
@@ -144,9 +136,7 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
           )}
         </div>
 
-        <div className="flex items-center gap-2 border-t border-stone-300 bg-stone-50 px-5 py-3.5 dark:border-stone-700 dark:bg-stone-900/40">
-          <span className="text-xs text-stone-500">{busy ? "Working… conflicts undo the rebase automatically." : "A backup ref is written before anything changes."}</span>
-          <div className="grow" />
+        <div className="flex items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-5 py-3.5 dark:border-stone-700 dark:bg-stone-900/40">
           <button onClick={onClose} disabled={busy} className={btn}>{result ? "Close" : "Cancel"}<span className="ml-2 text-xs text-stone-400">Esc</span></button>
           {!result && <button onClick={merge} disabled={!canMerge} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800 disabled:opacity-50">{busy ? "Merging…" : "Merge"}<span className="ml-2 text-xs opacity-70">⌘↵</span></button>}
         </div>

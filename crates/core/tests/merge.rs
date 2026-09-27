@@ -1,4 +1,4 @@
-use pando_core::{merge, Destination, MergePlan, Repo};
+use pando_core::{merge, MergePlan, Repo, Strategy};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -85,17 +85,14 @@ fn fixture() -> Fx {
     }
 }
 
-fn plan(squash: bool) -> MergePlan {
+fn plan(strategy: Strategy) -> MergePlan {
     MergePlan {
         branch: "feat/x".into(),
         base: "main".into(),
-        squash,
+        strategy,
         message: Some("Merge feat/x squashed".into()),
-        destination: Destination::LocalMerge,
         push_base: true,
-        remove_worktree: true,
         delete_branch: true,
-        delete_remote: false,
     }
 }
 
@@ -114,7 +111,9 @@ fn preflight_reports_state() {
     write(&f.wt, "dirty.txt", "x");
     let p = merge::preflight(&repo, &f.wt, "feat/x", "main").unwrap();
     assert!(!p.clean);
+    assert_eq!(p.uncommitted, 1);
     assert_eq!(p.problems.len(), 1);
+    assert_eq!(p.last_summary.as_deref(), Some("x2"));
 }
 
 #[test]
@@ -134,7 +133,7 @@ fn preflight_predicts_conflicts() {
 fn merge_squash_into_local_main_and_push() {
     let f = fixture();
     let repo = Repo::discover(&f.root).unwrap();
-    let r = merge::run(&repo, &f.wt, &plan(true)).unwrap();
+    let r = merge::run(&repo, &f.wt, &plan(Strategy::Squash)).unwrap();
     assert!(r.landed, "{:#?}", r.steps);
     assert!(r.steps.iter().all(|s| s.ok), "{:#?}", r.steps);
     assert_eq!(
@@ -156,10 +155,10 @@ fn merge_squash_into_local_main_and_push() {
 }
 
 #[test]
-fn merge_keep_commits() {
+fn rebase_and_merge_keeps_commits() {
     let f = fixture();
     let repo = Repo::discover(&f.root).unwrap();
-    let mut p = plan(false);
+    let mut p = plan(Strategy::Rebase);
     p.push_base = false;
     let r = merge::run(&repo, &f.wt, &p).unwrap();
     assert!(r.landed, "{:#?}", r.steps);
@@ -167,4 +166,43 @@ fn merge_keep_commits() {
         git(&f.root, &["log", "--format=%s", "-3"]),
         "x2\nx1\nmain-moved"
     );
+}
+
+#[test]
+fn merge_commit_keeps_history_and_adds_merge() {
+    let f = fixture();
+    let repo = Repo::discover(&f.root).unwrap();
+    let mut p = plan(Strategy::MergeCommit);
+    p.message = Some("Merge feat/x".into());
+    p.push_base = false;
+    let r = merge::run(&repo, &f.wt, &p).unwrap();
+    assert!(r.landed, "{:#?}", r.steps);
+    assert_eq!(git(&f.root, &["log", "-1", "--format=%s"]), "Merge feat/x");
+    assert_eq!(
+        git(&f.root, &["log", "-1", "--format=%P"])
+            .split(' ')
+            .count(),
+        2,
+        "two parents"
+    );
+    assert!(!f.wt.exists());
+}
+
+#[test]
+fn merge_commit_without_base_checked_out() {
+    let f = fixture();
+    let repo = Repo::discover(&f.root).unwrap();
+    // Move the main worktree off main so main isn't checked out anywhere.
+    git(&f.root, &["switch", "-q", "--detach"]);
+    let mut p = plan(Strategy::MergeCommit);
+    p.message = Some("Merge feat/x".into());
+    p.push_base = false;
+    p.delete_branch = false;
+    let r = merge::run(&repo, &f.wt, &p).unwrap();
+    assert!(r.landed, "{:#?}", r.steps);
+    assert_eq!(
+        git(&f.root, &["log", "-1", "--format=%s", "main"]),
+        "Merge feat/x"
+    );
+    assert!(f.wt.exists(), "worktree kept when delete_branch is off");
 }

@@ -74,12 +74,12 @@ export type CommitDiff = { commit: CommitInfo; message: string; files: FileChang
 export type Preflight = {
   branch: string; base: string; base_local: string; clean: boolean; ahead: number; behind: number;
   conflict_predicted: boolean; conflict_files: string[]; base_checked_out_in: string | null; base_worktree_clean: boolean | null;
-  has_upstream: boolean;
+  has_upstream: boolean; last_summary: string | null; uncommitted: number;
   problems: string[];
 };
 export type MergePlan = {
-  branch: string; base: string; squash: boolean; message: string | null; destination: "local_merge" | "push_branch";
-  push_base: boolean; remove_worktree: boolean; delete_branch: boolean; delete_remote: boolean;
+  branch: string; base: string; strategy: "merge_commit" | "squash" | "rebase"; message: string | null;
+  push_base: boolean; delete_branch: boolean;
 };
 export type Step = { name: string; ok: boolean; output: string };
 export type MergeResult = { landed: boolean; steps: Step[]; backup_ref: string | null };

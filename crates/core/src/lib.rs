@@ -36,7 +36,7 @@ pub use error::{Error, Result};
 pub use git::{doctor, Doctor};
 pub use history::{CommitDiff, History};
 pub use log::{Log, LogEntry};
-pub use merge::{Destination, MergePlan, MergeResult, Preflight};
+pub use merge::{MergePlan, MergeResult, Preflight, Strategy};
 pub use operation::{OpKind, Operation};
 pub use overview::{BranchRow, DetachedRow, Overview};
 pub use repo::Repo;
