@@ -11,6 +11,22 @@ body {
   color: #1a1a18;
 }
 
+/* Like a native app: nothing selects by default. Text worth copying opts in
+   with the `selectable` class. Inputs and textareas always allow it. */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+.selectable,
+.selectable *,
+input,
+textarea,
+pre {
+  -webkit-user-select: text;
+  user-select: text;
+  cursor: text;
+}
+
 button:not(:disabled),
 a[href],
 select,

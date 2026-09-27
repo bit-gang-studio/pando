@@ -72,7 +72,7 @@ export function DiffView({ diff, loading, mode, onMode, onHunk, readOnly }: Prop
           ))}
         </div>
       </div>
-      <div className="min-h-0 grow overflow-auto font-mono text-[12px] leading-5">
+      <div className="selectable min-h-0 grow overflow-auto font-mono text-[12px] leading-5">
         {mode === "unified" ? <Unified rows={shown} diff={diff} onHunk={readOnly ? undefined : onHunk} /> : <Split rows={shown} diff={diff} onHunk={readOnly ? undefined : onHunk} />}
         {capped && (
           <button onClick={() => setShowAll(true)} className="m-3 rounded-md border border-stone-300 bg-white px-3 py-1.5 font-sans text-xs dark:border-stone-600 dark:bg-stone-700">
