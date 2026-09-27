@@ -3,6 +3,7 @@ import { ago, api, type LogEntry } from "../lib/api";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { colorFor, LANE_W, layoutGraph, ROW_H, type GraphRow } from "../lib/graph";
 import { useMemo } from "react";
+import { MoreButton } from "../ui/MoreButton";
 
 type Props = {
   root: string;
@@ -84,6 +85,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
             <span className="min-w-0 grow truncate">{e.summary}</span>
             <span className="shrink-0 text-body text-stone-500">{e.author}</span>
             <span className="w-14 shrink-0 text-right text-body text-stone-500">{ago(e.time)}</span>
+            {onCommitMenu && <MoreButton onOpen={(ev) => onCommitMenu(ev, e)} label={`Actions for ${e.id.slice(0, 7)}`} />}
           </div>
         ))}
         {truncated && (

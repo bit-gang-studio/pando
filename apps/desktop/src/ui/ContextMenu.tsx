@@ -1,10 +1,17 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /// A divider is written as `{ divider: true }`.
 export type MenuItem = { label: string; onClick: () => void; danger?: boolean } | { divider: true };
 
 export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; items: MenuItem[]; onClose: () => void }) {
   const ref = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ left: x, top: y });
+  // Keep the menu inside the window.
+  useLayoutEffect(() => {
+    const r = ref.current?.getBoundingClientRect();
+    if (!r) return;
+    setPos({ left: Math.max(4, Math.min(x, window.innerWidth - r.width - 4)), top: Math.max(4, Math.min(y, window.innerHeight - r.height - 4)) });
+  }, [x, y]);
   useEffect(() => {
     const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
     const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
@@ -13,7 +20,7 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
     return () => { window.removeEventListener("mousedown", onDown); window.removeEventListener("keydown", onKey); };
   }, [onClose]);
   return (
-    <div ref={ref} role="menu" style={{ left: x, top: y }} className="fixed z-50 min-w-[180px] rounded-md border border-stone-300 bg-white p-1 text-body shadow-lg dark:border-stone-600 dark:bg-stone-800">
+    <div ref={ref} role="menu" style={pos} className="fixed z-50 min-w-[180px] rounded-md border border-stone-300 bg-white p-1 text-body shadow-lg dark:border-stone-600 dark:bg-stone-800">
       {items.map((it, i) =>
         "divider" in it ? (
           i > 0 && i < items.length - 1 ? <div key={`d${i}`} className="my-1 border-t border-stone-200 dark:border-stone-700" /> : null

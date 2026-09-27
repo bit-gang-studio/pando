@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ago, api, changed, type BranchRow, type DetachedRow, type Overview as OverviewData, type RemoteBranch, type Stash, type Summary, type Worktree } from "../lib/api";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
+import { MoreButton } from "../ui/MoreButton";
 import { NewWindowIcon } from "../ui/icons";
 import { MergeDialog } from "../dialogs/MergeDialog";
 import { NewBranchDialog } from "../dialogs/NewBranchDialog";
@@ -225,6 +226,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
               {!r.isMain && r.branch && <button onClick={() => setMerging(r.branch)} disabled={!!busy} className={`${small} border-teal-700 text-teal-700`}>Merge</button>}
               <button onClick={() => openWin(r.worktree.path)} title="Open in new window" aria-label={`Open ${r.label} in new window`} className={iconBtn}><NewWindowIcon /></button>
             </div>
+            <MoreButton onOpen={(e) => rowMenu(e, r)} label={`Actions for ${r.label}`} />
           </div>
         );
       })}
@@ -237,6 +239,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
             <div className="truncate text-label text-stone-500">{r.ahead_of_base ? `${r.ahead_of_base} ahead` : "0 ahead"}{r.branch.last_commit ? ` · ${ago(r.branch.last_commit.time)}` : ""}</div>
           </div>
           <button onClick={(e) => { e.stopPropagation(); setCreating({ branch: r.branch.name }); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
+          <MoreButton onOpen={(e) => branchMenu(e, r)} label={`Actions for ${r.branch.name}`} />
         </div>
       ))}
       {data && without.length === 0 && <div className="px-3 py-1 text-label text-stone-500">Every local branch has a worktree.</div>}
@@ -249,6 +252,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
             <div className="truncate text-label text-stone-500">{st.branch ? `from ${st.branch} · ` : ""}{ago(st.time)}</div>
           </div>
           <button onClick={() => applyStash(st, true)} disabled={!!busy} className={`${small} hidden group-hover:block`}>Pop</button>
+          <MoreButton onOpen={(e) => stashMenu(e, st)} label="Stash actions" />
         </div>
       ))}
 
@@ -268,6 +272,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
                 <div className="truncate text-label text-stone-500">{r.last_commit ? `${r.last_commit.author} · ${ago(r.last_commit.time)}` : ""}</div>
               </div>
               <button onClick={(e) => { e.stopPropagation(); setCreating({ branch: r.short, remote: r.name }); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
+              <MoreButton onOpen={(e) => remoteMenu(e, r)} label={`Actions for ${r.name}`} />
             </div>
           ))}
           {!q && remote.length > 8 && <div className="px-3 py-1 text-label text-stone-500">Showing 8 of {remote.length}. Type to search.</div>}
