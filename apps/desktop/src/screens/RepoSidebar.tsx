@@ -19,7 +19,14 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const [busy, setBusy] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ branch?: string; remote?: string } | null>(null);
   const [merging, setMerging] = useState<BranchRow | null>(null);
-  const [remoteOpen, setRemoteOpen] = useState(false);
+  const [open, setOpen] = useState<Record<string, boolean>>(() => {
+    try { return { ...DEFAULT_OPEN, ...JSON.parse(localStorage.getItem(OPEN_KEY) ?? "{}") }; } catch { return DEFAULT_OPEN; }
+  });
+  const toggle = (k: string) => setOpen((o) => {
+    const n = { ...o, [k]: !o[k] };
+    try { localStorage.setItem(OPEN_KEY, JSON.stringify(n)); } catch { /* ignore */ }
+    return n;
+  });
   const [remoteQuery, setRemoteQuery] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [stashes, setStashes] = useState<Stash[]>([]);
@@ -171,11 +178,12 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const q = remoteQuery.trim().toLowerCase();
   const remoteShown = q ? remote.filter((r) => r.name.toLowerCase().includes(q)) : remote.slice(0, 8);
 
-  const head = (title: string, count: string) => (
-    <div className="flex items-baseline gap-2 px-3 pb-1 pt-3">
+  const head = (key: string, title: string, count: string) => (
+    <button onClick={() => toggle(key)} className="mt-2 flex items-baseline gap-2 border-t border-stone-200 px-3 pb-1 pt-2.5 text-left dark:border-stone-700">
+      <span className="w-2.5 text-label text-stone-400">{open[key] ? "▾" : "▸"}</span>
       <span className="text-label font-semibold tracking-wider text-stone-500">{title}</span>
       <span className="text-label text-stone-400">{count}</span>
-    </div>
+    </button>
   );
 
   return (
@@ -193,7 +201,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
         <button onClick={() => run("fetch", () => api.fetchAll(root))} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-body hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700">{busy === "fetch" ? "…" : "Fetch"}</button>
       </div>
 
-      <button onClick={onOpenRepo} className={`mt-2 flex items-center gap-2 px-3 py-1.5 text-left ${current === null && currentBranch === null ? "bg-teal-50 font-medium dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
+      <button onClick={onOpenRepo} className={`my-1 flex items-center gap-2 px-3 py-1.5 text-left ${current === null && currentBranch === null ? "bg-teal-50 font-medium dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
         <span className="h-2 w-2 shrink-0 rounded-full border-2 border-stone-400" />
         <span className="grow text-body">All branches</span>
         {data && (() => {
@@ -202,8 +210,8 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
         })()}
       </button>
 
-      {head("WORKTREES", data ? String(rows.length) : "…")}
-      {rows.map((r) => {
+      {head("worktrees", "WORKTREES", data ? String(rows.length) : "…")}
+      {open.worktrees && rows.map((r) => {
         const n = changed(r.status);
         const conflicts = r.status?.conflicts ?? 0;
         const dot = r.worktree.prunable || conflicts ? "bg-red-700" : n > 0 ? "bg-amber-700" : r.isMain ? "bg-stone-400" : "bg-teal-700";
@@ -231,8 +239,8 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
         );
       })}
 
-      {head("BRANCHES", data ? `${without.length} without a worktree` : "")}
-      {without.map((r) => (
+      {head("branches", "BRANCHES", data ? `${without.length} without a worktree` : "")}
+      {open.branches && without.map((r) => (
         <div key={r.branch.name} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.branch.name }) : onOpenBranch(r.branch.name))} onContextMenu={(e) => branchMenu(e, r)} title={r.branch.last_commit?.summary} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${currentBranch === r.branch.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
           <div className="min-w-0 grow">
             <div className="truncate font-mono text-body">{r.branch.name}</div>
@@ -242,10 +250,10 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
           <MoreButton onOpen={(e) => branchMenu(e, r)} label={`Actions for ${r.branch.name}`} />
         </div>
       ))}
-      {data && without.length === 0 && <div className="px-3 py-1 text-label text-stone-500">Every local branch has a worktree.</div>}
+      {open.branches && data && without.length === 0 && <div className="px-3 py-1 text-label text-stone-500">Every local branch has a worktree.</div>}
 
-      {stashes.length > 0 && head("STASHES", String(stashes.length))}
-      {stashes.map((st) => (
+      {stashes.length > 0 && head("stashes", "STASHES", String(stashes.length))}
+      {open.stashes && stashes.map((st) => (
         <div key={st.index} onContextMenu={(e) => stashMenu(e, st)} title={st.message} className="group flex items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
           <div className="min-w-0 grow">
             <div className="truncate">{st.message.replace(/^On [^:]+: /, "").replace(/^WIP on [^:]+: /, "")}</div>
@@ -256,11 +264,8 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
         </div>
       ))}
 
-      <button onClick={() => setRemoteOpen((v) => !v)} className="flex items-baseline gap-2 px-3 pb-1 pt-3 text-left">
-        <span className="text-label font-semibold tracking-wider text-stone-500">{remoteOpen ? "▾" : "▸"} REMOTE BRANCHES</span>
-        <span className="text-label text-stone-400">{data ? remote.length : ""}</span>
-      </button>
-      {remoteOpen && (
+      {head("remote", "REMOTE BRANCHES", data ? String(remote.length) : "")}
+      {open.remote && (
         <>
           <div className="px-3 pb-1">
             <input value={remoteQuery} onChange={(e) => setRemoteQuery(e.target.value)} placeholder="Search" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-label dark:border-stone-600 dark:bg-stone-700" />
@@ -283,6 +288,9 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     </aside>
   );
 }
+
+const OPEN_KEY = "pando.sidebar.open";
+const DEFAULT_OPEN: Record<string, boolean> = { worktrees: true, branches: true, stashes: true, remote: false };
 
 function detachedRow(d: DetachedRow): WtRow {
   return { key: d.worktree.path, label: `detached at ${d.worktree.head?.slice(0, 7) ?? "?"}`, worktree: d.worktree, status: d.status, branch: null, isMain: d.is_main_worktree, ahead: null, stale: false, time: null };
