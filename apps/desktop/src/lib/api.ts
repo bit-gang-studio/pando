@@ -39,7 +39,7 @@ export type BranchRow = {
   stale: boolean;
 };
 export type DetachedRow = { worktree: Worktree; is_main_worktree: boolean; status: Summary | null };
-export type Overview = { repo: Repo; base: string | null; branches: BranchRow[]; detached: DetachedRow[]; remote_only: RemoteBranch[] };
+export type Overview = { repo: Repo; base: string | null; branches: BranchRow[]; detached: DetachedRow[]; remote_only: RemoteBranch[]; status_loaded: boolean };
 
 export type CreateWorktree = { branch: string; base: string | null; path: string | null; existing_branch: boolean };
 export type Created = { worktree: Worktree };
@@ -98,7 +98,8 @@ export const api = {
   userConfigSave: (config: UserConfig) => invoke<void>("user_config_save", { config }),
 
   watchRepo: (root: string, worktrees: string[]) => invoke<void>("watch_repo", { root, worktrees }),
-  overview: (root: string) => invoke<Overview>("overview_load", { root }),
+  /// `quick` skips git status (fast on big repos); every status is then null.
+  overview: (root: string, quick = false) => invoke<Overview>("overview_load", { root, quick }),
   fetchAll: (root: string) => invoke<void>("fetch_all", { root }),
   branchCreate: (root: string, name: string, base: string | null) => invoke<void>("branch_create", { root, name, base }),
   branchPush: (root: string, name: string) => invoke<void>("branch_push", { root, name }),

@@ -65,8 +65,17 @@ async fn user_config_save(config: UserConfig) -> R<()> {
 // ---- the list --------------------------------------------------------------
 
 #[tauri::command]
-async fn overview_load(root: PathBuf) -> R<Overview> {
-    blocking(move || overview::load(&repo(&root)?).map_err(err)).await
+async fn overview_load(root: PathBuf, quick: Option<bool>) -> R<Overview> {
+    blocking(move || {
+        let r = repo(&root)?;
+        if quick == Some(true) {
+            overview::load_quick(&r)
+        } else {
+            overview::load(&r)
+        }
+        .map_err(err)
+    })
+    .await
 }
 
 #[tauri::command]

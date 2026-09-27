@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api, changed, type Overview as OverviewData } from "../lib/api";
 import { navigate } from "../lib/routes";
 import { CommitDetail } from "./CommitDetail";
@@ -21,6 +21,7 @@ type Props = { root: string; commit: string | null; worktree?: string | null; br
 export function RepoScreen({ root, commit, worktree = null, branch = null }: Props) {
   const [data, setData] = useState<OverviewData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const loadedRef = useRef(false);
   const [tick, setTick] = useState(0);
   const [wtCommit, setWtCommit] = useState<string | null>(null); // selected commit while on a worktree
   const [firstId, setFirstId] = useState<string | null>(null); // newest commit, shown by default on the repo page
@@ -40,7 +41,11 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   useEffect(() => { if (!commit && !worktree && !branch) setShowUncommitted(null); }, [commit, worktree, branch]);
 
   const refresh = useCallback(async () => {
-    try { setData(await api.overview(root)); setLoadError(null); setTick((t) => t + 1); }
+    try {
+      // First load: show branches and worktrees at once, then fill in changes.
+      if (!loadedRef.current) { setData(await api.overview(root, true)); loadedRef.current = true; setTick((t) => t + 1); }
+      setData(await api.overview(root)); setLoadError(null); setTick((t) => t + 1);
+    }
     catch (e) { setLoadError(String(e)); }
   }, [root]);
 
@@ -57,7 +62,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
 
   // Same dot colours as the sidebar, so "a dot means a worktree has it checked out".
   const dotFor = (st: import("../lib/api").Summary | null, missing: boolean, isMain: boolean) =>
-    missing || (st?.conflicts ?? 0) > 0 ? "bg-red-700" : changed(st) > 0 ? "bg-amber-700" : isMain ? "bg-stone-400" : "bg-teal-700";
+    !data?.status_loaded && !missing ? "bg-stone-300 dark:bg-stone-600" : missing || (st?.conflicts ?? 0) > 0 ? "bg-red-700" : changed(st) > 0 ? "bg-amber-700" : isMain ? "bg-stone-400" : "bg-teal-700";
   const branchDots: Record<string, string> = {};
   const detachedDots: Record<string, string[]> = {};
   const heads = new Set<string>();

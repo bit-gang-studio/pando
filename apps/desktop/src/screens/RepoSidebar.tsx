@@ -218,8 +218,9 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       {open.worktrees && rows.map((r) => {
         const n = changed(r.status);
         const conflicts = r.status?.conflicts ?? 0;
-        const dot = r.worktree.prunable || conflicts ? "bg-red-700" : n > 0 ? "bg-amber-700" : r.isMain ? "bg-stone-400" : "bg-teal-700";
-        const dotTip = r.worktree.prunable ? "Folder is missing" : conflicts ? "Has conflicts" : n > 0 ? "Has uncommitted changes" : r.isMain ? "Main worktree, clean" : "Clean";
+        const pending = !data?.status_loaded && !r.worktree.prunable;
+        const dot = pending ? "bg-stone-300 dark:bg-stone-600" : r.worktree.prunable || conflicts ? "bg-red-700" : n > 0 ? "bg-amber-700" : r.isMain ? "bg-stone-400" : "bg-teal-700";
+        const dotTip = pending ? "Checking for changes…" : r.worktree.prunable ? "Folder is missing" : conflicts ? "Has conflicts" : n > 0 ? "Has uncommitted changes" : r.isMain ? "Main worktree, clean" : "Clean";
         return (
           <div key={r.key} onClick={(e) => openRow(e, r.worktree.path)} onContextMenu={(e) => rowMenu(e, r)} title={r.worktree.path} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${current === r.worktree.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
             <span title={dotTip} className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
@@ -228,7 +229,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
               <div className="truncate text-label text-stone-500">
                 {r.isMain ? "main worktree" : null}
                 {r.isMain && (n > 0 || r.ahead) ? " · " : ""}
-                {r.worktree.prunable ? "folder missing" : conflicts ? `${conflicts} conflicts` : n > 0 ? `${n} changed` : r.isMain ? "" : "clean"}
+                {pending ? "checking…" : r.worktree.prunable ? "folder missing" : conflicts ? `${conflicts} conflicts` : n > 0 ? `${n} changed` : r.isMain ? "" : "clean"}
                 {!r.isMain && r.ahead ? ` · ${r.ahead} ahead` : ""}
                 {r.stale ? " · stale" : ""}
                 {r.time ? ` · ${ago(r.time)}` : ""}

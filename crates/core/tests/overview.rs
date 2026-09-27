@@ -88,7 +88,13 @@ fn worktree_branches_first_then_others_then_remote() {
     );
 
     let repo = Repo::discover(&root).unwrap();
+    let q = overview::load_quick(&repo).unwrap();
+    assert!(!q.status_loaded);
+    assert!(q.branches.iter().all(|b| b.status.is_none()));
+    assert_eq!(q.branches.len(), 3);
+
     let o = overview::load(&repo).unwrap();
+    assert!(o.status_loaded);
     assert_eq!(o.detached.len(), 1);
     assert_eq!(o.detached[0].worktree.path, det);
     assert!(!o.detached[0].is_main_worktree);

@@ -43,9 +43,21 @@ pub struct Overview {
     pub detached: Vec<DetachedRow>,
     /// Remote branches with no local branch.
     pub remote_only: Vec<RemoteBranch>,
+    /// False when loaded without `git status` (see `load_quick`); every `status` is then None.
+    pub status_loaded: bool,
 }
 
 pub fn load(repo: &Repo) -> Result<Overview> {
+    load_with(repo, true)
+}
+
+/// Everything except `git status`, which is the slow part on big repos.
+/// Lets a screen show branches and worktrees at once, then fill in changes.
+pub fn load_quick(repo: &Repo) -> Result<Overview> {
+    load_with(repo, false)
+}
+
+fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
     let base = merge::default_base(repo).ok();
     let g = repo.open_gix()?;
     let base_id = base
@@ -57,7 +69,7 @@ pub fn load(repo: &Repo) -> Result<Overview> {
     let statuses: HashMap<PathBuf, Summary> = std::thread::scope(|s| {
         let jobs: Vec<_> = all_worktrees
             .iter()
-            .filter(|w| !w.bare && w.prunable.is_none() && w.path.is_dir())
+            .filter(|w| with_status && !w.bare && w.prunable.is_none() && w.path.is_dir())
             .map(|w| (w.path.clone(), s.spawn(|| status::summary(&w.path).ok())))
             .collect();
         jobs.into_iter()
@@ -133,5 +145,6 @@ pub fn load(repo: &Repo) -> Result<Overview> {
         branches: rows,
         detached,
         remote_only,
+        status_loaded: with_status,
     })
 }

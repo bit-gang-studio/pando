@@ -22,6 +22,7 @@ fn main() {
     for w in &wts {
         time!("status", status::summary(&w.path).unwrap());
     }
+    time!("overview quick", overview::load_quick(&repo).unwrap());
     let t = Instant::now();
     let o = overview::load(&repo).unwrap();
     println!("overview   {:>5}ms", t.elapsed().as_millis());
