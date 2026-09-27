@@ -6,6 +6,7 @@ import { useMemo } from "react";
 import { MoreButton } from "../ui/MoreButton";
 import { ErrorState, Loading } from "../ui/State";
 import { errorParts } from "../lib/errors";
+import { useArrowKeys } from "../lib/useArrowKeys";
 
 type Props = {
   root: string;
@@ -54,6 +55,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
   useEffect(() => { load(0); }, [load, refreshKey]);
 
   const graph = useMemo(() => layoutGraph(entries), [entries]);
+  const onListKey = useArrowKeys(entries, entries.findIndex((e) => e.id === selected), (e) => onSelect(e.id));
   const maxLanes = Math.max(1, ...graph.map((g) => g.lanes));
   const graphW = maxLanes * LANE_W + 6;
 
@@ -62,7 +64,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
       <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-4 py-1.5 dark:border-stone-700 dark:bg-stone-800">
         <span className="min-w-0 truncate text-body text-stone-500">{scope ? <span className="font-mono">{scope}</span> : "All branches"} · {entries.length}{truncated ? "+" : ""} commits</span>
       </div>
-      <div className="min-h-0 grow overflow-auto bg-white dark:bg-stone-800">
+      <div tabIndex={0} onKeyDown={onListKey} className="min-h-0 grow overflow-auto bg-white focus:outline-none dark:bg-stone-800">
         {dirtyWorktrees > 0 && (
           <button onClick={onUncommitted} className={`flex w-full items-center gap-3 px-4 py-1.5 text-left ${uncommittedSelected || (selected === null && uncommittedLabel) ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
             <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-stone-400" />
@@ -77,6 +79,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
         {entries.map((e, i) => (
           <div
             key={e.id}
+            data-selected={selected === e.id}
             style={{ height: ROW_H }}
             onClick={(ev) => (wantsNewWindow(ev) ? openInNewWindow({ kind: "commit", root, id: e.id }) : onSelect(selected === e.id ? null : e.id))}
             onContextMenu={(ev) => { if (onCommitMenu) { ev.preventDefault(); onCommitMenu(ev, e); } }}

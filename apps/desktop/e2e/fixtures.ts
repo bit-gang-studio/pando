@@ -94,6 +94,7 @@ export function typical() {
     detail_load: detail(`${ROOT}-feat-login`, "feat/login", [{ path: "a.ts", orig_path: null, staged: null, unstaged: "M", untracked: false, conflicted: false }]),
     diff_file: fileDiff("a.ts", 5),
     watch_repo: null,
+    backups_list: [],
   };
 }
 

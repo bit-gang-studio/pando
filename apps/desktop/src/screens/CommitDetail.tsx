@@ -3,6 +3,7 @@ import { ago, api, type CommitDiff, type FileDiff } from "../lib/api";
 import { DiffView } from "./DiffView";
 import { SplitHandle, useSplit } from "../ui/Split";
 import { ErrorState, Loading } from "../ui/State";
+import { useArrowKeys } from "../lib/useArrowKeys";
 
 export function CommitDetail({ root, id, onBack }: { root: string; id: string; onBack?: () => void }) {
   const [c, setC] = useState<CommitDiff | null>(null);
@@ -36,6 +37,8 @@ export function CommitDetail({ root, id, onBack }: { root: string; id: string; o
     return () => window.removeEventListener("keydown", onKey);
   }, [onBack]);
 
+  const files = c?.files ?? [];
+  const onListKey = useArrowKeys(files, files.findIndex((f) => f.path === sel), (f) => setSel(f.path));
   if (error) return <ErrorState title="Couldn't load this commit" error={error} onRetry={() => setAttempt((n) => n + 1)} />;
   if (!c) return <Loading />;
 
@@ -48,10 +51,10 @@ export function CommitDetail({ root, id, onBack }: { root: string; id: string; o
         <span className="shrink-0 whitespace-nowrap text-stone-500">{c.files.length} {c.files.length === 1 ? "file" : "files"}</span>
       </div>
       <div ref={split.box} className="flex min-h-0 grow">
-        <aside style={{ width: split.size }} className="flex shrink-0 flex-col overflow-y-auto bg-white dark:bg-stone-800">
+        <aside tabIndex={0} onKeyDown={onListKey} style={{ width: split.size }} className="flex shrink-0 flex-col overflow-y-auto bg-white focus:outline-none dark:bg-stone-800">
           <pre className="whitespace-pre-wrap border-b border-stone-200 p-3 font-sans text-body dark:border-stone-700">{c.message}</pre>
           {c.files.map((f) => (
-            <button key={f.path} onClick={() => setSel(f.path)} className={`flex items-center gap-2 px-3 py-1.5 text-left ${sel === f.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
+            <button key={f.path} data-selected={sel === f.path} tabIndex={-1} onClick={() => setSel(f.path)} className={`flex items-center gap-2 px-3 py-1.5 text-left ${sel === f.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
               <span className="grow truncate font-mono text-body" title={f.path}>{f.path}</span>
               <span className="shrink-0 font-mono text-label text-teal-700">+{f.added}</span>
               <span className="shrink-0 font-mono text-label text-red-700">−{f.deleted}</span>

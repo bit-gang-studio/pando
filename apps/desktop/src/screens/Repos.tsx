@@ -10,6 +10,7 @@ import { MoreButton } from "../ui/MoreButton";
 import { ErrorState, Loading } from "../ui/State";
 import { toastError, withToast } from "../ui/Toast";
 import { errorParts } from "../lib/errors";
+import { reveal, REVEAL_LABEL } from "../lib/reveal";
 
 export function Repos() {
   const [cfg, setCfg] = useState<UserConfig | null>(null);
@@ -63,6 +64,8 @@ export function Repos() {
     e.preventDefault();
     setMenu({ x: e.clientX, y: e.clientY, items: [
       { label: "Open in new window", onClick: () => openInNewWindow({ kind: "repo", root }).catch(toastError) },
+      { label: "Copy path", onClick: () => navigator.clipboard.writeText(root) },
+      { label: REVEAL_LABEL, onClick: () => reveal(root).catch(toastError) },
       { divider: true },
       { label: "Remove from Pando", onClick: () => removeRepo(root), danger: true },
     ] });

@@ -51,6 +51,15 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   }, [root]);
 
   useRepoRefresh(root, refresh);
+  // Fetch quietly on open and every 5 minutes while the window is in use, so
+  // ahead/behind stays current. Failures (offline, needs a login) stay silent;
+  // the Fetch button shows them.
+  useEffect(() => {
+    const quiet = () => { if (document.hasFocus()) api.fetchAll(root).then(refresh).catch(() => {}); };
+    const first = setTimeout(quiet, 3000);
+    const t = setInterval(quiet, 5 * 60 * 1000);
+    return () => { clearTimeout(first); clearInterval(t); };
+  }, [root, refresh]);
   // Watch every worktree folder; re-watch when the set changes.
   const wtKey = [...(data?.branches.flatMap((b) => (b.worktree ? [b.worktree.path] : [])) ?? []), ...(data?.detached.map((d) => d.worktree.path) ?? [])].join("\0");
   useEffect(() => { if (data) watchRepo(root, wtKey.split("\0").filter(Boolean)); }, [root, wtKey, !!data]);
@@ -118,6 +127,16 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
       } },
       { label: "Cherry-pick…", onClick: () => applyCommit(entry, "pick") },
       { label: "Revert…", onClick: () => applyCommit(entry, "revert") },
+      ...entry.refs.filter((r) => r.startsWith("tag: ")).flatMap((r): MenuItem[] => {
+        const tag = r.slice(5);
+        return [
+          { label: `Push tag ${tag}`, onClick: () => act(`Pushing ${tag}…`, `Pushed ${tag}`, () => api.tagPush(root, tag)) },
+          { label: `Delete tag ${tag}…`, danger: true, onClick: async () => {
+            const a = await confirm({ title: "Delete tag", body: <>Delete <span className="font-mono">{tag}</span> here? It stays on the remote if it was pushed. It's on <span className="font-mono">{entry.id.slice(0, 7)}</span> if you need it again.</>, action: "Delete tag", danger: true });
+            if (a.ok) await act(`Deleting ${tag}…`, `Deleted ${tag}`, () => api.tagDelete(root, tag));
+          } },
+        ];
+      }),
       { label: "Tag…", onClick: async () => {
         const a = await confirm({ title: "Tag commit", body: <><span className="font-mono">{entry.id.slice(0, 7)}</span> {entry.summary}</>, action: "Create tag", input: { label: "Tag name", placeholder: "v1.0.0", mono: true }, checkbox: { label: "Push to origin" } });
         if (a.ok) await act("Tagging…", `Tagged ${a.value}`, () => api.tagCreate(root, a.value, entry.id, null, a.checked));

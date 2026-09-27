@@ -9,6 +9,7 @@ import { confirm } from "../ui/Confirm";
 import { ErrorState, Loading } from "../ui/State";
 import { errorParts } from "../lib/errors";
 import { useRepoRefresh } from "../lib/watch";
+import { useArrowKeys } from "../lib/useArrowKeys";
 
 const STATUS_LABEL: Record<string, string> = { M: "Modified", A: "Added", D: "Deleted", R: "Renamed", C: "Copied", T: "Type changed", U: "Conflict", "?": "Untracked (new, not tracked by git yet)" };
 type Props = { root: string; path: string; onBack: () => void; onChanged: () => void };
@@ -81,6 +82,11 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
     finally { setBusy(null); }
   }
 
+  const navFiles = d ? [
+    ...d.files.filter((f) => f.unstaged || f.untracked).map((f) => ({ path: f.path, staged: false, untracked: f.untracked })),
+    ...d.files.filter((f) => f.staged).map((f) => ({ path: f.path, staged: true, untracked: false })),
+  ] : [];
+  const onListKey = useArrowKeys(navFiles, navFiles.findIndex((x) => x.path === sel?.path && x.staged === sel?.staged), setSel);
   if (!d) return error ? <ErrorState title="Couldn't load this worktree" error={error} onRetry={refresh} /> : <Loading />;
 
   const wt = d.worktree.path;
@@ -130,7 +136,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
     const active = sel?.path === f.path && sel.staged === stagedSide;
     const code = stagedSide ? f.staged : f.untracked ? "?" : f.unstaged;
     return (
-      <div key={`${stagedSide}-${f.path}`} onClick={() => setSel({ path: f.path, staged: stagedSide, untracked: f.untracked })} className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${active ? "bg-teal-100 dark:bg-teal-900/40" : "hover:bg-stone-100 dark:hover:bg-stone-700"}`}>
+      <div key={`${stagedSide}-${f.path}`} data-selected={active} onClick={() => setSel({ path: f.path, staged: stagedSide, untracked: f.untracked })} className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${active ? "bg-teal-100 dark:bg-teal-900/40" : "hover:bg-stone-100 dark:hover:bg-stone-700"}`}>
         <input type="checkbox" checked={stagedSide} onChange={() => run("stage", () => (stagedSide ? api.unstagePaths(wt, [f.path]) : api.stagePaths(wt, [f.path])))} onClick={(e) => e.stopPropagation()} aria-label={stagedSide ? `Unstage ${f.path}` : `Stage ${f.path}`} className="m-0" />
         <span title={STATUS_LABEL[String(f.conflicted ? "U" : code)] ?? ""} className={`w-3 shrink-0 cursor-help text-center font-mono text-label ${f.conflicted ? "text-red-700" : "text-stone-500"}`}>{f.conflicted ? "U" : code}</span>
         <span className="min-w-0 grow truncate font-mono text-body" title={f.path}>{f.path}</span>
@@ -177,7 +183,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
 
       <div ref={split.box} className="flex min-h-0 min-w-0 grow">
         <aside style={{ width: split.size }} className="flex shrink-0 flex-col bg-white dark:bg-stone-800">
-          <div className="flex min-h-0 grow flex-col gap-0.5 overflow-y-auto p-2">
+          <div tabIndex={0} onKeyDown={onListKey} className="flex min-h-0 grow flex-col gap-0.5 overflow-y-auto p-2 focus:outline-none">
             {d.operation && (
               <>
                 <div className="px-2 pb-1 pt-1 text-label font-semibold tracking-wider text-stone-500">CONFLICTED · {d.operation.conflicted.length}</div>

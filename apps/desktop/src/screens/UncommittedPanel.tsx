@@ -5,6 +5,7 @@ import { SplitHandle, useSplit } from "../ui/Split";
 import { DiffView } from "./DiffView";
 import { ErrorState, Loading } from "../ui/State";
 import { errorParts } from "../lib/errors";
+import { useArrowKeys } from "../lib/useArrowKeys";
 
 const STATUS_LABEL: Record<string, string> = { M: "Modified", A: "Added", D: "Deleted", R: "Renamed", C: "Copied", T: "Type changed", U: "Conflict", "?": "Untracked (new, not tracked by git yet)" };
 type Sel = { path: string; file: FileStatus } | null;
@@ -49,11 +50,13 @@ export function UncommittedPanel({ root, worktrees, refreshKey = 0 }: { root: st
     return () => { live = false; };
   }, [sel]);
 
+  const flat = (details ?? []).flatMap((d) => d.files.map((file) => ({ path: d.worktree.path, file })));
+  const onListKey = useArrowKeys(flat, flat.findIndex((x) => x.path === sel?.path && x.file.path === sel?.file.path), setSel);
   if (!details) return error ? <ErrorState title="Couldn't load uncommitted changes" error={error} onRetry={() => setAttempt((n) => n + 1)} /> : <Loading />;
 
   return (
     <div ref={split.box} className="flex min-h-0 grow">
-      <aside style={{ width: split.size }} className="flex shrink-0 flex-col overflow-y-auto bg-white dark:bg-stone-800">
+      <aside tabIndex={0} onKeyDown={onListKey} style={{ width: split.size }} className="flex shrink-0 flex-col overflow-y-auto bg-white focus:outline-none dark:bg-stone-800">
         {error && <div className="selectable p-2 text-body text-red-700">{errorParts(error).message}</div>}
         {details.map((d) => (
           <div key={d.worktree.path} className="border-b border-stone-200 dark:border-stone-700">
@@ -67,7 +70,7 @@ export function UncommittedPanel({ root, worktrees, refreshKey = 0 }: { root: st
               const active = sel?.path === d.worktree.path && sel.file.path === f.path;
               const code = f.conflicted ? "U" : f.untracked ? "?" : f.unstaged ?? f.staged ?? "";
               return (
-                <button key={f.path} onClick={() => setSel({ path: d.worktree.path, file: f })} className={`flex w-full items-center gap-2 px-3 py-1 text-left ${active ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
+                <button key={f.path} data-selected={active} tabIndex={-1} onClick={() => setSel({ path: d.worktree.path, file: f })} className={`flex w-full items-center gap-2 px-3 py-1 text-left ${active ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
                   <span title={STATUS_LABEL[String(f.conflicted ? "U" : code)] ?? ""} className={`w-3 shrink-0 cursor-help text-center font-mono text-label ${f.conflicted ? "text-red-700" : "text-stone-500"}`}>{code}</span>
                   <span className="min-w-0 grow truncate font-mono text-body" title={f.path}>{f.path}</span>
                   {f.staged && f.unstaged && <span className="shrink-0 whitespace-nowrap text-label text-stone-400">partly staged</span>}

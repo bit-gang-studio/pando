@@ -1,10 +1,10 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
 use pando_core::{
-    branch, commit, conflict, detail, diff, history, index, log, merge, operation, overview, stash,
-    sync, tag, user_config, watch, worktree, Applied, CommitDiff, ConflictFile, CreateWorktree,
-    Created, Detail, FileDiff, Hunk, Log, MergePlan, MergeResult, Operation, Overview, Preflight,
-    Repo, Side, Stash, SyncResult, UserConfig,
+    backup, branch, commit, conflict, detail, diff, history, index, log, merge, operation,
+    overview, stash, sync, tag, user_config, watch, worktree, Applied, Backup, CommitDiff,
+    ConflictFile, CreateWorktree, Created, Detail, FileDiff, Hunk, Log, MergePlan, MergeResult,
+    Operation, Overview, Preflight, Repo, Side, Stash, SyncResult, UserConfig,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -186,6 +186,38 @@ async fn commit_cherry_pick(root: PathBuf, worktree: PathBuf, id: String) -> R<A
 #[tauri::command]
 async fn commit_revert(root: PathBuf, worktree: PathBuf, id: String) -> R<Applied> {
     blocking(move || commit::revert(&repo(&root)?, &worktree, &id).map_err(err)).await
+}
+
+#[tauri::command]
+async fn tag_delete(root: PathBuf, name: String) -> R<()> {
+    blocking(move || tag::delete(&repo(&root)?, &name).map_err(err)).await
+}
+
+#[tauri::command]
+async fn tag_push(root: PathBuf, name: String) -> R<()> {
+    blocking(move || tag::push(&repo(&root)?, &name).map_err(err)).await
+}
+
+// ---- backups -------------------------------------------------------------------
+
+#[tauri::command]
+async fn backups_list(root: PathBuf) -> R<Vec<Backup>> {
+    blocking(move || backup::list(&repo(&root)?).map_err(err)).await
+}
+
+#[tauri::command]
+async fn backup_restore_branch(root: PathBuf, refname: String) -> R<()> {
+    blocking(move || backup::restore_branch(&repo(&root)?, &refname).map_err(err)).await
+}
+
+#[tauri::command]
+async fn backup_restore_files(root: PathBuf, refname: String, worktree: PathBuf) -> R<()> {
+    blocking(move || backup::restore_files(&repo(&root)?, &refname, &worktree).map_err(err)).await
+}
+
+#[tauri::command]
+async fn backup_delete(root: PathBuf, refname: String) -> R<()> {
+    blocking(move || backup::delete(&repo(&root)?, &refname).map_err(err)).await
 }
 
 #[tauri::command]
@@ -427,6 +459,12 @@ pub fn run() {
             commit_cherry_pick,
             commit_revert,
             tag_create,
+            tag_delete,
+            tag_push,
+            backups_list,
+            backup_restore_branch,
+            backup_restore_files,
+            backup_delete,
             stash_list,
             stash_save,
             stash_apply,

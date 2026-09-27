@@ -82,6 +82,8 @@ export type MergePlan = {
 };
 export type Stash = { index: number; message: string; branch: string | null; time: number };
 export type Applied = "done" | "paused";
+export type BackupKind = "branch" | "discard" | "remove_worktree" | "restore" | "stash";
+export type Backup = { refname: string; kind: BackupKind; branch: string | null; id: string; time: number; files: string[]; branch_exists: boolean };
 
 export type Step = { name: string; ok: boolean; output: string };
 export type MergeResult = { merged: boolean; steps: Step[]; backup_refs: string[] };
@@ -113,6 +115,12 @@ export const api = {
   cherryPick: (root: string, worktree: string, id: string) => invoke<Applied>("commit_cherry_pick", { root, worktree, id }),
   revert: (root: string, worktree: string, id: string) => invoke<Applied>("commit_revert", { root, worktree, id }),
   tagCreate: (root: string, name: string, target: string, message: string | null, push: boolean) => invoke<void>("tag_create", { root, name, target, message, push }),
+  tagDelete: (root: string, name: string) => invoke<void>("tag_delete", { root, name }),
+  tagPush: (root: string, name: string) => invoke<void>("tag_push", { root, name }),
+  backupsList: (root: string) => invoke<Backup[]>("backups_list", { root }),
+  backupRestoreBranch: (root: string, refname: string) => invoke<void>("backup_restore_branch", { root, refname }),
+  backupRestoreFiles: (root: string, refname: string, worktree: string) => invoke<void>("backup_restore_files", { root, refname, worktree }),
+  backupDelete: (root: string, refname: string) => invoke<void>("backup_delete", { root, refname }),
   stashList: (root: string) => invoke<Stash[]>("stash_list", { root }),
   stashSave: (worktree: string, message: string | null) => invoke<boolean>("stash_save", { worktree, message }),
   stashApply: (worktree: string, index: number, pop: boolean) => invoke<void>("stash_apply", { worktree, index, pop }),

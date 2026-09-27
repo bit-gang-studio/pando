@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { ago, api, changed, type BranchRow, type DetachedRow, type Overview as OverviewData, type RemoteBranch, type Stash, type Summary, type Worktree } from "../lib/api";
+import { ago, api, changed, type BranchRow, type DetachedRow, type Overview as OverviewData, type Backup, type RemoteBranch, type Stash, type Summary, type Worktree } from "../lib/api";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { MoreButton } from "../ui/MoreButton";
+import { navigate } from "../lib/routes";
+import { reveal, REVEAL_LABEL } from "../lib/reveal";
 import { NewWindowIcon } from "../ui/icons";
 import { MergeDialog } from "../dialogs/MergeDialog";
 import { NewBranchDialog } from "../dialogs/NewBranchDialog";
@@ -34,6 +36,8 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const [stashes, setStashes] = useState<Stash[]>([]);
 
   useEffect(() => { api.stashList(root).then(setStashes).catch(() => setStashes([])); }, [root, data]);
+  const [backups, setBackups] = useState<Backup[]>([]);
+  useEffect(() => { api.backupsList(root).then((b) => setBackups(b ?? [])).catch(() => setBackups([])); }, [root, data]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -122,6 +126,8 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     const b = row.branch?.branch;
     const items: MenuItem[] = [
       { label: "Open in new window", onClick: () => openWin(row.worktree.path) },
+      { label: "Copy path", onClick: () => navigator.clipboard.writeText(row.worktree.path) },
+      { label: REVEAL_LABEL, onClick: () => reveal(row.worktree.path).catch(toastError) },
       sep,
     ];
     if (b?.upstream) items.push({ label: "Pull", onClick: () => run(`Pulling ${b.name}…`, `Pulled ${b.name}`, () => api.branchPull(row.worktree.path)) });
@@ -162,6 +168,37 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     sep,
     { label: "Delete on origin…", onClick: () => deleteRemote(r), danger: true },
   ]);
+  // ---- backups -----------------------------------------------------------------
+  const backupTitle = (b: Backup) => BACKUP_TITLE[b.kind] ?? "Backup";
+  async function restoreBackup(b: Backup) {
+    if (b.kind === "branch") {
+      const what = b.branch_exists
+        ? <>Point <span className="font-mono">{b.branch}</span> back to <span className="font-mono">{b.id.slice(0, 7)}</span>? Its current tip is backed up first, so you can undo this.</>
+        : <>Bring back <span className="font-mono">{b.branch}</span> at <span className="font-mono">{b.id.slice(0, 7)}</span>.</>;
+      if (!(await confirm({ title: "Restore branch", body: what, action: "Restore branch" })).ok) return;
+      await run("Restoring…", `Restored ${b.branch}`, () => api.backupRestoreBranch(root, b.refname));
+      return;
+    }
+    const shown = b.files.slice(0, 5).join(", ") + (b.files.length > 5 ? ` and ${b.files.length - 5} more` : "");
+    const a = await confirm({
+      title: "Restore files",
+      body: <>Put back <span className="font-mono">{shown || "the saved changes"}</span>. Whatever those files hold now is backed up first.</>,
+      action: "Restore files",
+      select: { label: "Into worktree", options: worktreeOptions(data), value: mainWt?.path },
+    });
+    if (a.ok) await run("Restoring…", "Restored files", () => api.backupRestoreFiles(root, b.refname, a.choice));
+  }
+  const backupMenu = (e: React.MouseEvent, b: Backup) => show(e, [
+    { label: b.kind === "branch" ? "Restore branch…" : "Restore files…", onClick: () => restoreBackup(b) },
+    { label: "Show commit", onClick: () => navigate({ kind: "commit", root, id: b.id }) },
+    sep,
+    { label: "Delete backup…", danger: true, onClick: async () => {
+      if ((await confirm({ title: "Delete backup", body: `Delete this backup for good? ${backupTitle(b)} can't be restored afterwards.`, action: "Delete backup", danger: true })).ok) {
+        await run("Deleting…", "Deleted backup", () => api.backupDelete(root, b.refname));
+      }
+    } },
+  ]);
+
   const stashMenu = (e: React.MouseEvent, st: Stash) => show(e, [
     { label: "Apply…", onClick: () => applyStash(st, false) },
     { label: "Pop…", onClick: () => applyStash(st, true) },
@@ -285,13 +322,32 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
           {q && remoteShown.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No match.</div>}
         </>
       )}
+      {backups.length > 0 && head("backups", "BACKUPS", String(backups.length))}
+      {open.backups && backups.map((b) => (
+        <div key={b.refname} onContextMenu={(e) => backupMenu(e, b)} title={b.files.join("\n") || b.id} className="group flex items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+          <div className="min-w-0 grow">
+            <div className={`truncate ${b.kind === "branch" ? "font-mono" : ""}`}>{b.kind === "branch" ? b.branch : backupTitle(b)}</div>
+            <div className="truncate text-label text-stone-500">
+              {b.kind === "branch" ? (b.branch_exists ? "branch before a change" : "deleted branch") : `${b.files.length} ${b.files.length === 1 ? "file" : "files"}`} · {ago(b.time)}
+            </div>
+          </div>
+          <button onClick={() => restoreBackup(b)} disabled={!!busy} className={`${small} hidden group-hover:block`}>Restore</button>
+          <MoreButton onOpen={(e) => backupMenu(e, b)} label={`Actions for backup ${b.branch ?? backupTitle(b)}`} />
+        </div>
+      ))}
       <div className="h-4" />
     </aside>
   );
 }
 
 const OPEN_KEY = "pando.sidebar.open";
-const DEFAULT_OPEN: Record<string, boolean> = { worktrees: true, branches: true, stashes: true, remote: false };
+const DEFAULT_OPEN: Record<string, boolean> = { worktrees: true, branches: true, stashes: true, remote: false, backups: false };
+const BACKUP_TITLE: Record<string, string> = {
+  discard: "Discarded changes",
+  remove_worktree: "Changes in a removed worktree",
+  restore: "Replaced by a restore",
+  stash: "Dropped stash",
+};
 
 function detachedRow(d: DetachedRow): WtRow {
   return { key: d.worktree.path, label: `detached at ${d.worktree.head?.slice(0, 7) ?? "?"}`, worktree: d.worktree, status: d.status, branch: null, isMain: d.is_main_worktree, ahead: null, stale: false, time: null };

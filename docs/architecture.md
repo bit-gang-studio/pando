@@ -20,6 +20,7 @@ Core is the only place that touches git. Its API is plain serde request and resp
 - Mutations: the user's `git` CLI, porcelain and `-z` output. Hooks, credentials, signing, and fsmonitor keep working.
 - Reads: gix (gitoxide) in-process.
 - Status: `git status --porcelain=v2 -z` with `-c core.untrackedCache=true`. The repo page loads without status first (`overview::load_quick`), then with it.
+- Fetch runs quietly on open and every 5 minutes while the window is in use. Failures stay silent; the Fetch button shows them.
 - File watching: `watch` watches the git dir and every worktree folder, ignores what git ignores, and the app refreshes on change. It falls back to polling.
 - No libgit2. Floor is git 2.39.
 
@@ -50,6 +51,7 @@ New worktrees go next to the repo as `<repo>-<branch-slug>`. The New branch dial
 
 - Backup ref under `refs/pando/backup/<branch>` for every branch a change moves (merge backs up both sides). Kept in the ref's reflog.
 - Discard, forced Remove worktree and Drop stash first save what they throw away under `refs/pando/snapshots/<what>/<time>`. Nothing is ever pushed.
+- `backup::list`, `restore_branch`, `restore_files` and `delete` back the sidebar's Backups section. Restoring backs up or snapshots what it replaces, so a restore can be undone too.
 - Merge runs a preflight first: clean tree, ahead/behind, `merge-tree` conflict prediction, base worktree state. If it still hits conflicts, it undoes itself and points you to Sync with base.
 - Sync with base, cherry-pick and revert pause on conflicts for the conflict screen. They never auto-abort.
 
