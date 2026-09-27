@@ -38,7 +38,15 @@ pub struct FileStatus {
 pub fn files(worktree: &Path) -> Result<Vec<FileStatus>> {
     let out = git_bytes(
         worktree,
-        ["status", "--porcelain=v2", "-z", "--untracked-files=all"],
+        [
+            // Git's untracked-files cache: kept in .git/index, speeds up big repos, changes no config.
+            "-c",
+            "core.untrackedCache=true",
+            "status",
+            "--porcelain=v2",
+            "-z",
+            "--untracked-files=all",
+        ],
     )?;
     Ok(parse_files(&out))
 }
@@ -105,7 +113,15 @@ fn parse_files(out: &[u8]) -> Vec<FileStatus> {
 pub fn summary(worktree: &Path) -> Result<Summary> {
     let out = git_bytes(
         worktree,
-        ["status", "--porcelain=v2", "-z", "--untracked-files=normal"],
+        [
+            // Git's untracked-files cache: kept in .git/index, speeds up big repos, changes no config.
+            "-c",
+            "core.untrackedCache=true",
+            "status",
+            "--porcelain=v2",
+            "-z",
+            "--untracked-files=normal",
+        ],
     )?;
     Ok(parse(&out))
 }

@@ -7,7 +7,8 @@ use crate::repo::Repo;
 use crate::status::{self, Summary};
 use crate::worktree::{self, Worktree, WorktreeKind};
 use serde::{Deserialize, Serialize};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::path::PathBuf;
 
 pub const STALE_DAYS: i64 = 14;
 
@@ -52,16 +53,23 @@ pub fn load(repo: &Repo) -> Result<Overview> {
         .and_then(|b| g.rev_parse_single(b).ok())
         .map(|id| id.detach());
     let all_worktrees = worktree::list(repo)?;
+    // `git status` is the slow part on big repos. Run one per worktree, all at once.
+    let statuses: HashMap<PathBuf, Summary> = std::thread::scope(|s| {
+        let jobs: Vec<_> = all_worktrees
+            .iter()
+            .filter(|w| !w.bare && w.prunable.is_none() && w.path.is_dir())
+            .map(|w| (w.path.clone(), s.spawn(|| status::summary(&w.path).ok())))
+            .collect();
+        jobs.into_iter()
+            .filter_map(|(p, j)| j.join().ok().flatten().map(|st| (p, st)))
+            .collect()
+    });
     let detached = all_worktrees
         .iter()
         .filter(|w| w.branch.is_none() && !w.bare)
         .map(|w| DetachedRow {
             is_main_worktree: w.kind == WorktreeKind::Main,
-            status: if w.prunable.is_none() && w.path.is_dir() {
-                status::summary(&w.path).ok()
-            } else {
-                None
-            },
+            status: statuses.get(&w.path).copied(),
             worktree: w.clone(),
         })
         .collect();
@@ -77,10 +85,7 @@ pub fn load(repo: &Repo) -> Result<Overview> {
     let mut rows = Vec::new();
     for b in branch::list(repo)? {
         let wt = worktrees.get(&b.name).cloned();
-        let st = wt
-            .as_ref()
-            .filter(|w| w.prunable.is_none() && w.path.is_dir())
-            .and_then(|w| status::summary(&w.path).ok());
+        let st = wt.as_ref().and_then(|w| statuses.get(&w.path).copied());
         let ahead_of_base = match base_id {
             Some(bid) => {
                 let tip = gix::ObjectId::from_hex(b.tip.as_bytes()).ok();

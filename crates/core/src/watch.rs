@@ -6,7 +6,7 @@ use crate::cmd::git_stdin;
 use crate::error::{Error, Result};
 use crate::repo::Repo;
 use notify::{RecursiveMode, Watcher};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::mpsc;
 use std::time::Duration;
@@ -71,7 +71,7 @@ pub fn watch(
 
 /// True if any path in the batch is something git would notice.
 fn matters(git_dir: &Path, roots: &[PathBuf], batch: Vec<PathBuf>) -> bool {
-    let mut by_root: HashMap<&Path, Vec<PathBuf>> = HashMap::new();
+    let mut by_root: HashMap<&Path, HashSet<String>> = HashMap::new();
     for p in batch {
         let p = canon_lossy(&p);
         if let Ok(rel) = p.strip_prefix(git_dir) {
@@ -85,14 +85,19 @@ fn matters(git_dir: &Path, roots: &[PathBuf], batch: Vec<PathBuf>) -> bool {
         };
         let rel = p.strip_prefix(root).unwrap_or(&p).to_path_buf();
         // A linked worktree's `.git` is a file pointing at the git dir; skip it.
-        if rel.as_os_str().is_empty() || rel.starts_with(".git") {
+        // Git doesn't track folders; a change inside one also reports the file.
+        if rel.as_os_str().is_empty() || rel.starts_with(".git") || p.is_dir() {
             continue;
         }
-        by_root.entry(root.as_path()).or_default().push(rel);
+        by_root
+            .entry(root.as_path())
+            .or_default()
+            .insert(rel.to_string_lossy().replace('\\', "/"));
     }
-    by_root
-        .into_iter()
-        .any(|(root, paths)| paths.len() > ignored_count(root, &paths))
+    by_root.into_iter().any(|(root, paths)| {
+        let ignored = ignored(root, &paths);
+        paths.iter().any(|p| !ignored.contains(p))
+    })
 }
 
 fn git_dir_matters(rel: &Path) -> bool {
@@ -113,17 +118,21 @@ fn git_dir_matters(rel: &Path) -> bool {
     !name.ends_with(".lock") && name != "FETCH_HEAD" && !name.starts_with("tmp_")
 }
 
-/// How many of `paths` git ignores. If git can't tell, none.
-fn ignored_count(root: &Path, paths: &[PathBuf]) -> usize {
+/// Which of `paths` git ignores. If git can't tell, none.
+fn ignored(root: &Path, paths: &HashSet<String>) -> HashSet<String> {
     let mut input = Vec::new();
     for p in paths {
-        input.extend_from_slice(p.to_string_lossy().as_bytes());
+        input.extend_from_slice(p.as_bytes());
         input.push(0);
     }
     match git_stdin(root, ["check-ignore", "--stdin", "-z"], &input) {
         // Exit 0: prints the ignored ones. Exit 1: none ignored.
-        Ok((0, out)) => out.split(|b| *b == 0).filter(|s| !s.is_empty()).count(),
-        _ => 0,
+        Ok((0, out)) => out
+            .split(|b| *b == 0)
+            .filter(|s| !s.is_empty())
+            .map(|s| String::from_utf8_lossy(s).into_owned())
+            .collect(),
+        _ => HashSet::new(),
     }
 }
 

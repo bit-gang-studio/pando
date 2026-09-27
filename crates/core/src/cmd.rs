@@ -10,8 +10,6 @@ fn base(cwd: &Path) -> Command {
     c.current_dir(cwd)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")
-        // Reads never rewrite the index, so the file watcher doesn't see its own refreshes.
-        .env("GIT_OPTIONAL_LOCKS", "0")
         .env_remove("GIT_DIR")
         .env_remove("GIT_WORK_TREE")
         .env_remove("GIT_INDEX_FILE");
