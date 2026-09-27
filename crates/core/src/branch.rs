@@ -146,6 +146,12 @@ pub fn switch_in_main(repo: &Repo, name: &str) -> Result<()> {
     Ok(())
 }
 
+/// `git switch -c <name>` in worktree `wt`. Used to leave a detached HEAD.
+pub fn create_and_switch(wt: &Path, name: &str) -> Result<()> {
+    git(wt, ["switch", "-c", name])?;
+    Ok(())
+}
+
 /// Create a local branch from `base` (default HEAD) without checking it out.
 pub fn create(repo: &Repo, name: &str, base: Option<&str>) -> Result<()> {
     let mut args = vec!["branch", name];

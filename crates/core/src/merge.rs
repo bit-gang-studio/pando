@@ -85,13 +85,14 @@ pub fn default_base(repo: &Repo) -> Result<String> {
         .ok_or_else(|| crate::Error::Config("no default branch found".into()))
 }
 
-pub fn preflight(repo: &Repo, wt: &Path, branch: &str, base: &str) -> Result<Preflight> {
+/// `wt` is the branch's worktree, or `None` for a branch without one.
+pub fn preflight(repo: &Repo, wt: Option<&Path>, branch: &str, base: &str) -> Result<Preflight> {
     let g = repo.open_gix()?;
     let tip = g.rev_parse_single(branch).map_err(gix_err)?.detach();
     let base_id = g.rev_parse_single(base).map_err(gix_err)?.detach();
     let ahead = count_only_in(&g, tip, base_id)?;
     let behind = count_only_in(&g, base_id, tip)?;
-    let summary = status::summary(wt)?;
+    let summary = wt.map(status::summary).transpose()?.unwrap_or_default();
     let clean = summary.is_clean();
     let last_summary = g
         .find_commit(tip)
@@ -132,7 +133,7 @@ pub fn preflight(repo: &Repo, wt: &Path, branch: &str, base: &str) -> Result<Pre
             .unwrap_or(false)
     });
     let has_upstream = git_raw(
-        wt,
+        wt.unwrap_or(&repo.root),
         [
             "rev-parse",
             "--abbrev-ref",
@@ -150,7 +151,7 @@ pub fn preflight(repo: &Repo, wt: &Path, branch: &str, base: &str) -> Result<Pre
         ));
     }
     if ahead == 0 {
-        problems.push(format!("No commits ahead of {base}. Nothing to land."));
+        problems.push(format!("No commits ahead of {base}. Nothing to merge."));
     }
     if conflict_predicted {
         problems.push(format!(
@@ -182,7 +183,25 @@ pub fn preflight(repo: &Repo, wt: &Path, branch: &str, base: &str) -> Result<Pre
     })
 }
 
-pub fn run(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
+/// `wt` is the branch's worktree. For a branch without one, pass `None`:
+/// the merge runs in a temporary worktree that is removed afterwards.
+pub fn run(repo: &Repo, wt: Option<&Path>, plan: &MergePlan) -> Result<MergeResult> {
+    if let Some(wt) = wt {
+        return run_in(repo, wt, plan);
+    }
+    let tmp = std::env::temp_dir().join(format!(
+        "pando-merge-{}-{}",
+        std::process::id(),
+        worktree::branch_slug(&plan.branch)
+    ));
+    let tmp_s = tmp.to_string_lossy().to_string();
+    git(&repo.root, ["worktree", "add", "-q", &tmp_s, &plan.branch])?;
+    let r = run_in(repo, &tmp, plan);
+    let _ = git(&repo.root, ["worktree", "remove", "--force", &tmp_s]);
+    r
+}
+
+fn run_in(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
     let mut steps: Vec<Step> = vec![];
     let mut r = MergeResult {
         landed: false,

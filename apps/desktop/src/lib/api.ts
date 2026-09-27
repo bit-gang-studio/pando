@@ -104,6 +104,7 @@ export const api = {
   branchPull: (worktree: string) => invoke<void>("branch_pull", { worktree }),
   branchDelete: (root: string, name: string, remote: boolean) => invoke<void>("branch_delete", { root, name, remote }),
   branchDeleteRemote: (root: string, name: string) => invoke<void>("branch_delete_remote", { root, name }),
+  branchCreateAndSwitch: (path: string, name: string) => invoke<void>("branch_create_and_switch", { path, name }),
   branchSwitch: (root: string, name: string) => invoke<void>("branch_switch", { root, name }),
   branchRename: (root: string, old: string, new_: string) => invoke<void>("branch_rename", { root, old, new: new_ }),
   branchSetUpstream: (root: string, name: string, upstream: string) => invoke<void>("branch_set_upstream", { root, name, upstream }),
@@ -135,8 +136,8 @@ export const api = {
   commitCreate: (worktree: string, message: string, amend: boolean) => invoke<string>("commit_create", { worktree, message, amend }),
   syncRebase: (root: string, worktree: string, branch: string, base: string) => invoke<SyncResult>("sync_rebase", { root, worktree, branch, base }),
 
-  mergePreflight: (root: string, path: string, branch: string) => invoke<Preflight>("merge_preflight", { root, path, branch }),
-  mergeRun: (root: string, path: string, plan: MergePlan) => invoke<MergeResult>("merge_run", { root, path, plan }),
+  mergePreflight: (root: string, path: string | null, branch: string) => invoke<Preflight>("merge_preflight", { root, path, branch }),
+  mergeRun: (root: string, path: string | null, plan: MergePlan) => invoke<MergeResult>("merge_run", { root, path, plan }),
 
   conflictFile: (worktree: string, path: string) => invoke<ConflictFile>("conflict_file", { worktree, path }),
   conflictTake: (worktree: string, path: string, side: "ours" | "theirs" | "both") => invoke<void>("conflict_take", { worktree, path, side }),

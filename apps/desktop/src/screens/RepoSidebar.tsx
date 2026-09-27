@@ -87,6 +87,10 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     const a = await confirm({ title: "Switch branch", body: "Check out another branch in the main worktree. Uncommitted changes must be committed or stashed first.", action: "Switch branch", select: { label: "Branch", options: free } });
     if (a.ok) await switchMain(a.choice);
   }
+  async function createHere(row: WtRow) {
+    const a = await confirm({ title: "Create branch", body: <>Create a branch at <span className="font-mono">{row.worktree.head?.slice(0, 7)}</span> and switch this worktree to it.</>, action: "Create branch", input: { label: "Branch name", placeholder: "feat/my-change", mono: true } });
+    if (a.ok) await run("create", () => api.branchCreateAndSwitch(row.worktree.path, a.value));
+  }
   async function rename(old: string) {
     const a = await confirm({ title: "Rename branch", body: <>Rename <span className="font-mono">{old}</span>. A backup of the old name is kept.</>, action: "Rename", input: { label: "New name", value: old, mono: true } });
     if (a.ok && a.value !== old) await run("rename", () => api.branchRename(root, old, a.value));
@@ -119,7 +123,6 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const rowMenu = (e: React.MouseEvent, row: WtRow) => {
     const b = row.branch?.branch;
     const items: MenuItem[] = [
-      { label: "Open", onClick: () => onOpenWorktree(row.worktree.path) },
       { label: "Open in new window", onClick: () => openWin(row.worktree.path) },
       sep,
     ];
@@ -128,6 +131,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     if (!row.isMain && row.branch) items.push({ label: "Merge…", onClick: () => setMerging(row.branch!) });
     if (changed(row.status) > 0) items.push({ label: "Stash changes…", onClick: () => stashChanges(row) });
     items.push(sep);
+    if (!b) items.push({ label: "Create branch here…", onClick: () => createHere(row) });
     if (row.isMain) items.push({ label: "Switch branch…", onClick: () => switchMainPicker() });
     if (b) items.push({ label: "Rename branch…", onClick: () => rename(b.name) });
     if (b) items.push({ label: "Set upstream…", onClick: () => setUpstream(b.name, b.upstream) });
@@ -141,10 +145,10 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     show(e, items);
   };
   const branchMenu = (e: React.MouseEvent, r: BranchRow) => show(e, [
-    { label: "Open", onClick: () => onOpenBranch(r.branch.name) },
     { label: "Open in new window", onClick: () => openInNewWindow({ kind: "branch", root, name: r.branch.name }) },
     sep,
     { label: "Add worktree…", onClick: () => setCreating({ branch: r.branch.name }) },
+    { label: "Merge…", onClick: () => setMerging(r) },
     { label: "Switch main worktree to this branch", onClick: () => switchMain(r.branch.name) },
     { label: r.branch.upstream ? "Push" : "Push to origin", onClick: () => run("push", () => api.branchPush(root, r.branch.name)) },
     sep,
@@ -154,7 +158,6 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     { label: "Delete branch…", onClick: () => deleteBranch(r), danger: true },
   ]);
   const remoteMenu = (e: React.MouseEvent, r: RemoteBranch) => show(e, [
-    { label: "Open", onClick: () => onOpenBranch(r.name) },
     { label: "Open in new window", onClick: () => openInNewWindow({ kind: "branch", root, name: r.name }) },
     sep,
     { label: "Add worktree…", onClick: () => setCreating({ branch: r.short, remote: r.name }) },
@@ -192,8 +195,8 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       {creating && data && (
         <NewBranchDialog root={root} base={data.base} initialBranch={creating.branch ?? null} remote={creating.remote ?? null} onClose={() => setCreating(null)} onCreated={refresh} />
       )}
-      {merging && merging.worktree && (
-        <MergeDialog root={root} path={merging.worktree.path} branch={merging.branch.name} headSummary={merging.branch.last_commit?.summary ?? null} onClose={() => setMerging(null)} onMerged={refresh} />
+      {merging && (
+        <MergeDialog root={root} path={merging.worktree?.path ?? null} branch={merging.branch.name} headSummary={merging.branch.last_commit?.summary ?? null} onClose={() => setMerging(null)} onMerged={refresh} />
       )}
 
       <div className="flex items-center gap-1.5 border-b border-stone-200 px-3 py-2 dark:border-stone-700">

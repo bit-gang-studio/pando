@@ -100,7 +100,7 @@ fn plan(strategy: Strategy) -> MergePlan {
 fn preflight_reports_state() {
     let f = fixture();
     let repo = Repo::discover(&f.root).unwrap();
-    let p = merge::preflight(&repo, &f.wt, "feat/x", "main").unwrap();
+    let p = merge::preflight(&repo, Some(&f.wt), "feat/x", "main").unwrap();
     assert!(p.clean);
     assert_eq!((p.ahead, p.behind), (2, 1));
     assert!(!p.conflict_predicted);
@@ -109,7 +109,7 @@ fn preflight_reports_state() {
     assert!(p.problems.is_empty(), "{:?}", p.problems);
 
     write(&f.wt, "dirty.txt", "x");
-    let p = merge::preflight(&repo, &f.wt, "feat/x", "main").unwrap();
+    let p = merge::preflight(&repo, Some(&f.wt), "feat/x", "main").unwrap();
     assert!(!p.clean);
     assert_eq!(p.uncommitted, 1);
     assert_eq!(p.problems.len(), 1);
@@ -124,7 +124,7 @@ fn preflight_predicts_conflicts() {
     git(&f.wt, &["commit", "-q", "-am", "edit one"]);
     write(&f.root, "one", "ours");
     git(&f.root, &["commit", "-q", "-am", "edit one on main"]);
-    let p = merge::preflight(&repo, &f.wt, "feat/x", "main").unwrap();
+    let p = merge::preflight(&repo, Some(&f.wt), "feat/x", "main").unwrap();
     assert!(p.conflict_predicted);
     assert_eq!(p.conflict_files, vec!["one"]);
 }
@@ -133,7 +133,7 @@ fn preflight_predicts_conflicts() {
 fn merge_squash_into_local_main_and_push() {
     let f = fixture();
     let repo = Repo::discover(&f.root).unwrap();
-    let r = merge::run(&repo, &f.wt, &plan(Strategy::Squash)).unwrap();
+    let r = merge::run(&repo, Some(&f.wt), &plan(Strategy::Squash)).unwrap();
     assert!(r.landed, "{:#?}", r.steps);
     assert!(r.steps.iter().all(|s| s.ok), "{:#?}", r.steps);
     assert_eq!(
@@ -160,7 +160,7 @@ fn rebase_and_merge_keeps_commits() {
     let repo = Repo::discover(&f.root).unwrap();
     let mut p = plan(Strategy::Rebase);
     p.push_base = false;
-    let r = merge::run(&repo, &f.wt, &p).unwrap();
+    let r = merge::run(&repo, Some(&f.wt), &p).unwrap();
     assert!(r.landed, "{:#?}", r.steps);
     assert_eq!(
         git(&f.root, &["log", "--format=%s", "-3"]),
@@ -175,7 +175,7 @@ fn merge_commit_keeps_history_and_adds_merge() {
     let mut p = plan(Strategy::MergeCommit);
     p.message = Some("Merge feat/x".into());
     p.push_base = false;
-    let r = merge::run(&repo, &f.wt, &p).unwrap();
+    let r = merge::run(&repo, Some(&f.wt), &p).unwrap();
     assert!(r.landed, "{:#?}", r.steps);
     assert_eq!(git(&f.root, &["log", "-1", "--format=%s"]), "Merge feat/x");
     assert_eq!(
@@ -198,11 +198,37 @@ fn merge_commit_without_base_checked_out() {
     p.message = Some("Merge feat/x".into());
     p.push_base = false;
     p.delete_branch = false;
-    let r = merge::run(&repo, &f.wt, &p).unwrap();
+    let r = merge::run(&repo, Some(&f.wt), &p).unwrap();
     assert!(r.landed, "{:#?}", r.steps);
     assert_eq!(
         git(&f.root, &["log", "-1", "--format=%s", "main"]),
         "Merge feat/x"
     );
     assert!(f.wt.exists(), "worktree kept when delete_branch is off");
+}
+
+#[test]
+fn merge_branch_without_a_worktree() {
+    let f = fixture();
+    let repo = Repo::discover(&f.root).unwrap();
+    git(&f.root, &["worktree", "remove", f.wt.to_str().unwrap()]);
+    let p0 = merge::preflight(&repo, None, "feat/x", "main").unwrap();
+    assert!(p0.problems.is_empty(), "{:?}", p0.problems);
+    for strategy in [Strategy::Squash, Strategy::Rebase] {
+        let f = fixture();
+        let repo = Repo::discover(&f.root).unwrap();
+        git(&f.root, &["worktree", "remove", f.wt.to_str().unwrap()]);
+        let mut p = plan(strategy);
+        p.push_base = false;
+        p.delete_branch = false;
+        let r = merge::run(&repo, None, &p).unwrap();
+        assert!(r.landed, "{:#?}", r.steps);
+        assert_eq!(
+            git(&f.root, &["worktree", "list", "--porcelain"])
+                .matches("worktree ")
+                .count(),
+            1,
+            "temporary worktree removed"
+        );
+    }
 }

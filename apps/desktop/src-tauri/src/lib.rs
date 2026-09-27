@@ -157,6 +157,12 @@ async fn branch_switch(root: PathBuf, name: String) -> R<()> {
     blocking(move || branch::switch_in_main(&repo(&root)?, &name).map_err(err)).await
 }
 
+/// `git switch -c <name>` in a worktree, e.g. to leave a detached HEAD.
+#[tauri::command]
+async fn branch_create_and_switch(path: PathBuf, name: String) -> R<()> {
+    blocking(move || branch::create_and_switch(&path, &name).map_err(err)).await
+}
+
 #[tauri::command]
 async fn branch_rename(root: PathBuf, old: String, new: String) -> R<()> {
     blocking(move || branch::rename(&repo(&root)?, &old, &new).map_err(err)).await
@@ -311,18 +317,18 @@ async fn sync_rebase(
 // ---- merge -----------------------------------------------------------------
 
 #[tauri::command]
-async fn merge_preflight(root: PathBuf, path: PathBuf, branch: String) -> R<Preflight> {
+async fn merge_preflight(root: PathBuf, path: Option<PathBuf>, branch: String) -> R<Preflight> {
     blocking(move || {
         let r = repo(&root)?;
         let base = merge::default_base(&r).map_err(err)?;
-        merge::preflight(&r, &path, &branch, &base).map_err(err)
+        merge::preflight(&r, path.as_deref(), &branch, &base).map_err(err)
     })
     .await
 }
 
 #[tauri::command]
-async fn merge_run(root: PathBuf, path: PathBuf, plan: MergePlan) -> R<MergeResult> {
-    blocking(move || merge::run(&repo(&root)?, &path, &plan).map_err(err)).await
+async fn merge_run(root: PathBuf, path: Option<PathBuf>, plan: MergePlan) -> R<MergeResult> {
+    blocking(move || merge::run(&repo(&root)?, path.as_deref(), &plan).map_err(err)).await
 }
 
 // ---- conflicts -------------------------------------------------------------
@@ -378,6 +384,7 @@ pub fn run() {
             worktree_lock,
             worktree_prune,
             branch_switch,
+            branch_create_and_switch,
             branch_rename,
             branch_set_upstream,
             branch_delete_remote,

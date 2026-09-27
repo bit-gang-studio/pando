@@ -3,7 +3,8 @@ import { api, type MergePlan, type MergeResult, type Preflight } from "../lib/ap
 
 type Props = {
   root: string;
-  path: string;
+  /// The branch's worktree, or null for a branch without one.
+  path: string | null;
   branch: string;
   headSummary?: string | null;
   onClose: () => void;
