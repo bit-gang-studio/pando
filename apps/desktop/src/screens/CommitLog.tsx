@@ -52,7 +52,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
       </div>
       <div className="min-h-0 grow overflow-auto bg-white dark:bg-stone-800">
         {dirtyWorktrees > 0 && (
-          <button onClick={onUncommitted} className={`flex w-full items-center gap-3 border-b border-stone-100 px-4 py-1.5 text-left dark:border-stone-700 ${uncommittedSelected || (selected === null && uncommittedLabel) ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
+          <button onClick={onUncommitted} className={`flex w-full items-center gap-3 px-4 py-1.5 text-left ${uncommittedSelected || (selected === null && uncommittedLabel) ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
             <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-stone-400" />
             <span className="font-medium">Uncommitted changes</span>
             <span className="text-xs text-stone-500">{uncommittedLabel ?? `in ${dirtyWorktrees} ${dirtyWorktrees === 1 ? "worktree" : "worktrees"}`}</span>
@@ -63,7 +63,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
             key={e.id}
             style={{ height: ROW_H }}
             onClick={(ev) => (wantsNewWindow(ev) ? openInNewWindow({ kind: "commit", root, id: e.id }) : onSelect(selected === e.id ? null : e.id))}
-            className={`flex cursor-pointer items-center gap-3 border-b border-stone-100 pl-2 pr-4 dark:border-stone-700 ${selected === e.id ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}
+            className={`flex cursor-pointer items-center gap-3 pl-2 pr-4 ${selected === e.id ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}
           >
             <GraphCell row={graph[i]} width={graphW} head={e.is_head} />
             <span className="flex shrink-0 gap-1">
