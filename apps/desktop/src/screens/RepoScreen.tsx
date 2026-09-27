@@ -17,7 +17,7 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
   const [firstId, setFirstId] = useState<string | null>(null); // newest commit, shown by default on the repo page
   // null = not chosen yet: show uncommitted changes if there are any, else the newest commit.
   const [uncommittedChoice, setShowUncommitted] = useState<boolean | null>(null);
-  const split = useSplit(worktree ? "pando.split.worktree.px" : "pando.split.repo.px", worktree ? 240 : 320, "y", 120, 4000);
+  const split = useSplit("pando.split.graph.px", 300, "y", 120, 4000);
   const side = useSplit("pando.split.sidebar.px", 300, "x", 200, 700);
   const onLoaded = useCallback((id: string | null) => setFirstId(id), []);
   useEffect(() => { setWtCommit(null); }, [worktree]);

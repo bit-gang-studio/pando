@@ -38,9 +38,16 @@ export default function App() {
       )}
       <div className="flex min-h-0 min-w-0 grow bg-stone-100 dark:bg-stone-900">
         {route.kind === "repos" && <Repos onError={setFatal} />}
-        {route.kind === "repo" && <RepoScreen key={route.root} root={route.root} commit={null} onError={setFatal} />}
-        {route.kind === "commit" && <RepoScreen key={route.root} root={route.root} commit={route.id} onError={setFatal} />}
-        {route.kind === "worktree" && <RepoScreen key={`${route.root}:${route.path}`} root={route.root} commit={null} worktree={route.path} onError={setFatal} />}
+        {route.kind !== "repos" && (
+          // One instance per repo, so switching worktree or commit keeps the sidebar mounted.
+          <RepoScreen
+            key={route.root}
+            root={route.root}
+            commit={route.kind === "commit" ? route.id : null}
+            worktree={route.kind === "worktree" ? route.path : null}
+            onError={setFatal}
+          />
+        )}
       </div>
     </div>
   );
