@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use std::process::exit;
 
 #[derive(Parser)]
-#[command(name = "pando", version = pando_core::VERSION, about = "The worktree-native git client")]
+#[command(name = "pando", version = pando_core::VERSION, about = "Pando on the command line: list, add and remove git worktrees")]
 struct Cli {
     /// Repo path. Defaults to the current directory.
     #[arg(long, global = true)]
@@ -187,7 +187,7 @@ fn find(repo: &Repo, target: &str) -> pando_core::Result<Worktree> {
     by_branch
         .or_else(by_path)
         .cloned()
-        .ok_or_else(|| pando_core::Error::Config(format!("no worktree for '{target}'")))
+        .ok_or_else(|| pando_core::Error::Msg(format!("no worktree for '{target}'")))
 }
 
 fn shell_init(shell: Shell) -> &'static str {

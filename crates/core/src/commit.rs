@@ -38,10 +38,6 @@ pub fn create(worktree: &std::path::Path, message: &str, amend: bool) -> Result<
         .to_string())
 }
 
-pub(crate) fn parse_id(hex: &str) -> Result<gix::ObjectId> {
-    gix::ObjectId::from_hex(hex.as_bytes()).map_err(gix_err)
-}
-
 /// Outcome of an operation that can stop on conflicts.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]

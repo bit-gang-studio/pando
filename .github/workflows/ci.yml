@@ -38,3 +38,26 @@ jobs:
       - run: cargo test --workspace
       - run: pnpm --filter @pando/desktop build
       - run: cargo build --workspace
+
+  # The oldest git we support (Apple ships 2.39). Core and CLI tests only.
+  git-floor:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        id: git
+        with:
+          path: ~/git-2.39.5
+          key: git-2.39.5-ubuntu-22.04
+      - name: Build git 2.39.5
+        if: steps.git.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libcurl4-openssl-dev libexpat1-dev gettext zlib1g-dev
+          curl -sL https://mirrors.edge.kernel.org/pub/software/scm/git/git-2.39.5.tar.gz | tar xz
+          make -C git-2.39.5 -j4 prefix=$HOME/git-2.39.5 NO_TCLTK=1 install >/dev/null
+      - run: echo "$HOME/git-2.39.5/bin" >> $GITHUB_PATH
+      - run: git --version | grep -q "2.39.5"
+      - run: cargo test -p pando-core -p pando-cli

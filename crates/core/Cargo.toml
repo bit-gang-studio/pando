@@ -14,7 +14,6 @@ notify = { version = "8", default-features = false, features = ["macos_fsevent"]
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
-toml = "1.1.6"
 
 [dev-dependencies]
 dunce = "1.0.5"

@@ -1,11 +1,10 @@
 //! Staging: files, hunks, discard.
 
-use crate::cmd::git;
+use crate::cmd::{git, git_stdin};
 use crate::diff::{hunk_patch, Hunk};
 use crate::error::Result;
-use std::io::Write;
+use crate::repo::Repo;
 use std::path::Path;
-use std::process::{Command, Stdio};
 
 pub fn stage(worktree: &Path, paths: &[String]) -> Result<()> {
     if paths.is_empty() {
@@ -38,7 +37,13 @@ pub fn unstage_all(worktree: &Path) -> Result<()> {
 }
 
 /// Throw away unstaged changes. Untracked files are deleted.
+/// Throw away unstaged changes in `paths` and delete the new files in `untracked`.
+/// Their contents are saved first under `refs/pando/snapshots/discard/`.
 pub fn discard(worktree: &Path, paths: &[String], untracked: &[String]) -> Result<()> {
+    let all: Vec<String> = paths.iter().chain(untracked).cloned().collect();
+    if !all.is_empty() {
+        crate::backup::snapshot(&Repo::discover(worktree)?, worktree, "discard", &all)?;
+    }
     if !paths.is_empty() {
         let mut args = vec!["restore", "--worktree", "--"];
         args.extend(paths.iter().map(String::as_str));
@@ -59,21 +64,13 @@ pub fn apply_hunk(worktree: &Path, path: &str, hunk: &Hunk, reverse: bool) -> Re
     if reverse {
         args.push("--reverse");
     }
-    let mut child = Command::new("git")
-        .current_dir(worktree)
-        .args(&args)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::null())
-        .stderr(Stdio::piped())
-        .spawn()?;
-    child.stdin.take().unwrap().write_all(patch.as_bytes())?;
-    let out = child.wait_with_output()?;
-    if out.status.success() {
+    let (code, _, stderr) = git_stdin(worktree, &args, patch.as_bytes())?;
+    if code == 0 {
         Ok(())
     } else {
         Err(crate::Error::Git {
             cmd: args.join(" "),
-            stderr: String::from_utf8_lossy(&out.stderr).trim().to_string(),
+            stderr,
         })
     }
 }

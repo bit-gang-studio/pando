@@ -1,5 +1,4 @@
 use serde::{Deserialize, Serialize};
-use std::process::Command;
 
 /// Lowest git we support. Apple ships 2.39.
 pub const MIN_GIT: (u32, u32) = (2, 39);
@@ -13,12 +12,7 @@ pub struct Doctor {
 
 /// Check the git on PATH.
 pub fn doctor() -> Doctor {
-    let raw = Command::new("git")
-        .arg("--version")
-        .output()
-        .ok()
-        .filter(|o| o.status.success())
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+    let raw = crate::cmd::git_opt(&std::env::temp_dir(), ["--version"]);
     let parsed = raw.as_deref().and_then(parse_version);
     Doctor {
         git_ok: parsed.map(|v| v >= MIN_GIT).unwrap_or(false),

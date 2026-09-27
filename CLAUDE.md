@@ -13,7 +13,9 @@ Read `docs/architecture.md` first. The plan and status are the Crunchy board (pr
 - Desktop and CLI call `pando-core` only. No git calls outside core.
 - Mutations shell out to the git CLI. Reads use gix. No libgit2.
 - Every public core type is serde. No raw git output crosses the API.
-- Write a backup ref under `refs/pando/backup/` before any mutation.
+- Before any change that can lose work: back up every branch that moves (`refs/pando/backup/<branch>`), and snapshot files about to be thrown away (`refs/pando/snapshots/`). See `backup.rs`.
+- Only `cmd.rs` spawns git. Reads run with `GIT_OPTIONAL_LOCKS=0` so Pando never blocks the user's own git.
+- Tests try to break things: failure paths, odd names, empty repos, concurrency. `crates/core/tests/common` has the helpers.
 - Git floor is 2.39. Feature-detect newer flags.
 - Keep docs minimal. Plain language. No filler.
 - Use git's words in the UI and CLI: "add worktree", "remove worktree", "merge", "branch". Never invent verbs (no land, open, close, workspace).

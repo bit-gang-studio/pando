@@ -48,7 +48,8 @@ New worktrees go next to the repo as `<repo>-<branch-slug>`. The New branch dial
 
 ## Safety
 
-- Backup ref under `refs/pando/backup/<branch>` before every mutation.
+- Backup ref under `refs/pando/backup/<branch>` for every branch a change moves (merge backs up both sides). Kept in the ref's reflog.
+- Discard, forced Remove worktree and Drop stash first save what they throw away under `refs/pando/snapshots/<what>/<time>`. Nothing is ever pushed.
 - Merge runs a preflight first: clean tree, ahead/behind, `merge-tree` conflict prediction, base worktree state. If it still hits conflicts, it undoes itself and points you to Sync with base.
 - Sync with base, cherry-pick and revert pause on conflicts for the conflict screen. They never auto-abort.
 

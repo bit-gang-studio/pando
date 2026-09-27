@@ -79,13 +79,12 @@ export type Preflight = {
 };
 export type MergePlan = {
   branch: string; base: string; strategy: "merge_commit" | "squash" | "rebase"; message: string | null;
-  push_base: boolean; delete_branch: boolean;
 };
 export type Stash = { index: number; message: string; branch: string | null; time: number };
 export type Applied = "done" | "paused";
 
 export type Step = { name: string; ok: boolean; output: string };
-export type MergeResult = { landed: boolean; steps: Step[]; backup_ref: string | null };
+export type MergeResult = { merged: boolean; steps: Step[]; backup_refs: string[] };
 
 
 // ---- calls -------------------------------------------------------------------

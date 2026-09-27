@@ -1,88 +1,16 @@
-use pando_core::{merge, MergePlan, Repo, Strategy};
-use std::path::{Path, PathBuf};
-use std::process::Command;
+//! Merge in GitHub's three styles. Merge only merges: no push, no delete.
+mod common;
+use common::*;
+use pando_core::{merge, MergePlan, Strategy};
 
-fn git(cwd: &Path, args: &[&str]) -> String {
-    let out = Command::new("git")
-        .current_dir(cwd)
-        .args([
-            "-c",
-            "user.name=Test",
-            "-c",
-            "user.email=test@example.com",
-            "-c",
-            "commit.gpgsign=false",
-            "-c",
-            "init.defaultBranch=main",
-            "-c",
-            "protocol.file.allow=always",
-        ])
-        .args(args)
-        .output()
-        .unwrap();
-    assert!(
-        out.status.success(),
-        "git {:?}: {}",
-        args,
-        String::from_utf8_lossy(&out.stderr)
-    );
-    String::from_utf8_lossy(&out.stdout).trim().to_string()
-}
-fn write(dir: &Path, name: &str, body: &str) {
-    std::fs::write(dir.join(name), body).unwrap();
-}
-fn commit(cwd: &Path, name: &str) {
-    write(cwd, name, name);
-    git(cwd, &["add", "."]);
-    git(cwd, &["commit", "-q", "-m", name]);
-}
-
-struct Fx {
-    _tmp: tempfile::TempDir,
-    root: PathBuf,
-    wt: PathBuf,
-}
-
-fn fixture() -> Fx {
-    let tmp = tempfile::tempdir().unwrap();
-    let base = dunce::canonicalize(tmp.path()).unwrap();
-    let root = base.join("work");
-    git(&base, &["init", "-q", "--bare", "origin.git"]);
-    git(&base, &["init", "-q", "-b", "main", "work"]);
-    git(&root, &["config", "user.name", "Test"]);
-    git(&root, &["config", "user.email", "test@example.com"]);
-    git(&root, &["config", "core.autocrlf", "false"]);
-    commit(&root, "one");
-    git(
-        &root,
-        &[
-            "remote",
-            "add",
-            "origin",
-            base.join("origin.git").to_str().unwrap(),
-        ],
-    );
-    git(&root, &["push", "-q", "-u", "origin", "main"]);
-    let wt = base.join("wt");
-    git(
-        &root,
-        &[
-            "worktree",
-            "add",
-            "-q",
-            "-b",
-            "feat/x",
-            wt.to_str().unwrap(),
-        ],
-    );
-    commit(&wt, "x1");
-    commit(&wt, "x2");
-    commit(&root, "main-moved");
-    Fx {
-        _tmp: tmp,
-        root,
-        wt,
-    }
+/// main: README, then "main-moved". feat/x (in worktree `wt`): x1, x2.
+fn fixture() -> (Repo, std::path::PathBuf) {
+    let r = repo();
+    let wt = add_worktree(&r, "feat/x", "wt");
+    commit(&wt, "x1.txt", "1\n");
+    commit(&wt, "x2.txt", "2\n");
+    commit(&r.root, "main.txt", "moved\n");
+    (r, wt)
 }
 
 fn plan(strategy: Strategy) -> MergePlan {
@@ -90,145 +18,151 @@ fn plan(strategy: Strategy) -> MergePlan {
         branch: "feat/x".into(),
         base: "main".into(),
         strategy,
-        message: Some("Merge feat/x squashed".into()),
-        push_base: true,
-        delete_branch: true,
+        message: Some("Merge feat/x".into()),
     }
 }
 
+fn subjects(r: &Repo, n: usize) -> Vec<String> {
+    git(&r.root, &["log", &format!("-{n}"), "--format=%s", "main"])
+        .lines()
+        .map(str::to_string)
+        .collect()
+}
+
 #[test]
-fn preflight_reports_state() {
-    let f = fixture();
-    let repo = Repo::discover(&f.root).unwrap();
-    let p = merge::preflight(&repo, Some(&f.wt), "feat/x", "main").unwrap();
-    assert!(p.clean);
+fn preflight_counts_and_predicts() {
+    let (r, wt) = fixture();
+    let p = merge::preflight(&r.core(), Some(&wt), "feat/x", "main").unwrap();
     assert_eq!((p.ahead, p.behind), (2, 1));
     assert!(!p.conflict_predicted);
-    assert_eq!(p.base_checked_out_in.as_deref(), Some(f.root.as_path()));
-    assert_eq!(p.base_worktree_clean, Some(true));
     assert!(p.problems.is_empty(), "{:?}", p.problems);
-
-    write(&f.wt, "dirty.txt", "x");
-    let p = merge::preflight(&repo, Some(&f.wt), "feat/x", "main").unwrap();
-    assert!(!p.clean);
-    assert_eq!(p.uncommitted, 1);
-    assert_eq!(p.problems.len(), 1);
-    assert_eq!(p.last_summary.as_deref(), Some("x2"));
+    assert_eq!(p.last_summary.as_deref(), Some("edit x2.txt"));
 }
 
 #[test]
-fn preflight_predicts_conflicts() {
-    let f = fixture();
-    let repo = Repo::discover(&f.root).unwrap();
-    write(&f.wt, "one", "theirs");
-    git(&f.wt, &["commit", "-q", "-am", "edit one"]);
-    write(&f.root, "one", "ours");
-    git(&f.root, &["commit", "-q", "-am", "edit one on main"]);
-    let p = merge::preflight(&repo, Some(&f.wt), "feat/x", "main").unwrap();
+fn preflight_names_the_conflicting_files() {
+    let (r, wt) = fixture();
+    commit(&wt, "main.txt", "branch side\n");
+    let p = merge::preflight(&r.core(), Some(&wt), "feat/x", "main").unwrap();
     assert!(p.conflict_predicted);
-    assert_eq!(p.conflict_files, vec!["one"]);
+    assert_eq!(p.conflict_files, vec!["main.txt"]);
 }
 
 #[test]
-fn merge_squash_into_local_main_and_push() {
-    let f = fixture();
-    let repo = Repo::discover(&f.root).unwrap();
-    let r = merge::run(&repo, Some(&f.wt), &plan(Strategy::Squash)).unwrap();
-    assert!(r.landed, "{:#?}", r.steps);
-    assert!(r.steps.iter().all(|s| s.ok), "{:#?}", r.steps);
-    assert_eq!(
-        git(&f.root, &["log", "-1", "--format=%s"]),
-        "Merge feat/x squashed"
-    );
-    assert_eq!(
-        git(&f.root, &["rev-list", "--count", "HEAD"]),
-        "3",
-        "one + main-moved + squash"
-    );
-    assert!(!f.wt.exists());
-    assert!(!git(&f.root, &["branch", "--list"]).contains("feat/x"));
-    assert_eq!(
-        git(&f.root, &["rev-parse", "origin/main"]),
-        git(&f.root, &["rev-parse", "main"])
-    );
-    assert!(r.backup_ref.is_some());
+fn squash_makes_one_commit_with_the_message() {
+    let (r, wt) = fixture();
+    let res = merge::run(&r.core(), Some(&wt), &plan(Strategy::Squash)).unwrap();
+    assert!(res.merged, "{:#?}", res.steps);
+    assert_eq!(subjects(&r, 2), ["Merge feat/x", "edit main.txt"]);
+    assert_eq!(read(&r.root, "x2.txt"), "2\n", "main's worktree updated");
 }
 
 #[test]
-fn rebase_and_merge_keeps_commits() {
-    let f = fixture();
-    let repo = Repo::discover(&f.root).unwrap();
-    let mut p = plan(Strategy::Rebase);
-    p.push_base = false;
-    let r = merge::run(&repo, Some(&f.wt), &p).unwrap();
-    assert!(r.landed, "{:#?}", r.steps);
+fn rebase_keeps_each_commit_in_a_line() {
+    let (r, wt) = fixture();
+    let res = merge::run(&r.core(), Some(&wt), &plan(Strategy::Rebase)).unwrap();
+    assert!(res.merged, "{:#?}", res.steps);
     assert_eq!(
-        git(&f.root, &["log", "--format=%s", "-3"]),
-        "x2\nx1\nmain-moved"
+        subjects(&r, 3),
+        ["edit x2.txt", "edit x1.txt", "edit main.txt"]
     );
-}
-
-#[test]
-fn merge_commit_keeps_history_and_adds_merge() {
-    let f = fixture();
-    let repo = Repo::discover(&f.root).unwrap();
-    let mut p = plan(Strategy::MergeCommit);
-    p.message = Some("Merge feat/x".into());
-    p.push_base = false;
-    let r = merge::run(&repo, Some(&f.wt), &p).unwrap();
-    assert!(r.landed, "{:#?}", r.steps);
-    assert_eq!(git(&f.root, &["log", "-1", "--format=%s"]), "Merge feat/x");
     assert_eq!(
-        git(&f.root, &["log", "-1", "--format=%P"])
+        git(&r.root, &["log", "-1", "--format=%P", "main"])
             .split(' ')
             .count(),
-        2,
-        "two parents"
+        1
     );
-    assert!(!f.wt.exists());
 }
 
 #[test]
-fn merge_commit_without_base_checked_out() {
-    let f = fixture();
-    let repo = Repo::discover(&f.root).unwrap();
-    // Move the main worktree off main so main isn't checked out anywhere.
-    git(&f.root, &["switch", "-q", "--detach"]);
-    let mut p = plan(Strategy::MergeCommit);
-    p.message = Some("Merge feat/x".into());
-    p.push_base = false;
-    p.delete_branch = false;
-    let r = merge::run(&repo, Some(&f.wt), &p).unwrap();
-    assert!(r.landed, "{:#?}", r.steps);
+fn merge_commit_has_two_parents() {
+    let (r, wt) = fixture();
+    let res = merge::run(&r.core(), Some(&wt), &plan(Strategy::MergeCommit)).unwrap();
+    assert!(res.merged, "{:#?}", res.steps);
+    assert_eq!(subjects(&r, 1), ["Merge feat/x"]);
     assert_eq!(
-        git(&f.root, &["log", "-1", "--format=%s", "main"]),
-        "Merge feat/x"
+        git(&r.root, &["log", "-1", "--format=%P", "main"])
+            .split(' ')
+            .count(),
+        2
     );
-    assert!(f.wt.exists(), "worktree kept when delete_branch is off");
 }
 
 #[test]
-fn merge_branch_without_a_worktree() {
-    let f = fixture();
-    let repo = Repo::discover(&f.root).unwrap();
-    git(&f.root, &["worktree", "remove", f.wt.to_str().unwrap()]);
-    let p0 = merge::preflight(&repo, None, "feat/x", "main").unwrap();
-    assert!(p0.problems.is_empty(), "{:?}", p0.problems);
-    for strategy in [Strategy::Squash, Strategy::Rebase] {
-        let f = fixture();
-        let repo = Repo::discover(&f.root).unwrap();
-        git(&f.root, &["worktree", "remove", f.wt.to_str().unwrap()]);
-        let mut p = plan(strategy);
-        p.push_base = false;
-        p.delete_branch = false;
-        let r = merge::run(&repo, None, &p).unwrap();
-        assert!(r.landed, "{:#?}", r.steps);
+fn merge_never_pushes_or_deletes() {
+    for strategy in [Strategy::MergeCommit, Strategy::Squash, Strategy::Rebase] {
+        let (r, wt) = fixture();
+        let origin_main = r.tip("origin/main");
+        let res = merge::run(&r.core(), Some(&wt), &plan(strategy)).unwrap();
+        assert!(res.merged);
+        assert!(wt.exists(), "{strategy:?} kept the worktree");
+        assert!(
+            git_ok(&r.root, &["rev-parse", "--verify", "feat/x"]),
+            "{strategy:?} kept the branch"
+        );
         assert_eq!(
-            git(&f.root, &["worktree", "list", "--porcelain"])
-                .matches("worktree ")
-                .count(),
-            1,
-            "temporary worktree removed"
+            git(&r.origin, &["rev-parse", "main"]),
+            origin_main,
+            "{strategy:?} pushed"
         );
     }
+}
+
+#[test]
+fn merge_when_main_is_not_checked_out_anywhere() {
+    for strategy in [Strategy::MergeCommit, Strategy::Squash, Strategy::Rebase] {
+        let (r, wt) = fixture();
+        git(&r.root, &["switch", "-q", "--detach"]);
+        let res = merge::run(&r.core(), Some(&wt), &plan(strategy)).unwrap();
+        assert!(res.merged, "{strategy:?}: {:#?}", res.steps);
+        assert!(
+            git(&r.root, &["ls-tree", "--name-only", "main"]).contains("x2.txt"),
+            "{strategy:?} main has the change"
+        );
+        assert_eq!(
+            git(&r.root, &["status", "--porcelain"]),
+            "",
+            "{strategy:?} detached main worktree untouched"
+        );
+    }
+}
+
+#[test]
+fn merge_a_branch_without_a_worktree_in_every_style() {
+    for strategy in [Strategy::MergeCommit, Strategy::Squash, Strategy::Rebase] {
+        let (r, wt) = fixture();
+        git(&r.root, &["worktree", "remove", wt.to_str().unwrap()]);
+        let p = merge::preflight(&r.core(), None, "feat/x", "main").unwrap();
+        assert!(p.problems.is_empty(), "{:?}", p.problems);
+        let res = merge::run(&r.core(), None, &plan(strategy)).unwrap();
+        assert!(res.merged, "{strategy:?}: {:#?}", res.steps);
+        assert_eq!(read(&r.root, "x2.txt"), "2\n", "{strategy:?}");
+        let wts = git(&r.root, &["worktree", "list", "--porcelain"]);
+        assert_eq!(
+            wts.matches("worktree ").count(),
+            1,
+            "{strategy:?} temp worktree removed"
+        );
+    }
+}
+
+#[test]
+fn a_remote_base_moves_the_local_branch() {
+    let (r, wt) = fixture();
+    git(&r.root, &["push", "-q", "origin", "main"]);
+    let mut p = plan(Strategy::Squash);
+    p.base = "origin/main".into();
+    let res = merge::run(&r.core(), Some(&wt), &p).unwrap();
+    assert!(res.merged, "{:#?}", res.steps);
+    assert_eq!(subjects(&r, 1), ["Merge feat/x"]);
+}
+
+#[test]
+fn an_empty_message_falls_back_to_a_default() {
+    let (r, wt) = fixture();
+    let mut p = plan(Strategy::MergeCommit);
+    p.message = Some("   ".into());
+    let res = merge::run(&r.core(), Some(&wt), &p).unwrap();
+    assert!(res.merged);
+    assert_eq!(subjects(&r, 1), ["Merge branch 'feat/x'"]);
 }

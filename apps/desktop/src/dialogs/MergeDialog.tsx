@@ -59,10 +59,9 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
     try {
       const r = await api.mergeRun(root, path, {
         branch, base: pf.base, strategy, message: strategy === "rebase" ? null : message.trim(),
-        push_base: false, delete_branch: false,
       });
       setResult(r);
-      if (r.landed) onMerged();
+      if (r.merged) onMerged();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -117,8 +116,8 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
 
           {result && (
             <div className="flex flex-col gap-2">
-              <div className={`rounded-md p-3 font-medium ${result.landed ? "bg-teal-50 text-teal-800 dark:bg-teal-900/30 dark:text-teal-200" : "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200"}`}>
-                {result.landed ? `Merged ${branch} into ${pf?.base_local}.` : "Merge stopped. Nothing after the failed step ran."}
+              <div className={`rounded-md p-3 font-medium ${result.merged ? "bg-teal-50 text-teal-800 dark:bg-teal-900/30 dark:text-teal-200" : "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200"}`}>
+                {result.merged ? `Merged ${branch} into ${pf?.base_local}.` : "Merge stopped. Nothing after the failed step ran."}
               </div>
               {result.steps.map((s, i) => (
                 <div key={i} className="flex flex-col gap-1 rounded-md border border-stone-200 p-2 dark:border-stone-700">

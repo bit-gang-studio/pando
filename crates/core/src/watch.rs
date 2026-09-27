@@ -131,7 +131,7 @@ fn ignored(root: &Path, paths: &HashSet<String>) -> HashSet<String> {
     }
     match git_stdin(root, ["check-ignore", "--stdin", "-z"], &input) {
         // Exit 0: prints the ignored ones. Exit 1: none ignored.
-        Ok((0, out)) => out
+        Ok((0, out, _)) => out
             .split(|b| *b == 0)
             .filter(|s| !s.is_empty())
             .map(|s| String::from_utf8_lossy(s).into_owned())
@@ -164,7 +164,7 @@ fn canon_lossy(p: &Path) -> PathBuf {
 }
 
 fn watch_err(e: notify::Error) -> Error {
-    Error::Config(format!("Can't watch for file changes: {e}"))
+    Error::Msg(format!("Can't watch for file changes: {e}"))
 }
 
 #[cfg(test)]

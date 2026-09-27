@@ -9,8 +9,9 @@ pub enum Error {
     NotARepo(PathBuf),
     #[error("{0}")]
     Gix(String),
+    /// A plain message for the user, e.g. "Merge would conflict."
     #[error("{0}")]
-    Config(String),
+    Msg(String),
     #[error("{0}")]
     Io(#[from] std::io::Error),
 }

@@ -39,9 +39,11 @@ pub fn save(c: &UserConfig) -> Result<()> {
     Ok(())
 }
 
-pub fn add_repo(root: &Path) -> Result<UserConfig> {
+/// Add the repo containing `path`. A subfolder or a linked worktree adds its
+/// repo's main folder, so each repo is listed once. Fails if it isn't a repo.
+pub fn add_repo(path: &Path) -> Result<UserConfig> {
     let mut c = load()?;
-    let root = crate::repo::canon(root);
+    let root = crate::repo::Repo::discover(path)?.root;
     if !c.repos.contains(&root) {
         c.repos.push(root);
         save(&c)?;

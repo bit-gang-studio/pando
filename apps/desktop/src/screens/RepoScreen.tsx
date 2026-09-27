@@ -15,6 +15,7 @@ import { ErrorState, Loading } from "../ui/State";
 import { withToast } from "../ui/Toast";
 import { errorParts } from "../lib/errors";
 import { useRepoRefresh, watchRepo } from "../lib/watch";
+import { dot, worktreeOptions } from "../lib/worktrees";
 
 type Props = { root: string; commit: string | null; worktree?: string | null; branch?: string | null };
 
@@ -61,8 +62,8 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   ];
 
   // Same dot colours as the sidebar, so "a dot means a worktree has it checked out".
-  const dotFor = (st: import("../lib/api").Summary | null, missing: boolean, isMain: boolean) =>
-    !data?.status_loaded && !missing ? "bg-stone-300 dark:bg-stone-600" : missing || (st?.conflicts ?? 0) > 0 ? "bg-red-700" : changed(st) > 0 ? "bg-amber-700" : isMain ? "bg-stone-400" : "bg-teal-700";
+  const dotFor = (status: import("../lib/api").Summary | null, missing: boolean, isMain: boolean) =>
+    dot({ status, missing, isMain, loaded: !!data?.status_loaded }).cls;
   const branchDots: Record<string, string> = {};
   const detachedDots: Record<string, string[]> = {};
   const heads = new Set<string>();
@@ -83,10 +84,6 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   const wtBranch = wtRow?.branch.name ?? "";
   const wtDirty = worktree ? changed(wtRow?.status ?? wtDetached?.status ?? null) : 0;
   // ---- right-click on a commit ----------------------------------------------
-  const worktreeOptions = () => [
-    ...(data?.branches.filter((b) => b.worktree).map((b) => ({ value: b.worktree!.path, label: b.branch.name + (b.is_main_worktree ? " (main worktree)" : "") })) ?? []),
-    ...(data?.detached.map((d) => ({ value: d.worktree.path, label: `detached at ${d.worktree.head?.slice(0, 7)}` })) ?? []),
-  ];
   const mainPath = data?.branches.find((b) => b.is_main_worktree)?.worktree?.path ?? data?.detached.find((d) => d.is_main_worktree)?.worktree.path;
   async function act(doing: string, done: string, fn: () => Promise<unknown>) {
     await withToast(doing, done, fn);
@@ -98,7 +95,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
       title: verb,
       body: <><span className="font-mono">{entry.id.slice(0, 7)}</span> {entry.summary}</>,
       action: verb,
-      select: { label: kind === "pick" ? "Into worktree" : "In worktree", options: worktreeOptions(), value: worktree ?? mainPath },
+      select: { label: kind === "pick" ? "Into worktree" : "In worktree", options: worktreeOptions(data), value: worktree ?? mainPath },
     });
     if (!a.ok) return;
     await act(kind === "pick" ? "Cherry-picking…" : "Reverting…", kind === "pick" ? "Cherry-picked" : "Reverted", async () => {

@@ -1,11 +1,11 @@
 //! A paused git operation in a worktree: rebase, merge, or cherry-pick.
 
-use crate::cmd::{git, git_raw};
+use crate::cmd::{git, git_env, git_raw};
 use crate::error::Result;
 use crate::status;
 use serde::{Deserialize, Serialize};
+use std::ffi::OsStr;
 use std::path::Path;
-use std::process::Command;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -157,22 +157,9 @@ pub fn detect(wt: &Path) -> Result<Option<Operation>> {
     }))
 }
 
+/// Run git with no editor, so continue/commit never waits for one.
 fn no_editor(wt: &Path, args: &[&str]) -> Result<String> {
-    let out = Command::new("git")
-        .current_dir(wt)
-        .env("GIT_EDITOR", "true")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("LC_ALL", "C")
-        .args(args)
-        .output()?;
-    if out.status.success() {
-        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
-    } else {
-        Err(crate::Error::Git {
-            cmd: args.join(" "),
-            stderr: String::from_utf8_lossy(&out.stderr).trim().to_string(),
-        })
-    }
+    git_env(wt, &[("GIT_EDITOR", OsStr::new("true"))], args)
 }
 
 /// Continue the paused operation. Fails if conflicts remain.
@@ -181,7 +168,7 @@ pub fn continue_op(wt: &Path) -> Result<Option<Operation>> {
         return Ok(None);
     };
     if !op.conflicted.is_empty() {
-        return Err(crate::Error::Config(format!(
+        return Err(crate::Error::Msg(format!(
             "{} file(s) still conflicted",
             op.conflicted.len()
         )));

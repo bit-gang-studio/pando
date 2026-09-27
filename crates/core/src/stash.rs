@@ -69,7 +69,10 @@ pub fn pop(worktree: &Path, index: u32) -> Result<()> {
     Ok(())
 }
 
+/// Drop a stash. It stays reachable under `refs/pando/snapshots/stash/`.
 pub fn drop(repo: &Repo, index: u32) -> Result<()> {
+    let id = git(&repo.root, ["rev-parse", &format!("stash@{{{index}}}")])?;
+    crate::backup::keep_commit(repo, "stash", id.trim())?;
     git(&repo.root, ["stash", "drop", &format!("stash@{{{index}}}")])?;
     Ok(())
 }

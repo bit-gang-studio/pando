@@ -70,7 +70,15 @@ pub fn default_path(repo: &Repo, branch: &str) -> PathBuf {
         .parent()
         .map(Path::to_path_buf)
         .unwrap_or_else(|| repo.root.clone());
-    parent.join(format!("{name}-{}", branch_slug(branch)))
+    // Different branches can share a slug (`a/b-c`, `a-b/c`): never reuse a folder.
+    let first = parent.join(format!("{name}-{}", branch_slug(branch)));
+    let mut path = first.clone();
+    let mut n = 2;
+    while path.exists() {
+        path = PathBuf::from(format!("{}-{n}", first.display()));
+        n += 1;
+    }
+    path
 }
 
 /// `feat/Auth Refresh` -> `feat-auth-refresh`
@@ -78,8 +86,8 @@ pub fn branch_slug(branch: &str) -> String {
     let mut out = String::with_capacity(branch.len());
     let mut last_dash = false;
     for c in branch.chars() {
-        if c.is_ascii_alphanumeric() || c == '.' || c == '_' {
-            out.push(c.to_ascii_lowercase());
+        if c.is_alphanumeric() || c == '.' || c == '_' {
+            out.extend(c.to_lowercase());
             last_dash = false;
         } else if !last_dash {
             out.push('-');
@@ -157,6 +165,10 @@ pub fn remove(repo: &Repo, path: &Path, force: bool) -> Result<()> {
     {
         backup::write(repo, &branch)?;
     }
+    // Forcing throws away uncommitted changes; save them first.
+    if force && path.is_dir() {
+        backup::snapshot(repo, path, "remove-worktree", &[])?;
+    }
     let mut args = vec!["worktree", "remove"];
     if force {
         args.push("--force");
@@ -176,7 +188,15 @@ pub fn prune(repo: &Repo) -> Result<u32> {
 }
 
 /// `git worktree move`: put the worktree's folder somewhere else.
+/// Move a worktree to exactly `to`. Fails if `to` exists: `git worktree move`
+/// would otherwise move it *inside* that folder.
 pub fn move_to(repo: &Repo, from: &Path, to: &Path) -> Result<()> {
+    if to.exists() {
+        return Err(crate::Error::Msg(format!(
+            "{} already exists. Pick a new folder.",
+            to.display()
+        )));
+    }
     if let Some(parent) = to.parent() {
         std::fs::create_dir_all(parent)?;
     }

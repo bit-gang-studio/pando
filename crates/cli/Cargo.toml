@@ -1,6 +1,6 @@
 [package]
 name = "pando-cli"
-description = "Pando: the worktree-native git client (CLI)"
+description = "Pando on the command line: list, add and remove git worktrees"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -19,3 +19,6 @@ dunce = "1.0.5"
 
 [package.metadata.dist]
 formula = "pando"
+
+[dev-dependencies]
+tempfile = "3.27.0"

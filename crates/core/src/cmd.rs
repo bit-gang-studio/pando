@@ -10,6 +10,10 @@ fn base(cwd: &Path) -> Command {
     c.current_dir(cwd)
         .env("GIT_TERMINAL_PROMPT", "0")
         .env("LC_ALL", "C")
+        // Never take optional locks: `git status` would otherwise lock the index
+        // to save its cache, and the user's own `git commit` in a terminal fails
+        // with "index.lock exists" if it lands at the same moment.
+        .env("GIT_OPTIONAL_LOCKS", "0")
         .env_remove("GIT_DIR")
         .env_remove("GIT_WORK_TREE")
         .env_remove("GIT_INDEX_FILE");
@@ -77,8 +81,8 @@ where
     ))
 }
 
-/// Run git with `input` on stdin. Returns (exit code, stdout bytes).
-pub(crate) fn git_stdin<I, S>(cwd: &Path, args: I, input: &[u8]) -> Result<(i32, Vec<u8>)>
+/// Run git with `input` on stdin. Returns (exit code, stdout bytes, stderr).
+pub(crate) fn git_stdin<I, S>(cwd: &Path, args: I, input: &[u8]) -> Result<(i32, Vec<u8>, String)>
 where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
@@ -89,12 +93,45 @@ where
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
-        .stderr(Stdio::null())
+        .stderr(Stdio::piped())
         .spawn()?;
     let mut stdin = child.stdin.take().expect("piped stdin");
     let input = input.to_vec();
     let writer = std::thread::spawn(move || stdin.write_all(&input));
     let out = child.wait_with_output()?;
     let _ = writer.join();
-    Ok((out.status.code().unwrap_or(-1), out.stdout))
+    Ok((
+        out.status.code().unwrap_or(-1),
+        out.stdout,
+        String::from_utf8_lossy(&out.stderr).trim().to_string(),
+    ))
+}
+
+/// Like `git` with extra environment variables, e.g. a temporary `GIT_INDEX_FILE`.
+pub(crate) fn git_env<I, S>(cwd: &Path, env: &[(&str, &OsStr)], args: I) -> Result<String>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let args: Vec<_> = args
+        .into_iter()
+        .map(|a| a.as_ref().to_os_string())
+        .collect();
+    let mut c = base(cwd);
+    for (k, v) in env {
+        c.env(k, v);
+    }
+    let out = c.args(&args).output()?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    } else {
+        Err(Error::Git {
+            cmd: args
+                .iter()
+                .map(|a| a.to_string_lossy())
+                .collect::<Vec<_>>()
+                .join(" "),
+            stderr: String::from_utf8_lossy(&out.stderr).trim().to_string(),
+        })
+    }
 }

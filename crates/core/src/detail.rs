@@ -29,19 +29,20 @@ pub fn load(repo: &Repo, path: &Path) -> Result<Detail> {
     let worktree = worktree::list(repo)?
         .into_iter()
         .find(|w| w.path == want)
-        .ok_or_else(|| crate::Error::Config(format!("no worktree at {}", want.display())))?;
+        .ok_or_else(|| crate::Error::Msg(format!("no worktree at {}", want.display())))?;
     let branch = match &worktree.branch {
         Some(b) => branch::list(repo)?.into_iter().find(|x| &x.name == b),
         None => None,
     };
     let files = status::files(&worktree.path)?;
-    let (ahead, base_branch) = match &worktree.branch {
-        Some(b) => {
+    // No `branch` means it has no commits yet (a new repo): nothing is ahead.
+    let (ahead, base_branch) = match (&worktree.branch, &branch) {
+        (Some(b), Some(_)) => {
             let h = history::linear(repo, b, 200)?;
             let n = h.base_index.unwrap_or(h.commits.len());
             (h.commits.into_iter().take(n).collect(), h.base_branch)
         }
-        None => (Vec::new(), repo.default_branch.clone()),
+        _ => (Vec::new(), repo.default_branch.clone()),
     };
     let operation = operation::detect(&worktree.path)?;
     let head_summary = branch

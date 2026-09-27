@@ -52,9 +52,6 @@ pub struct MergePlan {
     pub strategy: Strategy,
     /// Commit message for merge commit and squash. Ignored for rebase.
     pub message: Option<String>,
-    pub push_base: bool,
-    /// Remove the worktree and delete the local branch afterwards.
-    pub delete_branch: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -66,9 +63,10 @@ pub struct Step {
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MergeResult {
-    pub landed: bool,
+    pub merged: bool,
     pub steps: Vec<Step>,
-    pub backup_ref: Option<String>,
+    /// Backups of the branch and the base, taken before anything moved.
+    pub backup_refs: Vec<String>,
 }
 
 fn local_name(base: &str) -> String {
@@ -82,7 +80,7 @@ fn local_name(base: &str) -> String {
 pub fn default_base(repo: &Repo) -> Result<String> {
     repo.default_branch
         .clone()
-        .ok_or_else(|| crate::Error::Config("no default branch found".into()))
+        .ok_or_else(|| crate::Error::Msg("no default branch found".into()))
 }
 
 /// `wt` is the branch's worktree, or `None` for a branch without one.
@@ -189,24 +187,32 @@ pub fn run(repo: &Repo, wt: Option<&Path>, plan: &MergePlan) -> Result<MergeResu
     if let Some(wt) = wt {
         return run_in(repo, wt, plan);
     }
+    // A fresh folder every time, so a crash or a second merge never collides.
+    let stamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
     let tmp = std::env::temp_dir().join(format!(
-        "pando-merge-{}-{}",
+        "pando-merge-{}-{stamp}-{}",
         std::process::id(),
         worktree::branch_slug(&plan.branch)
     ));
     let tmp_s = tmp.to_string_lossy().to_string();
     git(&repo.root, ["worktree", "add", "-q", &tmp_s, &plan.branch])?;
     let r = run_in(repo, &tmp, plan);
-    let _ = git(&repo.root, ["worktree", "remove", "--force", &tmp_s]);
+    if git(&repo.root, ["worktree", "remove", "--force", &tmp_s]).is_err() {
+        let _ = std::fs::remove_dir_all(&tmp);
+        let _ = git(&repo.root, ["worktree", "prune"]);
+    }
     r
 }
 
 fn run_in(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
     let mut steps: Vec<Step> = vec![];
     let mut r = MergeResult {
-        landed: false,
+        merged: false,
         steps: vec![],
-        backup_ref: None,
+        backup_refs: vec![],
     };
     macro_rules! step {
         ($name:expr, $body:expr) => {{
@@ -234,10 +240,26 @@ fn run_in(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
     let branch = plan.branch.as_str();
     let base = plan.base.as_str();
     let base_local = local_name(base);
-    step!("Backup ref", {
-        let name = backup::write(repo, branch)?;
-        r.backup_ref = name.clone();
-        Ok(name.unwrap_or_default())
+    step!("Check", {
+        let ahead = git(
+            &repo.common_git_dir,
+            ["rev-list", "--count", &format!("{base}..{branch}")],
+        )?;
+        if ahead.trim() == "0" {
+            return Err(crate::Error::Msg(format!(
+                "{branch} has no commits that aren't on {base_local}. Nothing to merge."
+            )));
+        }
+        Ok(format!("{} commits to merge", ahead.trim()))
+    });
+    // Both can move: rebase and squash rewrite the branch, every style moves the base.
+    step!("Backup refs", {
+        for b in [branch, base_local.as_str()] {
+            if let Some(name) = backup::write(repo, b)? {
+                r.backup_refs.push(name);
+            }
+        }
+        Ok(r.backup_refs.join(", "))
     });
 
     let message = plan
@@ -259,7 +281,7 @@ fn run_in(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
                     Ok(o) => Ok(o),
                     Err(e) => {
                         let _ = git(wt, ["rebase", "--abort"]);
-                        Err(crate::Error::Config(format!(
+                        Err(crate::Error::Msg(format!(
                             "Rebase hit conflicts and was undone. Use Sync with base to resolve. {e}"
                         )))
                     }
@@ -299,7 +321,7 @@ fn run_in(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
                             Ok(o) => Ok(o),
                             Err(e) => {
                                 let _ = git(&w.path, ["merge", "--abort"]);
-                                Err(crate::Error::Config(format!(
+                                Err(crate::Error::Msg(format!(
                                 "Merge hit conflicts and was undone. Use Sync with base to resolve. {e}"
                             )))
                             }
@@ -312,9 +334,7 @@ fn run_in(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
                             ["merge-tree", "--write-tree", &base_local, branch],
                         )?;
                         if code != 0 {
-                            return Err(crate::Error::Config(format!(
-                                "Merge would conflict. {err}"
-                            )));
+                            return Err(crate::Error::Msg(format!("Merge would conflict. {err}")));
                         }
                         let tree = out.lines().next().unwrap_or("").trim().to_string();
                         let commit = git(
@@ -343,30 +363,7 @@ fn run_in(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
         }
     }
 
-    if plan.push_base {
-        step!(format!("Push {base_local}"), {
-            let remote = base.split_once('/').map(|(r, _)| r).unwrap_or("origin");
-            git(
-                &repo.root,
-                ["push", "-q", remote, &format!("{base_local}:{base_local}")],
-            )
-        });
-    }
-
-    if plan.delete_branch {
-        if wt != repo.root {
-            step!("Remove worktree", {
-                worktree::remove(repo, wt, true)?;
-                Ok(wt.display().to_string())
-            });
-        }
-        step!(format!("Delete branch {branch}"), {
-            git(&repo.root, ["branch", "-D", "-q", branch])?;
-            Ok(String::new())
-        });
-    }
-
-    r.landed = true;
+    r.merged = true;
     r.steps = steps;
     Ok(r)
 }

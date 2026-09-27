@@ -8,6 +8,7 @@ import { MergeDialog } from "../dialogs/MergeDialog";
 import { NewBranchDialog } from "../dialogs/NewBranchDialog";
 import { confirm } from "../ui/Confirm";
 import { toastError, withToast } from "../ui/Toast";
+import { dot, worktreeOptions } from "../lib/worktrees";
 
 type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void };
 
@@ -74,10 +75,6 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const sep: MenuItem = { divider: true };
 
   const mainWt = data?.branches.find((b) => b.is_main_worktree)?.worktree ?? data?.detached.find((d) => d.is_main_worktree)?.worktree ?? null;
-  const worktreeOptions = () => [
-    ...(data?.branches.filter((b) => b.worktree).map((b) => ({ value: b.worktree!.path, label: b.branch.name + (b.is_main_worktree ? " (main worktree)" : "") })) ?? []),
-    ...(data?.detached.map((d) => ({ value: d.worktree.path, label: `detached at ${d.worktree.head?.slice(0, 7)}` })) ?? []),
-  ];
 
   async function switchMain(name: string) {
     await run(`Switching to ${name}…`, `Switched main worktree to ${name}`, () => api.branchSwitch(root, name));
@@ -109,7 +106,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     if (a.ok) await run("Stashing…", "Stashed", () => api.stashSave(row.worktree.path, a.value));
   }
   async function applyStash(st: Stash, pop: boolean) {
-    const opts = worktreeOptions();
+    const opts = worktreeOptions(data);
     const match = opts.find((o) => o.label.startsWith(st.branch ?? "\u0000"))?.value;
     const a = await confirm({ title: pop ? "Pop stash" : "Apply stash", body: <>{st.message}{pop ? ". It's removed from the list afterwards." : "."}</>, action: pop ? "Pop" : "Apply", select: { label: "Into worktree", options: opts, value: match ?? mainWt?.path } });
     if (a.ok) await run(pop ? "Popping stash…" : "Applying stash…", pop ? "Popped stash" : "Applied stash", () => api.stashApply(a.choice, st.index, pop));
@@ -219,11 +216,10 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
         const n = changed(r.status);
         const conflicts = r.status?.conflicts ?? 0;
         const pending = !data?.status_loaded && !r.worktree.prunable;
-        const dot = pending ? "bg-stone-300 dark:bg-stone-600" : r.worktree.prunable || conflicts ? "bg-red-700" : n > 0 ? "bg-amber-700" : r.isMain ? "bg-stone-400" : "bg-teal-700";
-        const dotTip = pending ? "Checking for changes…" : r.worktree.prunable ? "Folder is missing" : conflicts ? "Has conflicts" : n > 0 ? "Has uncommitted changes" : r.isMain ? "Main worktree, clean" : "Clean";
+        const { cls: dotCls, tip: dotTip } = dot({ status: r.status, missing: !!r.worktree.prunable, isMain: r.isMain, loaded: !!data?.status_loaded });
         return (
           <div key={r.key} onClick={(e) => openRow(e, r.worktree.path)} onContextMenu={(e) => rowMenu(e, r)} title={r.worktree.path} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${current === r.worktree.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
-            <span title={dotTip} className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
+            <span title={dotTip} className={`h-2 w-2 shrink-0 rounded-full ${dotCls}`} />
             <div className="min-w-0 grow">
               <div className="truncate font-mono text-body font-medium">{r.label}</div>
               <div className="truncate text-label text-stone-500">
