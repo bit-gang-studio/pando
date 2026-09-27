@@ -50,7 +50,7 @@ export type DiffLine = { kind: LineKind; old_no: number | null; new_no: number |
 export type Hunk = { header: string; old_start: number; old_count: number; new_start: number; new_count: number; lines: DiffLine[] };
 export type FileDiff = { path: string; staged: boolean; binary: boolean; new_file: boolean; hunks: Hunk[]; added: number; deleted: number };
 
-export type Operation = { kind: "rebase" | "merge" | "cherry_pick"; applied: number; total: number; head_label: string; incoming_label: string; conflicted: string[]; resolved: string[] };
+export type Operation = { kind: "rebase" | "merge" | "cherry_pick" | "revert"; applied: number; total: number; head_label: string; incoming_label: string; conflicted: string[]; resolved: string[] };
 export type ConflictFile = { path: string; ours: string; theirs: string; base: string | null; working: string; binary: boolean };
 
 export type Detail = {
@@ -81,6 +81,9 @@ export type MergePlan = {
   branch: string; base: string; strategy: "merge_commit" | "squash" | "rebase"; message: string | null;
   push_base: boolean; delete_branch: boolean;
 };
+export type Stash = { index: number; message: string; branch: string | null; time: number };
+export type Applied = "done" | "paused";
+
 export type Step = { name: string; ok: boolean; output: string };
 export type MergeResult = { landed: boolean; steps: Step[]; backup_ref: string | null };
 
@@ -100,6 +103,20 @@ export const api = {
   branchPush: (root: string, name: string) => invoke<void>("branch_push", { root, name }),
   branchPull: (worktree: string) => invoke<void>("branch_pull", { worktree }),
   branchDelete: (root: string, name: string, remote: boolean) => invoke<void>("branch_delete", { root, name, remote }),
+  branchDeleteRemote: (root: string, name: string) => invoke<void>("branch_delete_remote", { root, name }),
+  branchSwitch: (root: string, name: string) => invoke<void>("branch_switch", { root, name }),
+  branchRename: (root: string, old: string, new_: string) => invoke<void>("branch_rename", { root, old, new: new_ }),
+  branchSetUpstream: (root: string, name: string, upstream: string) => invoke<void>("branch_set_upstream", { root, name, upstream }),
+  worktreeMove: (root: string, from: string, to: string) => invoke<void>("worktree_move", { root, from, to }),
+  worktreeLock: (root: string, path: string, locked: boolean) => invoke<void>("worktree_lock", { root, path, locked }),
+  worktreePrune: (root: string) => invoke<number>("worktree_prune", { root }),
+  cherryPick: (root: string, worktree: string, id: string) => invoke<Applied>("commit_cherry_pick", { root, worktree, id }),
+  revert: (root: string, worktree: string, id: string) => invoke<Applied>("commit_revert", { root, worktree, id }),
+  tagCreate: (root: string, name: string, target: string, message: string | null, push: boolean) => invoke<void>("tag_create", { root, name, target, message, push }),
+  stashList: (root: string) => invoke<Stash[]>("stash_list", { root }),
+  stashSave: (worktree: string, message: string | null) => invoke<boolean>("stash_save", { worktree, message }),
+  stashApply: (worktree: string, index: number, pop: boolean) => invoke<void>("stash_apply", { worktree, index, pop }),
+  stashDrop: (root: string, index: number) => invoke<void>("stash_drop", { root, index }),
   worktreePathPreview: (root: string, branch: string) => invoke<string>("worktree_path_preview", { root, branch }),
   worktreeAdd: (root: string, req: CreateWorktree) => invoke<Created>("worktree_add", { root, req }),
   worktreeRemove: (root: string, path: string, force: boolean) => invoke<void>("worktree_remove", { root, path, force }),

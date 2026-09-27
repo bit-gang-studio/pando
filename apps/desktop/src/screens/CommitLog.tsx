@@ -20,6 +20,8 @@ type Props = {
   detachedDots?: Record<string, string[]>;
   /// Commits some worktree has checked out (drawn as a hollow dot).
   heads?: Set<string>;
+  /// Right-click on a commit.
+  onCommitMenu?: (e: React.MouseEvent, entry: LogEntry) => void;
   /// Called with the newest commit id after each load.
   onLoaded?: (firstId: string | null) => void;
   refreshKey: number;
@@ -27,7 +29,7 @@ type Props = {
 
 const PAGE = 200;
 
-export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, detachedDots = {}, heads, onLoaded, refreshKey }: Props) {
+export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, detachedDots = {}, heads, onCommitMenu, onLoaded, refreshKey }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,6 +71,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
             key={e.id}
             style={{ height: ROW_H }}
             onClick={(ev) => (wantsNewWindow(ev) ? openInNewWindow({ kind: "commit", root, id: e.id }) : onSelect(selected === e.id ? null : e.id))}
+            onContextMenu={(ev) => { if (onCommitMenu) { ev.preventDefault(); onCommitMenu(ev, e); } }}
             className={`flex cursor-pointer items-center gap-3 pl-2 pr-4 ${selected === e.id ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}
           >
             <GraphCell row={graph[i]} width={graphW} head={heads ? heads.has(e.id) : e.is_head} />

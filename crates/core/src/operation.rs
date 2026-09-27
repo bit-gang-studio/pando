@@ -13,6 +13,7 @@ pub enum OpKind {
     Rebase,
     Merge,
     CherryPick,
+    Revert,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -50,6 +51,7 @@ pub fn detect(wt: &Path) -> Result<Option<Operation>> {
     let rebase_apply = git_path(wt, "rebase-apply")?;
     let merge_head = git_path(wt, "MERGE_HEAD")?;
     let cherry_head = git_path(wt, "CHERRY_PICK_HEAD")?;
+    let revert_head = git_path(wt, "REVERT_HEAD")?;
 
     let kind = if rebase_merge.is_dir() || rebase_apply.is_dir() {
         OpKind::Rebase
@@ -57,6 +59,8 @@ pub fn detect(wt: &Path) -> Result<Option<Operation>> {
         OpKind::Merge
     } else if cherry_head.is_file() {
         OpKind::CherryPick
+    } else if revert_head.is_file() {
+        OpKind::Revert
     } else {
         return Ok(None);
     };
@@ -125,14 +129,19 @@ pub fn detect(wt: &Path) -> Result<Option<Operation>> {
                 .unwrap_or_else(|| "merged branch".into());
             (0, 0, head, incoming)
         }
-        OpKind::CherryPick => {
+        OpKind::CherryPick | OpKind::Revert => {
             let head = git_raw(wt, ["branch", "--show-current"])?
                 .1
                 .trim()
                 .to_string();
-            let incoming = read(&cherry_head)
+            let f = if kind == OpKind::Revert {
+                &revert_head
+            } else {
+                &cherry_head
+            };
+            let incoming = read(f)
                 .map(|h| h[..7.min(h.len())].to_string())
-                .unwrap_or_else(|| "cherry-pick".into());
+                .unwrap_or_default();
             (0, 0, head, incoming)
         }
     };
@@ -181,6 +190,7 @@ pub fn continue_op(wt: &Path) -> Result<Option<Operation>> {
         OpKind::Rebase => "rebase",
         OpKind::Merge => "merge",
         OpKind::CherryPick => "cherry-pick",
+        OpKind::Revert => "revert",
     };
     no_editor(wt, &[verb, "--continue"])?;
     detect(wt)
@@ -192,6 +202,7 @@ pub fn abort(wt: &Path) -> Result<()> {
         OpKind::Rebase => "rebase",
         OpKind::Merge => "merge",
         OpKind::CherryPick => "cherry-pick",
+        OpKind::Revert => "revert",
     };
     git(wt, [verb, "--abort"])?;
     Ok(())

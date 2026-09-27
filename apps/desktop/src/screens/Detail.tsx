@@ -160,7 +160,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
         <div className="flex items-center gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2 text-body dark:border-amber-800 dark:bg-amber-900/30">
           <span className="h-2 w-2 rounded-full bg-amber-700" />
           <span className="font-semibold text-amber-800 dark:text-amber-200">
-            {d.operation.kind === "rebase" ? `Rebase paused onto ${d.operation.head_label}` : d.operation.kind === "merge" ? `Merge paused: ${d.operation.incoming_label} into ${d.operation.head_label}` : `Cherry-pick paused: ${d.operation.incoming_label}`}
+            {d.operation.kind === "rebase" ? `Rebase paused onto ${d.operation.head_label}` : d.operation.kind === "merge" ? `Merge paused: ${d.operation.incoming_label} into ${d.operation.head_label}` : d.operation.kind === "revert" ? `Revert paused: ${d.operation.incoming_label}` : `Cherry-pick paused: ${d.operation.incoming_label}`}
             {d.operation.total > 0 && ` · ${d.operation.applied} of ${d.operation.total} commits`}
           </span>
           <span className="text-stone-600 dark:text-stone-300">{d.operation.conflicted.length > 0 ? `${d.operation.conflicted.length} ${d.operation.conflicted.length === 1 ? "file has" : "files have"} conflicts. Resolve each, then continue.` : "All conflicts resolved."}</span>

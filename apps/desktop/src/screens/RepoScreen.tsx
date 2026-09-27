@@ -4,6 +4,10 @@ import { navigate } from "../lib/routes";
 import { CommitDetail } from "./CommitDetail";
 import { CommitLog } from "./CommitLog";
 import { RepoSidebar } from "./RepoSidebar";
+import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
+import { confirm } from "../ui/Confirm";
+import { openInNewWindow } from "../lib/windows";
+import type { LogEntry } from "../lib/api";
 import { UncommittedPanel } from "./UncommittedPanel";
 import { Detail } from "./Detail";
 import { SplitHandle, useSplit } from "../ui/Split";
@@ -20,6 +24,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
   const split = useSplit("pando.split.graph.px", 300, "y", 120, 4000);
   const side = useSplit("pando.split.sidebar.px", 300, "x", 260, 700);
   const onLoaded = useCallback((id: string | null) => setFirstId(id), []);
+  const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [brCommit, setBrCommit] = useState<string | null>(null); // selected commit while on a branch
   const [brFirst, setBrFirst] = useState<string | null>(null); // newest commit on that branch
   useEffect(() => { setWtCommit(null); }, [worktree]);
@@ -70,12 +75,58 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
   const wtDetached = worktree ? data?.detached.find((d) => d.worktree.path === worktree) ?? null : null;
   const wtBranch = wtRow?.branch.name ?? "";
   const wtDirty = worktree ? changed(wtRow?.status ?? wtDetached?.status ?? null) : 0;
+  // ---- right-click on a commit ----------------------------------------------
+  const worktreeOptions = () => [
+    ...(data?.branches.filter((b) => b.worktree).map((b) => ({ value: b.worktree!.path, label: b.branch.name + (b.is_main_worktree ? " (main worktree)" : "") })) ?? []),
+    ...(data?.detached.map((d) => ({ value: d.worktree.path, label: `detached at ${d.worktree.head?.slice(0, 7)}` })) ?? []),
+  ];
+  const mainPath = data?.branches.find((b) => b.is_main_worktree)?.worktree?.path ?? data?.detached.find((d) => d.is_main_worktree)?.worktree.path;
+  async function act(fn: () => Promise<unknown>) {
+    try { await fn(); await refresh(); } catch (e) { onError(String(e)); }
+  }
+  async function applyCommit(entry: LogEntry, kind: "pick" | "revert") {
+    const verb = kind === "pick" ? "Cherry-pick" : "Revert";
+    const a = await confirm({
+      title: verb,
+      body: <><span className="font-mono">{entry.id.slice(0, 7)}</span> {entry.summary}</>,
+      action: verb,
+      select: { label: kind === "pick" ? "Into worktree" : "In worktree", options: worktreeOptions(), value: worktree ?? mainPath },
+    });
+    if (!a.ok) return;
+    await act(async () => {
+      const r = kind === "pick" ? await api.cherryPick(root, a.choice, entry.id) : await api.revert(root, a.choice, entry.id);
+      if (r === "paused") navigate({ kind: "worktree", root, path: a.choice });
+    });
+  }
+  const commitMenu = (e: React.MouseEvent, entry: LogEntry) => {
+    const sep: MenuItem = { divider: true };
+    setMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: "Open in new window", onClick: () => openInNewWindow({ kind: "commit", root, id: entry.id }) },
+      { label: "Copy commit id", onClick: () => navigator.clipboard.writeText(entry.id) },
+      sep,
+      { label: "Create branch here…", onClick: async () => {
+        const a = await confirm({ title: "Create branch", body: <>Start a branch at <span className="font-mono">{entry.id.slice(0, 7)}</span> {entry.summary}</>, action: "Create branch", input: { label: "Branch name", placeholder: "feat/my-change", mono: true }, checkbox: { label: "Add a worktree for it", checked: true } });
+        if (!a.ok) return;
+        await act(() => a.checked
+          ? api.worktreeAdd(root, { branch: a.value, base: entry.id, path: null, existing_branch: false })
+          : api.branchCreate(root, a.value, entry.id));
+      } },
+      { label: "Cherry-pick…", onClick: () => applyCommit(entry, "pick") },
+      { label: "Revert…", onClick: () => applyCommit(entry, "revert") },
+      { label: "Tag…", onClick: async () => {
+        const a = await confirm({ title: "Tag commit", body: <><span className="font-mono">{entry.id.slice(0, 7)}</span> {entry.summary}</>, action: "Create tag", input: { label: "Tag name", placeholder: "v1.0.0", mono: true }, checkbox: { label: "Push to origin" } });
+        if (a.ok) await act(() => api.tagCreate(root, a.value, entry.id, null, a.checked));
+      } },
+    ] });
+  };
+
   const showUncommitted = !worktree && !branch && (uncommittedChoice ?? (!commit && dirtyPaths.length > 0));
   const selected = worktree ? wtCommit : commit ?? firstId;
 
   const shown = worktree ? null : commit ?? firstId;
   return (
     <div ref={side.box} className="flex min-h-0 min-w-0 grow">
+      {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
       <div style={{ width: side.size }} className="flex shrink-0 flex-col">
         <RepoSidebar root={root} data={data} current={worktree} currentBranch={branch} onOpenBranch={(name) => navigate({ kind: "branch", root, name })} onOpenRepo={() => navigate({ kind: "repo", root })} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} onError={onError} />
       </div>
@@ -92,6 +143,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
           onSelect={(id) => { setShowUncommitted(false); if (branch) setBrCommit(id); else if (worktree) setWtCommit(id); else navigate(id ? { kind: "commit", root, id } : { kind: "repo", root }); }}
           onLoaded={branch ? onBranchLoaded : worktree ? undefined : onLoaded}
           onUncommitted={() => (worktree ? setWtCommit(null) : setShowUncommitted(true))}
+          onCommitMenu={commitMenu}
           branchDots={branchDots}
           detachedDots={detachedDots}
           heads={heads}

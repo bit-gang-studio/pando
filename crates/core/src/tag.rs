@@ -25,3 +25,25 @@ pub fn list(repo: &Repo) -> Result<Vec<Tag>> {
     out.sort_by(|a, b| b.name.cmp(&a.name));
     Ok(out)
 }
+
+/// Create a tag on `target`. With a message it is an annotated tag.
+pub fn create(repo: &Repo, name: &str, target: &str, message: Option<&str>) -> Result<()> {
+    match message.filter(|m| !m.trim().is_empty()) {
+        Some(m) => crate::cmd::git(&repo.root, ["tag", "-a", name, target, "-m", m])?,
+        None => crate::cmd::git(&repo.root, ["tag", name, target])?,
+    };
+    Ok(())
+}
+
+pub fn delete(repo: &Repo, name: &str) -> Result<()> {
+    crate::cmd::git(&repo.root, ["tag", "-d", name])?;
+    Ok(())
+}
+
+pub fn push(repo: &Repo, name: &str) -> Result<()> {
+    crate::cmd::git(
+        &repo.root,
+        ["push", "-q", "origin", &format!("refs/tags/{name}")],
+    )?;
+    Ok(())
+}

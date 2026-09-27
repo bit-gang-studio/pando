@@ -222,3 +222,73 @@ fn merge_commit_diff_is_against_first_parent() {
     let fd = pando_core::history::commit_file_diff(&repo, &id, "t1").unwrap();
     assert_eq!(fd.added, 1);
 }
+
+#[test]
+fn cherry_pick_revert_tag_and_move() {
+    let f = fixture();
+    let repo = Repo::discover(&f.root).unwrap();
+    // A commit on another branch to pick.
+    git(&f.root, &["switch", "-q", "-c", "topic"]);
+    commit(&f.root, "picked");
+    let id = git(&f.root, &["rev-parse", "HEAD"]);
+    git(&f.root, &["switch", "-q", "main"]);
+
+    assert_eq!(
+        pando_core::commit::cherry_pick(&repo, &f.root, &id).unwrap(),
+        pando_core::Applied::Done
+    );
+    assert!(f.root.join("picked").exists());
+    let head = git(&f.root, &["rev-parse", "HEAD"]);
+    assert_eq!(
+        pando_core::commit::revert(&repo, &f.root, &head).unwrap(),
+        pando_core::Applied::Done
+    );
+    assert!(!f.root.join("picked").exists());
+    assert!(git(&f.root, &["log", "-1", "--format=%s"]).starts_with("Revert"));
+
+    pando_core::tag::create(&repo, "v9", &head, Some("nine")).unwrap();
+    assert!(pando_core::tag::list(&repo)
+        .unwrap()
+        .iter()
+        .any(|t| t.name == "v9"));
+    pando_core::tag::delete(&repo, "v9").unwrap();
+    assert!(!pando_core::tag::list(&repo)
+        .unwrap()
+        .iter()
+        .any(|t| t.name == "v9"));
+
+    let base = f.root.parent().unwrap();
+    let a = base.join("wt-a");
+    git(
+        &f.root,
+        &["worktree", "add", "-q", a.to_str().unwrap(), "topic"],
+    );
+    let b = base.join("moved").join("wt-b");
+    pando_core::worktree::move_to(&repo, &a, &b).unwrap();
+    assert!(b.exists() && !a.exists());
+    assert!(pando_core::worktree::list(&repo)
+        .unwrap()
+        .iter()
+        .any(|w| w.path == dunce::canonicalize(&b).unwrap()));
+}
+
+#[test]
+fn cherry_pick_conflict_pauses() {
+    let f = fixture();
+    let repo = Repo::discover(&f.root).unwrap();
+    git(&f.root, &["switch", "-q", "-c", "topic"]);
+    std::fs::write(f.root.join("one"), "topic").unwrap();
+    git(&f.root, &["commit", "-q", "-am", "topic edit"]);
+    let id = git(&f.root, &["rev-parse", "HEAD"]);
+    git(&f.root, &["switch", "-q", "main"]);
+    std::fs::write(f.root.join("one"), "main").unwrap();
+    git(&f.root, &["commit", "-q", "-am", "main edit"]);
+    assert_eq!(
+        pando_core::commit::cherry_pick(&repo, &f.root, &id).unwrap(),
+        pando_core::Applied::Paused
+    );
+    let op = pando_core::operation::detect(&f.root).unwrap().unwrap();
+    assert_eq!(op.kind, pando_core::OpKind::CherryPick);
+    pando_core::operation::abort(&f.root).unwrap();
+    assert!(pando_core::operation::detect(&f.root).unwrap().is_none());
+}

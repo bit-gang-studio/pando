@@ -175,6 +175,19 @@ pub fn prune(repo: &Repo) -> Result<u32> {
     Ok(before.saturating_sub(after) as u32)
 }
 
+/// `git worktree move`: put the worktree's folder somewhere else.
+pub fn move_to(repo: &Repo, from: &Path, to: &Path) -> Result<()> {
+    if let Some(parent) = to.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let (f, t) = (
+        from.to_string_lossy().into_owned(),
+        to.to_string_lossy().into_owned(),
+    );
+    git(&repo.root, ["worktree", "move", &f, &t])?;
+    Ok(())
+}
+
 pub fn lock(repo: &Repo, path: &Path, reason: Option<&str>) -> Result<()> {
     let p = path.to_string_lossy().into_owned();
     let mut args = vec!["worktree", "lock"];

@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ago, api, changed, type BranchRow, type DetachedRow, type Overview as OverviewData, type RemoteBranch, type Summary, type Worktree } from "../lib/api";
+import { ago, api, changed, type BranchRow, type DetachedRow, type Overview as OverviewData, type RemoteBranch, type Stash, type Summary, type Worktree } from "../lib/api";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { NewWindowIcon } from "../ui/icons";
@@ -21,6 +21,9 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const [remoteOpen, setRemoteOpen] = useState(false);
   const [remoteQuery, setRemoteQuery] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [stashes, setStashes] = useState<Stash[]>([]);
+
+  useEffect(() => { api.stashList(root).then(setStashes).catch(() => setStashes([])); }, [root, data]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -56,42 +59,106 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     if (!answer.ok) return;
     await run("delete", () => api.branchDelete(root, b.name, answer.checked));
   }
-  const branchMenu = (e: React.MouseEvent, r: BranchRow) => {
-    e.preventDefault();
-    setMenu({ x: e.clientX, y: e.clientY, items: [
-      { label: "Open", onClick: () => onOpenBranch(r.branch.name) },
-      { label: "Open in new window", onClick: () => openInNewWindow({ kind: "branch", root, name: r.branch.name }) },
-      { label: "Add worktree", onClick: () => setCreating({ branch: r.branch.name }) },
-      { label: r.branch.upstream ? "Push" : "Push to origin", onClick: () => run("push", () => api.branchPush(root, r.branch.name)) },
-      { label: "Delete branch", onClick: () => deleteBranch(r), danger: true },
-    ] });
-  };
-  const remoteMenu = (e: React.MouseEvent, r: RemoteBranch) => {
-    e.preventDefault();
-    setMenu({ x: e.clientX, y: e.clientY, items: [
-      { label: "Open", onClick: () => onOpenBranch(r.name) },
-      { label: "Open in new window", onClick: () => openInNewWindow({ kind: "branch", root, name: r.name }) },
-      { label: "Add worktree", onClick: () => setCreating({ branch: r.short, remote: r.name }) },
-    ] });
-  };
-
   const openWin = (path: string) => openInNewWindow({ kind: "worktree", root, path }).catch((err) => onError(String(err)));
   const openRow = (e: React.MouseEvent, path: string) => (wantsNewWindow(e) ? openWin(path) : onOpenWorktree(path));
+  const show = (e: React.MouseEvent, items: MenuItem[]) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, items }); };
+  const sep: MenuItem = { divider: true };
+
+  const mainWt = data?.branches.find((b) => b.is_main_worktree)?.worktree ?? data?.detached.find((d) => d.is_main_worktree)?.worktree ?? null;
+  const worktreeOptions = () => [
+    ...(data?.branches.filter((b) => b.worktree).map((b) => ({ value: b.worktree!.path, label: b.branch.name + (b.is_main_worktree ? " (main worktree)" : "") })) ?? []),
+    ...(data?.detached.map((d) => ({ value: d.worktree.path, label: `detached at ${d.worktree.head?.slice(0, 7)}` })) ?? []),
+  ];
+
+  async function switchMain(name: string) {
+    await run("switch", () => api.branchSwitch(root, name));
+  }
+  async function switchMainPicker() {
+    const free = data?.branches.filter((b) => !b.worktree).map((b) => ({ value: b.branch.name, label: b.branch.name })) ?? [];
+    if (free.length === 0) { onError("Every local branch already has a worktree."); return; }
+    const a = await confirm({ title: "Switch branch", body: "Check out another branch in the main worktree. Uncommitted changes must be committed or stashed first.", action: "Switch branch", select: { label: "Branch", options: free } });
+    if (a.ok) await switchMain(a.choice);
+  }
+  async function rename(old: string) {
+    const a = await confirm({ title: "Rename branch", body: <>Rename <span className="font-mono">{old}</span>. A backup of the old name is kept.</>, action: "Rename", input: { label: "New name", value: old, mono: true } });
+    if (a.ok && a.value !== old) await run("rename", () => api.branchRename(root, old, a.value));
+  }
+  async function setUpstream(name: string, current: string | null) {
+    const a = await confirm({ title: "Set upstream", body: <>The remote branch <span className="font-mono">{name}</span> pulls from and pushes to.</>, action: "Set upstream", input: { label: "Upstream", value: current ?? `origin/${name}`, mono: true } });
+    if (a.ok) await run("upstream", () => api.branchSetUpstream(root, name, a.value));
+  }
+  async function moveWorktree(row: WtRow) {
+    const a = await confirm({ title: "Move worktree", body: <>Move the folder for <span className="font-mono">{row.label}</span>.</>, action: "Move", input: { label: "New location", value: row.worktree.path, mono: true } });
+    if (a.ok && a.value !== row.worktree.path) await run("move", () => api.worktreeMove(root, row.worktree.path, a.value));
+  }
+  async function stashChanges(row: WtRow) {
+    const a = await confirm({ title: "Stash changes", body: <>Put aside the uncommitted changes in <span className="font-mono">{row.label}</span>, including new files.</>, action: "Stash", input: { label: "Message", value: `WIP on ${row.label}` } });
+    if (a.ok) await run("stash", () => api.stashSave(row.worktree.path, a.value));
+  }
+  async function applyStash(st: Stash, pop: boolean) {
+    const opts = worktreeOptions();
+    const match = opts.find((o) => o.label.startsWith(st.branch ?? "\u0000"))?.value;
+    const a = await confirm({ title: pop ? "Pop stash" : "Apply stash", body: <>{st.message}{pop ? ". It's removed from the list afterwards." : "."}</>, action: pop ? "Pop" : "Apply", select: { label: "Into worktree", options: opts, value: match ?? mainWt?.path } });
+    if (a.ok) await run("stash", () => api.stashApply(a.choice, st.index, pop));
+  }
+  async function dropStash(st: Stash) {
+    if ((await confirm({ title: "Drop stash", body: <>Throw away <span className="italic">{st.message}</span>? This can't be undone.</>, action: "Drop stash", danger: true })).ok) await run("stash", () => api.stashDrop(root, st.index));
+  }
+  async function deleteRemote(r: RemoteBranch) {
+    if ((await confirm({ title: "Delete remote branch", body: <>Delete <span className="font-mono">{r.name}</span> on the remote? Anyone else using it loses it too.</>, action: "Delete on origin", danger: true })).ok) await run("delete", () => api.branchDeleteRemote(root, r.short));
+  }
+
   const rowMenu = (e: React.MouseEvent, row: WtRow) => {
-    e.preventDefault();
+    const b = row.branch?.branch;
     const items: MenuItem[] = [
       { label: "Open", onClick: () => onOpenWorktree(row.worktree.path) },
       { label: "Open in new window", onClick: () => openWin(row.worktree.path) },
+      sep,
     ];
-    const b = row.branch?.branch;
-    if (b) {
-      if (b.upstream) items.push({ label: "Pull", onClick: () => run("pull", () => api.branchPull(row.worktree.path)) });
-      items.push({ label: b.upstream ? "Push" : "Push to origin", onClick: () => run("push", () => api.branchPush(root, b.name)) });
+    if (b?.upstream) items.push({ label: "Pull", onClick: () => run("pull", () => api.branchPull(row.worktree.path)) });
+    if (b) items.push({ label: b.upstream ? "Push" : "Push to origin", onClick: () => run("push", () => api.branchPush(root, b.name)) });
+    if (!row.isMain && row.branch) items.push({ label: "Merge…", onClick: () => setMerging(row.branch!) });
+    if (changed(row.status) > 0) items.push({ label: "Stash changes…", onClick: () => stashChanges(row) });
+    items.push(sep);
+    if (row.isMain) items.push({ label: "Switch branch…", onClick: () => switchMainPicker() });
+    if (b) items.push({ label: "Rename branch…", onClick: () => rename(b.name) });
+    if (b) items.push({ label: "Set upstream…", onClick: () => setUpstream(b.name, b.upstream) });
+    if (!row.isMain) {
+      items.push({ label: "Move…", onClick: () => moveWorktree(row) });
+      items.push({ label: row.worktree.locked != null ? "Unlock" : "Lock", onClick: () => run("lock", () => api.worktreeLock(root, row.worktree.path, row.worktree.locked == null)) });
+      items.push(sep);
+      if (row.worktree.prunable) items.push({ label: "Prune missing folders", onClick: () => run("prune", () => api.worktreePrune(root)) });
+      items.push({ label: "Remove worktree…", onClick: () => removeWorktree(row), danger: true });
     }
-    if (!row.isMain && row.branch) items.push({ label: "Merge", onClick: () => setMerging(row.branch!) });
-    if (!row.isMain) items.push({ label: "Remove worktree", onClick: () => removeWorktree(row), danger: true });
-    setMenu({ x: e.clientX, y: e.clientY, items });
+    show(e, items);
   };
+  const branchMenu = (e: React.MouseEvent, r: BranchRow) => show(e, [
+    { label: "Open", onClick: () => onOpenBranch(r.branch.name) },
+    { label: "Open in new window", onClick: () => openInNewWindow({ kind: "branch", root, name: r.branch.name }) },
+    sep,
+    { label: "Add worktree…", onClick: () => setCreating({ branch: r.branch.name }) },
+    { label: "Switch main worktree to this branch", onClick: () => switchMain(r.branch.name) },
+    { label: r.branch.upstream ? "Push" : "Push to origin", onClick: () => run("push", () => api.branchPush(root, r.branch.name)) },
+    sep,
+    { label: "Rename…", onClick: () => rename(r.branch.name) },
+    { label: "Set upstream…", onClick: () => setUpstream(r.branch.name, r.branch.upstream) },
+    sep,
+    { label: "Delete branch…", onClick: () => deleteBranch(r), danger: true },
+  ]);
+  const remoteMenu = (e: React.MouseEvent, r: RemoteBranch) => show(e, [
+    { label: "Open", onClick: () => onOpenBranch(r.name) },
+    { label: "Open in new window", onClick: () => openInNewWindow({ kind: "branch", root, name: r.name }) },
+    sep,
+    { label: "Add worktree…", onClick: () => setCreating({ branch: r.short, remote: r.name }) },
+    sep,
+    { label: "Delete on origin…", onClick: () => deleteRemote(r), danger: true },
+  ]);
+  const stashMenu = (e: React.MouseEvent, st: Stash) => show(e, [
+    { label: "Apply…", onClick: () => applyStash(st, false) },
+    { label: "Pop…", onClick: () => applyStash(st, true) },
+    sep,
+    { label: "Drop…", onClick: () => dropStash(st), danger: true },
+  ]);
 
   const rows: WtRow[] = [];
   for (const d of data?.detached ?? []) if (d.is_main_worktree) rows.push(detachedRow(d));
@@ -156,7 +223,6 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
             </div>
             <div className="hidden shrink-0 items-center gap-1 group-hover:flex" onClick={(e) => e.stopPropagation()}>
               {!r.isMain && r.branch && <button onClick={() => setMerging(r.branch)} disabled={!!busy} className={`${small} border-teal-700 text-teal-700`}>Merge</button>}
-              {!r.isMain && <button onClick={() => removeWorktree(r)} disabled={!!busy} className={small} title="Remove worktree">Remove</button>}
               <button onClick={() => openWin(r.worktree.path)} title="Open in new window" aria-label={`Open ${r.label} in new window`} className={iconBtn}><NewWindowIcon /></button>
             </div>
           </div>
@@ -174,6 +240,17 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
         </div>
       ))}
       {data && without.length === 0 && <div className="px-3 py-1 text-label text-stone-500">Every local branch has a worktree.</div>}
+
+      {stashes.length > 0 && head("STASHES", String(stashes.length))}
+      {stashes.map((st) => (
+        <div key={st.index} onContextMenu={(e) => stashMenu(e, st)} title={st.message} className="group flex items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+          <div className="min-w-0 grow">
+            <div className="truncate">{st.message.replace(/^On [^:]+: /, "").replace(/^WIP on [^:]+: /, "")}</div>
+            <div className="truncate text-label text-stone-500">{st.branch ? `from ${st.branch} · ` : ""}{ago(st.time)}</div>
+          </div>
+          <button onClick={() => applyStash(st, true)} disabled={!!busy} className={`${small} hidden group-hover:block`}>Pop</button>
+        </div>
+      ))}
 
       <button onClick={() => setRemoteOpen((v) => !v)} className="flex items-baseline gap-2 px-3 pb-1 pt-3 text-left">
         <span className="text-label font-semibold tracking-wider text-stone-500">{remoteOpen ? "▾" : "▸"} REMOTE BRANCHES</span>

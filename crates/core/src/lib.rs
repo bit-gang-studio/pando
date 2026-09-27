@@ -28,7 +28,7 @@ pub mod worktree;
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 pub use branch::{Branch, RemoteBranch};
-pub use commit::CommitInfo;
+pub use commit::{Applied, CommitInfo};
 pub use conflict::{ConflictFile, Side};
 pub use detail::Detail;
 pub use diff::{FileDiff, Hunk, Line, LineKind};

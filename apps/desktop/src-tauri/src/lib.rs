@@ -1,10 +1,10 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
 use pando_core::{
-    branch, commit, conflict, detail, diff, history, index, log, merge, operation, overview, sync,
-    user_config, worktree, CommitDiff, ConflictFile, CreateWorktree, Created, Detail, FileDiff,
-    Hunk, Log, MergePlan, MergeResult, Operation, Overview, Preflight, Repo, Side, SyncResult,
-    UserConfig,
+    branch, commit, conflict, detail, diff, history, index, log, merge, operation, overview, stash,
+    sync, tag, user_config, worktree, Applied, CommitDiff, ConflictFile, CreateWorktree, Created,
+    Detail, FileDiff, Hunk, Log, MergePlan, MergeResult, Operation, Overview, Preflight, Repo,
+    Side, Stash, SyncResult, UserConfig,
 };
 use std::path::PathBuf;
 
@@ -121,6 +121,117 @@ async fn worktree_add(root: PathBuf, req: CreateWorktree) -> R<Created> {
 #[tauri::command]
 async fn worktree_remove(root: PathBuf, path: PathBuf, force: bool) -> R<()> {
     blocking(move || worktree::remove(&repo(&root)?, &path, force).map_err(err)).await
+}
+
+// ---- worktree actions --------------------------------------------------------
+
+#[tauri::command]
+async fn worktree_move(root: PathBuf, from: PathBuf, to: PathBuf) -> R<()> {
+    blocking(move || worktree::move_to(&repo(&root)?, &from, &to).map_err(err)).await
+}
+
+#[tauri::command]
+async fn worktree_lock(root: PathBuf, path: PathBuf, locked: bool) -> R<()> {
+    blocking(move || {
+        let r = repo(&root)?;
+        if locked {
+            worktree::lock(&r, &path, None)
+        } else {
+            worktree::unlock(&r, &path)
+        }
+        .map_err(err)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn worktree_prune(root: PathBuf) -> R<u32> {
+    blocking(move || worktree::prune(&repo(&root)?).map_err(err)).await
+}
+
+// ---- branch actions ----------------------------------------------------------
+
+/// Check out another branch in the main worktree (`git switch`).
+#[tauri::command]
+async fn branch_switch(root: PathBuf, name: String) -> R<()> {
+    blocking(move || branch::switch_in_main(&repo(&root)?, &name).map_err(err)).await
+}
+
+#[tauri::command]
+async fn branch_rename(root: PathBuf, old: String, new: String) -> R<()> {
+    blocking(move || branch::rename(&repo(&root)?, &old, &new).map_err(err)).await
+}
+
+#[tauri::command]
+async fn branch_set_upstream(root: PathBuf, name: String, upstream: String) -> R<()> {
+    blocking(move || branch::set_upstream(&repo(&root)?, &name, &upstream).map_err(err)).await
+}
+
+/// Delete a branch on origin only.
+#[tauri::command]
+async fn branch_delete_remote(root: PathBuf, name: String) -> R<()> {
+    blocking(move || branch::delete_remote(&repo(&root)?, "origin", &name).map_err(err)).await
+}
+
+// ---- commit actions ----------------------------------------------------------
+
+#[tauri::command]
+async fn commit_cherry_pick(root: PathBuf, worktree: PathBuf, id: String) -> R<Applied> {
+    blocking(move || commit::cherry_pick(&repo(&root)?, &worktree, &id).map_err(err)).await
+}
+
+#[tauri::command]
+async fn commit_revert(root: PathBuf, worktree: PathBuf, id: String) -> R<Applied> {
+    blocking(move || commit::revert(&repo(&root)?, &worktree, &id).map_err(err)).await
+}
+
+#[tauri::command]
+async fn tag_create(
+    root: PathBuf,
+    name: String,
+    target: String,
+    message: Option<String>,
+    push: bool,
+) -> R<()> {
+    blocking(move || {
+        let r = repo(&root)?;
+        tag::create(&r, &name, &target, message.as_deref()).map_err(err)?;
+        if push {
+            tag::push(&r, &name).map_err(err)?;
+        }
+        Ok(())
+    })
+    .await
+}
+
+// ---- stash -------------------------------------------------------------------
+
+#[tauri::command]
+async fn stash_list(root: PathBuf) -> R<Vec<Stash>> {
+    blocking(move || stash::list(&repo(&root)?).map_err(err)).await
+}
+
+#[tauri::command]
+async fn stash_save(worktree: PathBuf, message: Option<String>) -> R<bool> {
+    blocking(move || stash::save(&worktree, message.as_deref()).map_err(err)).await
+}
+
+#[tauri::command]
+async fn stash_apply(worktree: PathBuf, index: u32, pop: bool) -> R<()> {
+    blocking(move || {
+        if pop {
+            stash::pop(&worktree, index)
+        } else {
+            stash::apply(&worktree, index)
+        }
+        .map_err(err)
+    })
+    .await
+}
+
+#[tauri::command]
+async fn stash_drop(root: PathBuf, index: u32) -> R<()> {
+    blocking(move || stash::drop(&repo(&root)?, index).map_err(err)).await
 }
 
 // ---- log -------------------------------------------------------------------
@@ -263,6 +374,20 @@ pub fn run() {
             branch_push,
             branch_pull,
             branch_delete,
+            worktree_move,
+            worktree_lock,
+            worktree_prune,
+            branch_switch,
+            branch_rename,
+            branch_set_upstream,
+            branch_delete_remote,
+            commit_cherry_pick,
+            commit_revert,
+            tag_create,
+            stash_list,
+            stash_save,
+            stash_apply,
+            stash_drop,
             worktree_path_preview,
             worktree_add,
             worktree_remove,
