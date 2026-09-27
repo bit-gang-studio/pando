@@ -14,8 +14,12 @@ type Props = {
   selected: string | null;
   onSelect: (id: string | null) => void;
   onUncommitted: () => void;
-  /// Commit id -> folder names of worktrees whose HEAD is that commit.
-  worktreeHeads?: Record<string, string[]>;
+  /// Branch name -> dot colour class, for branches checked out in a worktree.
+  branchDots?: Record<string, string>;
+  /// Commit id -> dot colour classes, for detached worktrees sitting on it.
+  detachedDots?: Record<string, string[]>;
+  /// Commits some worktree has checked out (drawn as a hollow dot).
+  heads?: Set<string>;
   /// Called with the newest commit id after each load.
   onLoaded?: (firstId: string | null) => void;
   refreshKey: number;
@@ -23,7 +27,7 @@ type Props = {
 
 const PAGE = 200;
 
-export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, worktreeHeads = {}, onLoaded, refreshKey }: Props) {
+export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, detachedDots = {}, heads, onLoaded, refreshKey }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -67,12 +71,12 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
             onClick={(ev) => (wantsNewWindow(ev) ? openInNewWindow({ kind: "commit", root, id: e.id }) : onSelect(selected === e.id ? null : e.id))}
             className={`flex cursor-pointer items-center gap-3 pl-2 pr-4 ${selected === e.id ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}
           >
-            <GraphCell row={graph[i]} width={graphW} head={!!worktreeHeads[e.id] || e.is_head} />
+            <GraphCell row={graph[i]} width={graphW} head={heads ? heads.has(e.id) : e.is_head} />
             <span className="flex shrink-0 gap-1">
-              {(worktreeHeads[e.id] ?? []).map((w) => (
-                <span key={`wt-${w}`} title={`Checked out in the worktree ${w}`} className="rounded border border-teal-700 px-1.5 py-px font-mono text-label text-teal-800 dark:text-teal-200">⌂ {w}</span>
+              {(detachedDots[e.id] ?? []).map((dot, k) => (
+                <span key={`det-${k}`} title="A worktree has this commit checked out, with no branch" className="flex items-center gap-1 rounded bg-stone-100 px-1.5 py-px font-mono text-label text-stone-700 dark:bg-stone-700 dark:text-stone-200"><span className={`h-1.5 w-1.5 rounded-full ${dot}`} />detached</span>
               ))}
-              {e.refs.map((r) => <RefChip key={r} name={r} />)}
+              {e.refs.map((r) => <RefChip key={r} name={r} dot={branchDots[r]} />)}
             </span>
             <span className="min-w-0 grow truncate">{e.summary}</span>
             <span className="shrink-0 text-body text-stone-500">{e.author}</span>
@@ -87,7 +91,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
   );
 }
 
-function RefChip({ name }: { name: string }) {
+function RefChip({ name, dot }: { name: string; dot?: string }) {
   const tag = name.startsWith("tag: ");
   const remote = !tag && name.includes("/") && /^(origin|upstream)\//.test(name);
   const label = tag ? name.slice(5) : name;
@@ -96,7 +100,12 @@ function RefChip({ name }: { name: string }) {
     : remote
       ? "bg-stone-200 text-stone-700 dark:bg-stone-700 dark:text-stone-200"
       : "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200";
-  return <span className={`rounded px-1.5 py-px font-mono text-label ${cls}`} title={name}>{label}</span>;
+  return (
+    <span className={`flex items-center gap-1 rounded px-1.5 py-px font-mono text-label ${cls}`} title={dot ? `${name} · checked out in a worktree` : name}>
+      {dot && <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />}
+      {label}
+    </span>
+  );
 }
 
 function GraphCell({ row, width, head }: { row: GraphRow; width: number; head: boolean }) {

@@ -48,12 +48,21 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
     ...(data?.detached.filter((d) => changed(d.status) > 0).map((d) => d.worktree.path) ?? []),
   ];
 
-  // Every worktree's checked-out commit, labelled with its folder name.
-  const worktreeHeads: Record<string, string[]> = {};
-  for (const w of [...(data?.branches.map((b) => b.worktree) ?? []), ...(data?.detached.map((d) => d.worktree) ?? [])]) {
-    if (!w?.head) continue;
-    const name = w.path.split(/[\\/]/).pop() ?? w.path;
-    (worktreeHeads[w.head] ??= []).push(name);
+  // Same dot colours as the sidebar, so "a dot means a worktree has it checked out".
+  const dotFor = (st: import("../lib/api").Summary | null, missing: boolean, isMain: boolean) =>
+    missing || (st?.conflicts ?? 0) > 0 ? "bg-red-700" : changed(st) > 0 ? "bg-amber-700" : isMain ? "bg-stone-400" : "bg-teal-700";
+  const branchDots: Record<string, string> = {};
+  const detachedDots: Record<string, string[]> = {};
+  const heads = new Set<string>();
+  for (const b of data?.branches ?? []) {
+    if (!b.worktree) continue;
+    branchDots[b.branch.name] = dotFor(b.status, !!b.worktree.prunable, b.is_main_worktree);
+    if (b.worktree.head) heads.add(b.worktree.head);
+  }
+  for (const d of data?.detached ?? []) {
+    if (!d.worktree.head) continue;
+    (detachedDots[d.worktree.head] ??= []).push(dotFor(d.status, !!d.worktree.prunable, d.is_main_worktree));
+    heads.add(d.worktree.head);
   }
 
   // Worktree mode: scope the log to its branch and treat "Uncommitted changes" as this worktree's.
@@ -83,7 +92,9 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
           onSelect={(id) => { setShowUncommitted(false); if (branch) setBrCommit(id); else if (worktree) setWtCommit(id); else navigate(id ? { kind: "commit", root, id } : { kind: "repo", root }); }}
           onLoaded={branch ? onBranchLoaded : worktree ? undefined : onLoaded}
           onUncommitted={() => (worktree ? setWtCommit(null) : setShowUncommitted(true))}
-          worktreeHeads={worktreeHeads}
+          branchDots={branchDots}
+          detachedDots={detachedDots}
+          heads={heads}
           refreshKey={tick}
         />
       </div>

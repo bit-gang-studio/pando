@@ -27,7 +27,6 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
     try { return (localStorage.getItem(LAST_KEY) as Strategy) || "squash"; } catch { return "squash"; }
   });
   const [message, setMessage] = useState("");
-  const [deleteBranch, setDeleteBranch] = useState(true);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<MergeResult | null>(null);
 
@@ -58,7 +57,7 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
     try {
       const r = await api.mergeRun(root, path, {
         branch, base: pf.base, strategy, message: strategy === "rebase" ? null : message.trim(),
-        push_base: false, delete_branch: deleteBranch,
+        push_base: false, delete_branch: false,
       });
       setResult(r);
       if (r.landed) onMerged();
@@ -111,10 +110,6 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
                   <textarea rows={2} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full resize-none rounded-md border border-stone-300 bg-white p-2 text-body focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700" />
                 </label>
               )}
-
-              <div className="flex flex-col gap-2">
-                <label className="flex items-center gap-2"><input type="checkbox" checked={deleteBranch} onChange={(e) => setDeleteBranch(e.target.checked)} /> Delete <span className="font-mono text-body">{branch}</span> and its worktree</label>
-              </div>
             </>
           )}
 
