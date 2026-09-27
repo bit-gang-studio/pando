@@ -7,14 +7,14 @@ import { MergeDialog } from "../dialogs/MergeDialog";
 import { NewBranchDialog } from "../dialogs/NewBranchDialog";
 import { confirm } from "../ui/Confirm";
 
-type Props = { root: string; data: OverviewData | null; current?: string | null; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; onError: (msg: string) => void };
+type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; onError: (msg: string) => void };
 
 const small = "h-6 rounded border border-stone-300 bg-white px-1.5 text-[11px] hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 const iconBtn = "inline-flex h-6 items-center rounded px-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100";
 
 type WtRow = { key: string; label: string; worktree: Worktree; status: Summary | null; branch: BranchRow | null; isMain: boolean; ahead: number | null; stale: boolean; time: number | null };
 
-export function RepoSidebar({ root, data, current = null, onOpenRepo, onRefresh: refresh, onOpenWorktree, onError }: Props) {
+export function RepoSidebar({ root, data, current = null, currentBranch = null, onOpenBranch, onOpenRepo, onRefresh: refresh, onOpenWorktree, onError }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ branch?: string } | null>(null);
   const [merging, setMerging] = useState<BranchRow | null>(null);
@@ -59,6 +59,8 @@ export function RepoSidebar({ root, data, current = null, onOpenRepo, onRefresh:
   const branchMenu = (e: React.MouseEvent, r: BranchRow) => {
     e.preventDefault();
     setMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: "Open", onClick: () => onOpenBranch(r.branch.name) },
+      { label: "Open in new window", onClick: () => openInNewWindow({ kind: "branch", root, name: r.branch.name }) },
       { label: "Add worktree", onClick: () => setCreating({ branch: r.branch.name }) },
       { label: r.branch.upstream ? "Push" : "Push to origin", onClick: () => run("push", () => api.branchPush(root, r.branch.name)) },
       { label: "Delete branch", onClick: () => deleteBranch(r), danger: true },
@@ -67,6 +69,8 @@ export function RepoSidebar({ root, data, current = null, onOpenRepo, onRefresh:
   const remoteMenu = (e: React.MouseEvent, r: RemoteBranch) => {
     e.preventDefault();
     setMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: "Open", onClick: () => onOpenBranch(r.name) },
+      { label: "Open in new window", onClick: () => openInNewWindow({ kind: "branch", root, name: r.name }) },
       { label: "Add worktree", onClick: () => setCreating({ branch: r.short }) },
     ] });
   };
@@ -121,7 +125,7 @@ export function RepoSidebar({ root, data, current = null, onOpenRepo, onRefresh:
         <button onClick={() => run("fetch", () => api.fetchAll(root))} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-xs hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700">{busy === "fetch" ? "…" : "Fetch"}</button>
       </div>
 
-      <button onClick={onOpenRepo} className={`mt-2 flex items-center gap-2 px-3 py-1.5 text-left ${current === null ? "bg-teal-50 font-medium dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
+      <button onClick={onOpenRepo} className={`mt-2 flex items-center gap-2 px-3 py-1.5 text-left ${current === null && currentBranch === null ? "bg-teal-50 font-medium dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
         <span className="h-2 w-2 shrink-0 rounded-full border-2 border-stone-400" />
         <span className="grow text-xs">All branches</span>
         {data && (() => {
@@ -160,12 +164,12 @@ export function RepoSidebar({ root, data, current = null, onOpenRepo, onRefresh:
 
       {head("BRANCHES", data ? `${without.length} without a worktree` : "")}
       {without.map((r) => (
-        <div key={r.branch.name} onContextMenu={(e) => branchMenu(e, r)} title={r.branch.last_commit?.summary} className="group flex items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+        <div key={r.branch.name} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.branch.name }) : onOpenBranch(r.branch.name))} onContextMenu={(e) => branchMenu(e, r)} title={r.branch.last_commit?.summary} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${currentBranch === r.branch.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
           <div className="min-w-0 grow">
             <div className="truncate font-mono text-xs">{r.branch.name}</div>
             <div className="truncate text-[11px] text-stone-500">{r.ahead_of_base ? `${r.ahead_of_base} ahead` : "0 ahead"}{r.branch.last_commit ? ` · ${ago(r.branch.last_commit.time)}` : ""}</div>
           </div>
-          <button onClick={() => setCreating({ branch: r.branch.name })} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
+          <button onClick={(e) => { e.stopPropagation(); setCreating({ branch: r.branch.name }); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
         </div>
       ))}
       {data && without.length === 0 && <div className="px-3 py-1 text-[11px] text-stone-500">Every local branch has a worktree.</div>}
@@ -180,12 +184,12 @@ export function RepoSidebar({ root, data, current = null, onOpenRepo, onRefresh:
             <input value={remoteQuery} onChange={(e) => setRemoteQuery(e.target.value)} placeholder="Search" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-[11px] dark:border-stone-600 dark:bg-stone-700" />
           </div>
           {remoteShown.map((r: RemoteBranch) => (
-            <div key={r.name} onContextMenu={(e) => remoteMenu(e, r)} title={r.last_commit?.summary} className="group flex items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+            <div key={r.name} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.name }) : onOpenBranch(r.name))} onContextMenu={(e) => remoteMenu(e, r)} title={r.last_commit?.summary} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${currentBranch === r.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
               <div className="min-w-0 grow">
                 <div className="truncate font-mono text-xs text-stone-600 dark:text-stone-300">{r.name}</div>
                 <div className="truncate text-[11px] text-stone-500">{r.last_commit ? `${r.last_commit.author} · ${ago(r.last_commit.time)}` : ""}</div>
               </div>
-              <button onClick={() => setCreating({ branch: r.short })} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
+              <button onClick={(e) => { e.stopPropagation(); setCreating({ branch: r.short }); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
             </div>
           ))}
           {!q && remote.length > 8 && <div className="px-3 py-1 text-[11px] text-stone-500">Showing 8 of {remote.length}. Type to search.</div>}

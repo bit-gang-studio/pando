@@ -50,6 +50,7 @@ export default function App() {
             root={route.root}
             commit={route.kind === "commit" ? route.id : null}
             worktree={route.kind === "worktree" ? route.path : null}
+            branch={route.kind === "branch" ? route.name : null}
             onError={setFatal}
           />
         )}
