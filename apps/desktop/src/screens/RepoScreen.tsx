@@ -18,7 +18,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
   // null = not chosen yet: show uncommitted changes if there are any, else the newest commit.
   const [uncommittedChoice, setShowUncommitted] = useState<boolean | null>(null);
   const split = useSplit("pando.split.graph.px", 300, "y", 120, 4000);
-  const side = useSplit("pando.split.sidebar.px", 300, "x", 200, 700);
+  const side = useSplit("pando.split.sidebar.px", 300, "x", 260, 700);
   const onLoaded = useCallback((id: string | null) => setFirstId(id), []);
   const [brCommit, setBrCommit] = useState<string | null>(null); // selected commit while on a branch
   const [brFirst, setBrFirst] = useState<string | null>(null); // newest commit on that branch

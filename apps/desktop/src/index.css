@@ -52,6 +52,12 @@ summary {
   cursor: pointer;
 }
 
+/* Buttons keep their label on one line and never get squashed by a row. */
+button {
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 button:disabled {
   cursor: default;
 }

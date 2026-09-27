@@ -6,7 +6,11 @@ type Axis = "x" | "y";
 /// mouse: size = mouse position inside the box, minus where on the handle the
 /// press happened. Page zoom is the webview's own, so coordinates stay consistent.
 export function useSplit(key: string, initial: number, axis: Axis, min: number, max: number) {
-  const [size, setSize] = useState<number>(() => { try { return Number(localStorage.getItem(key)) || initial; } catch { return initial; } });
+  const [size, setSize] = useState<number>(() => {
+    let v = initial;
+    try { v = Number(localStorage.getItem(key)) || initial; } catch { /* ignore */ }
+    return Math.min(max, Math.max(min, v)); // a saved size may predate a new minimum
+  });
   const grab = useRef<number | null>(null); // offset from handle start to press point
   const box = useRef<HTMLDivElement>(null);
   const handle = useRef<HTMLDivElement>(null);
