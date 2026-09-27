@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type MergePlan, type MergeResult, type Preflight } from "../lib/api";
+import { ErrorLine } from "../ui/State";
 
 type Props = {
   root: string;
@@ -86,7 +87,7 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
         </div>
 
         <div className="flex grow flex-col gap-4 overflow-y-auto p-5">
-          {error && <div className="selectable rounded-md border border-red-300 bg-red-50 p-2 text-body text-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
+          {error && <ErrorLine error={error} />}
 
           {!result && pf && blocked && (
             <div className="flex flex-col gap-1 rounded-md border border-red-300 bg-red-50 p-3 text-red-800 dark:bg-red-900/30 dark:text-red-200">

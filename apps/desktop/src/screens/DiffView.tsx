@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import type { DiffLine, FileDiff, Hunk } from "../lib/api";
 import { highlightLines, langFor, type Tok } from "../lib/highlight";
+import { Loading } from "../ui/State";
 
 type Props = {
   diff: FileDiff | null;
@@ -37,7 +38,7 @@ export function DiffView({ diff, loading, mode, onMode, onHunk, readOnly }: Prop
     return () => { live = false; };
   }, [diff, sides]);
 
-  if (loading && !diff) return <Empty>Loading…</Empty>;
+  if (loading && !diff) return <Loading />;
   if (!diff) return <Empty>Select a file to see its changes.</Empty>;
   if (diff.binary) return <Empty>Binary file.</Empty>;
   if (diff.hunks.length === 0) return <Empty>No changes.</Empty>;

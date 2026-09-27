@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Created } from "../lib/api";
+import { ErrorLine } from "../ui/State";
 
 type Props = {
   root: string;
@@ -136,7 +137,7 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
           </label>
           )}
 
-          {error && <div className="rounded-md border border-red-300 bg-red-50 p-2 text-body text-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
+          {error && <ErrorLine error={error} />}
         </div>
 
         <div className="flex items-center gap-2 border-t border-stone-300 bg-stone-50 px-5 py-3.5 dark:border-stone-700 dark:bg-stone-900/40">

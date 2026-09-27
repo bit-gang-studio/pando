@@ -6,19 +6,23 @@ import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { NewWindowIcon } from "../ui/icons";
 import { confirm } from "../ui/Confirm";
+import { MoreButton } from "../ui/MoreButton";
+import { ErrorState, Loading } from "../ui/State";
+import { toastError, withToast } from "../ui/Toast";
+import { errorParts } from "../lib/errors";
 
-type Props = { onError: (m: string) => void };
-
-export function Repos({ onError }: Props) {
+export function Repos() {
   const [cfg, setCfg] = useState<UserConfig | null>(null);
   const [summaries, setSummaries] = useState<Record<string, Overview>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [listError, setListError] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
 
   const refresh = useCallback(async () => {
     try {
       const c = await api.reposList();
       setCfg(c);
+      setListError(null);
       await Promise.all(c.repos.map(async (root) => {
         try {
           const o = await api.overview(root);
@@ -29,9 +33,9 @@ export function Repos({ onError }: Props) {
         }
       }));
     } catch (e) {
-      onError(String(e));
+      setListError(String(e));
     }
-  }, [onError]);
+  }, []);
 
   useEffect(() => {
     refresh();
@@ -44,19 +48,28 @@ export function Repos({ onError }: Props) {
   async function addRepo() {
     const picked = await open({ directory: true, multiple: false, title: "Add a repository" });
     if (typeof picked !== "string") return;
-    try {
-      setCfg(await api.reposAdd(picked));
-      refresh();
-    } catch (e) {
-      onError(String(e));
-    }
+    const c = await withToast("Adding repository…", `Added ${repoName(picked)}`, () => api.reposAdd(picked));
+    if (c) { setCfg(c); refresh(); }
   }
 
   async function removeRepo(root: string) {
     const r = await confirm({ title: "Remove repository", body: `Remove ${repoName(root)} from Pando? Nothing on disk changes.`, action: "Remove from Pando" });
     if (!r.ok) return;
-    setCfg(await api.reposRemove(root));
+    const c = await withToast("Removing…", `Removed ${repoName(root)} from Pando`, () => api.reposRemove(root));
+    if (c) setCfg(c);
   }
+
+  const repoMenu = (e: React.MouseEvent, root: string) => {
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: "Open in new window", onClick: () => openInNewWindow({ kind: "repo", root }).catch(toastError) },
+      { divider: true },
+      { label: "Remove from Pando", onClick: () => removeRepo(root), danger: true },
+    ] });
+  };
+
+  if (!cfg && listError) return <ErrorState title="Couldn't read your repository list" error={listError} onRetry={refresh} />;
+  if (!cfg) return <Loading />;
 
   return (
     <main className="flex min-w-0 grow flex-col gap-3 overflow-auto p-6">
@@ -82,7 +95,7 @@ export function Repos({ onError }: Props) {
               <th className="px-2 py-1.5 font-semibold">PATH</th>
               <th className="w-[110px] px-2 py-1.5 text-right font-semibold">WORKTREES</th>
               <th className="w-[130px] px-2 py-1.5 text-right font-semibold">CHANGES</th>
-              <th className="w-[44px] px-2 py-1.5"></th>
+              <th className="w-[76px] px-2 py-1.5"></th>
             </tr>
           </thead>
           <tbody>
@@ -94,22 +107,19 @@ export function Repos({ onError }: Props) {
               return (
                 <tr
                   key={root}
-                  onClick={(e) => (wantsNewWindow(e) ? openInNewWindow(route).catch((err) => onError(String(err))) : navigate(route))}
-                  onContextMenu={(e) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, items: [
-                    { label: "Open in new window", onClick: () => openInNewWindow(route).catch((err) => onError(String(err))) },
-                    { divider: true },
-                    { label: "Remove from Pando", onClick: () => removeRepo(root), danger: true },
-                  ] }); }}
+                  onClick={(e) => (wantsNewWindow(e) ? openInNewWindow(route).catch(toastError) : navigate(route))}
+                  onContextMenu={(e) => repoMenu(e, root)}
                   className="cursor-pointer border-t border-stone-200 hover:bg-white dark:border-stone-700 dark:hover:bg-stone-800"
                 >
                   <td className="px-2 py-2 font-mono font-medium">{repoName(root)}</td>
                   <td className="max-w-0 truncate px-2 py-2 text-stone-500" title={root}>{root}</td>
                   <td className="px-2 py-2 text-right tabular-nums">{wts ?? (errors[root] ? "!" : "…")}</td>
-                  <td className={`px-2 py-2 text-right tabular-nums ${errors[root] ? "text-red-700" : dirty ? "text-amber-700" : "text-stone-500"}`}>
+                  <td title={errors[root] ? errorParts(errors[root]).message : undefined} className={`px-2 py-2 text-right tabular-nums ${errors[root] ? "text-red-700" : dirty ? "text-amber-700" : "text-stone-500"}`}>
                     {errors[root] ? "can't read" : dirty === null ? "…" : dirty === 0 ? "clean" : `${dirty} changed`}
                   </td>
-                  <td className="px-2 py-1 text-right">
-                    <button onClick={(e) => { e.stopPropagation(); openInNewWindow(route).catch((err) => onError(String(err))); }} title="Open in new window" aria-label={`Open ${repoName(root)} in new window`} className="inline-flex items-center rounded px-2 py-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100"><NewWindowIcon /></button>
+                  <td className="whitespace-nowrap px-2 py-1 text-right">
+                    <button onClick={(e) => { e.stopPropagation(); openInNewWindow(route).catch(toastError); }} title="Open in new window" aria-label={`Open ${repoName(root)} in new window`} className="inline-flex items-center rounded px-2 py-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100"><NewWindowIcon /></button>
+                    <MoreButton onOpen={(e) => repoMenu(e, root)} label={`Actions for ${repoName(root)}`} />
                   </td>
                 </tr>
               );
@@ -117,7 +127,7 @@ export function Repos({ onError }: Props) {
           </tbody>
         </table>
       )}
-      {cfg && cfg.repos.length > 0 && <div className="px-1 text-body text-stone-500">⌘-click a row to open it in a new window. Right-click for more.</div>}
+      {cfg && cfg.repos.length > 0 && <div className="px-1 text-body text-stone-500">⌘-click a row to open it in a new window.</div>}
     </main>
   );
 }

@@ -9,7 +9,7 @@ pub enum Error {
     NotARepo(PathBuf),
     #[error("{0}")]
     Gix(String),
-    #[error("config: {0}")]
+    #[error("{0}")]
     Config(String),
     #[error("{0}")]
     Io(#[from] std::io::Error),

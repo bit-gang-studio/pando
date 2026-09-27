@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ago, api, type CommitDiff, type FileDiff } from "../lib/api";
 import { DiffView } from "./DiffView";
 import { SplitHandle, useSplit } from "../ui/Split";
+import { ErrorState, Loading } from "../ui/State";
 
 export function CommitDetail({ root, id, onBack }: { root: string; id: string; onBack?: () => void }) {
   const [c, setC] = useState<CommitDiff | null>(null);
@@ -12,16 +13,19 @@ export function CommitDetail({ root, id, onBack }: { root: string; id: string; o
   const [error, setError] = useState<string | null>(null);
   const split = useSplit("pando.split.commit", 300, "x", 180, 700);
 
+  const [attempt, setAttempt] = useState(0);
   useEffect(() => {
-    setC(null); setSel(null); setDiff(null);
-    api.commitDiff(root, id).then((x) => { setC(x); setSel(x.files[0]?.path ?? null); }).catch((e) => setError(String(e)));
-  }, [root, id]);
+    let live = true;
+    setC(null); setSel(null); setDiff(null); setError(null);
+    api.commitDiff(root, id).then((x) => { if (live) { setC(x); setSel(x.files[0]?.path ?? null); } }).catch((e) => { if (live) setError(String(e)); });
+    return () => { live = false; };
+  }, [root, id, attempt]);
 
   useEffect(() => {
     if (!sel) { setDiff(null); return; }
     let live = true;
     setLoading(true);
-    api.commitFileDiff(root, id, sel).then((d) => { if (live) setDiff(d); }).catch((e) => setError(String(e))).finally(() => { if (live) setLoading(false); });
+    api.commitFileDiff(root, id, sel).then((d) => { if (live) setDiff(d); }).catch((e) => { if (live) setError(String(e)); }).finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
   }, [root, id, sel]);
 
@@ -32,8 +36,8 @@ export function CommitDetail({ root, id, onBack }: { root: string; id: string; o
     return () => window.removeEventListener("keydown", onKey);
   }, [onBack]);
 
-  if (error) return <div className="p-4 text-body text-red-700">{error}</div>;
-  if (!c) return <div className="p-4 text-body text-stone-500">Loading…</div>;
+  if (error) return <ErrorState title="Couldn't load this commit" error={error} onRetry={() => setAttempt((n) => n + 1)} />;
+  if (!c) return <Loading />;
 
   return (
     <div className="flex min-h-0 grow flex-col">

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type ConflictFile, type Operation } from "../lib/api";
+import { ErrorLine, ErrorState, Loading } from "../ui/State";
 
 type Props = {
   worktree: string;
@@ -16,7 +17,7 @@ export function ConflictView({ worktree, path, op, onChanged }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const load = () => api.conflictFile(worktree, path).then((x) => { setF(x); setResult(x.working); }).catch((e) => setError(String(e)));
+  const load = () => api.conflictFile(worktree, path).then((x) => { setF(x); setResult(x.working); setError(null); }).catch((e) => setError(String(e)));
   useEffect(() => { setF(null); load(); }, [worktree, path]);
 
   async function run(fn: () => Promise<unknown>, reload = true) {
@@ -27,7 +28,7 @@ export function ConflictView({ worktree, path, op, onChanged }: Props) {
     finally { setBusy(false); }
   }
 
-  if (!f) return <div className="flex grow items-center justify-center text-body text-stone-500">{error ?? "Loading…"}</div>;
+  if (!f) return error ? <ErrorState title="Couldn't load this conflict" error={error} onRetry={load} /> : <Loading />;
   if (f.binary) return <div className="flex grow flex-col items-center justify-center gap-2 text-body text-stone-500">Binary file. Pick a side.<div className="flex gap-2"><button onClick={() => run(() => api.conflictTake(worktree, path, "ours"))} className={btn}>Keep {op.head_label}</button><button onClick={() => run(() => api.conflictTake(worktree, path, "theirs"))} className={btn}>Keep {op.incoming_label}</button></div></div>;
 
   const stillConflicted = op.conflicted.includes(path);
@@ -44,7 +45,7 @@ export function ConflictView({ worktree, path, op, onChanged }: Props) {
           Mark resolved
         </button>
       </div>
-      {error && <div className="bg-red-50 px-4 py-1.5 text-body text-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
+      {error && <ErrorLine error={error} className="rounded-none border-x-0 border-t-0 px-4" />}
 
       <div className="grid min-h-0 grow grid-cols-2 divide-x divide-stone-300 border-b border-stone-300 dark:divide-stone-700 dark:border-stone-700">
         <Pane label={op.head_label} hint="already there" text={f.ours} onTake={() => run(() => api.conflictTake(worktree, path, "ours"))} busy={busy} />

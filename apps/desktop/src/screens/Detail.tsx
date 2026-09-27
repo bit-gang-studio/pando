@@ -6,6 +6,8 @@ import { ConflictView } from "./ConflictView";
 import { SplitHandle, useSplit } from "../ui/Split";
 import { MergeDialog } from "../dialogs/MergeDialog";
 import { confirm } from "../ui/Confirm";
+import { ErrorState, Loading } from "../ui/State";
+import { errorParts } from "../lib/errors";
 
 const STATUS_LABEL: Record<string, string> = { M: "Modified", A: "Added", D: "Deleted", R: "Renamed", C: "Copied", T: "Type changed", U: "Conflict", "?": "Untracked (new, not tracked by git yet)" };
 type Props = { root: string; path: string; onBack: () => void; onChanged: () => void };
@@ -83,7 +85,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
     finally { setBusy(null); }
   }
 
-  if (!d) return <div className="flex grow items-center justify-center text-body text-stone-500">{error ?? "Loading…"}</div>;
+  if (!d) return error ? <ErrorState title="Couldn't load this worktree" error={error} onRetry={refresh} /> : <Loading />;
 
   const wt = d.worktree.path;
   const unstaged = d.files.filter((f) => f.unstaged || f.untracked);
@@ -171,7 +173,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
       )}
       {(error || notice) && (
         <div className={`px-4 py-2 text-body ${error ? "bg-red-50 text-red-800 dark:bg-red-900/30 dark:text-red-200" : "bg-teal-50 text-teal-800 dark:bg-teal-900/30 dark:text-teal-200"}`}>
-          {error ?? notice}
+          <span className="selectable">{error ? errorParts(error).message : notice}</span>
           <button onClick={() => { setError(null); setNotice(null); }} className="ml-3 underline">dismiss</button>
         </div>
       )}

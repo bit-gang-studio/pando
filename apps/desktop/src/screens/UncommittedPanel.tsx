@@ -3,13 +3,16 @@ import { api, type Detail, type FileDiff, type FileStatus } from "../lib/api";
 import { navigate } from "../lib/routes";
 import { SplitHandle, useSplit } from "../ui/Split";
 import { DiffView } from "./DiffView";
+import { ErrorState, Loading } from "../ui/State";
+import { errorParts } from "../lib/errors";
 
 const STATUS_LABEL: Record<string, string> = { M: "Modified", A: "Added", D: "Deleted", R: "Renamed", C: "Copied", T: "Type changed", U: "Conflict", "?": "Untracked (new, not tracked by git yet)" };
 type Sel = { path: string; file: FileStatus } | null;
 
 /// Uncommitted changes across every worktree of a repo, read-only.
 export function UncommittedPanel({ root, worktrees }: { root: string; worktrees: string[] }) {
-  const [details, setDetails] = useState<Detail[]>([]);
+  const [details, setDetails] = useState<Detail[] | null>(null);
+  const [attempt, setAttempt] = useState(0);
   const [sel, setSel] = useState<Sel>(null);
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(false);
@@ -27,9 +30,10 @@ export function UncommittedPanel({ root, worktrees }: { root: string; worktrees:
         const first = ds.find((d) => d.files.length > 0);
         return first ? { path: first.worktree.path, file: first.files[0] } : null;
       });
-    }).catch((e) => setError(String(e)));
+      setError(null);
+    }).catch((e) => { if (live) setError(String(e)); });
     return () => { live = false; };
-  }, [root, worktrees.join("\0")]);
+  }, [root, worktrees.join("\0"), attempt]);
 
   useEffect(() => {
     if (!sel) { setDiff(null); return; }
@@ -39,15 +43,17 @@ export function UncommittedPanel({ root, worktrees }: { root: string; worktrees:
     // Show the working copy against HEAD: staged part first if that's all there is.
     api.diffFile(sel.path, f.path, !f.unstaged && !f.untracked && !!f.staged, f.untracked)
       .then((d) => { if (live) setDiff(d); })
-      .catch((e) => setError(String(e)))
+      .catch((e) => { if (live) setError(String(e)); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
   }, [sel]);
 
+  if (!details) return error ? <ErrorState title="Couldn't load uncommitted changes" error={error} onRetry={() => setAttempt((n) => n + 1)} /> : <Loading />;
+
   return (
     <div ref={split.box} className="flex min-h-0 grow">
       <aside style={{ width: split.size }} className="flex shrink-0 flex-col overflow-y-auto bg-white dark:bg-stone-800">
-        {error && <div className="p-2 text-body text-red-700">{error}</div>}
+        {error && <div className="selectable p-2 text-body text-red-700">{errorParts(error).message}</div>}
         {details.map((d) => (
           <div key={d.worktree.path} className="border-b border-stone-200 dark:border-stone-700">
             <div className="flex items-center gap-2 px-3 pb-1 pt-2">

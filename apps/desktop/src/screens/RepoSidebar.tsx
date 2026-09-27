@@ -7,15 +7,16 @@ import { NewWindowIcon } from "../ui/icons";
 import { MergeDialog } from "../dialogs/MergeDialog";
 import { NewBranchDialog } from "../dialogs/NewBranchDialog";
 import { confirm } from "../ui/Confirm";
+import { toastError, withToast } from "../ui/Toast";
 
-type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; onError: (msg: string) => void };
+type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void };
 
 const small = "h-6 rounded border border-stone-300 bg-white px-1.5 text-label hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 const iconBtn = "inline-flex h-6 items-center rounded px-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100";
 
 type WtRow = { key: string; label: string; worktree: Worktree; status: Summary | null; branch: BranchRow | null; isMain: boolean; ahead: number | null; stale: boolean; time: number | null };
 
-export function RepoSidebar({ root, data, current = null, currentBranch = null, onOpenBranch, onOpenRepo, onRefresh: refresh, onOpenWorktree, onError }: Props) {
+export function RepoSidebar({ root, data, current = null, currentBranch = null, onOpenBranch, onOpenRepo, onRefresh: refresh, onOpenWorktree }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ branch?: string; remote?: string } | null>(null);
   const [merging, setMerging] = useState<BranchRow | null>(null);
@@ -41,10 +42,10 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  async function run(label: string, fn: () => Promise<unknown>) {
-    setBusy(label);
-    try { await fn(); await refresh(); }
-    catch (e) { onError(String(e)); }
+  /// Run a git action with feedback: "Pushing…" while it runs, then "Pushed" or the error.
+  async function run(doing: string, done: string, fn: () => Promise<unknown>) {
+    setBusy(doing);
+    try { await withToast(doing, done, fn); await refresh(); }
     finally { setBusy(null); }
   }
 
@@ -54,7 +55,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       ? <><span className="font-mono">{row.label}</span> has {n} uncommitted {n === 1 ? "change" : "changes"}. They'll be lost. The branch is kept.</>
       : <>Remove the folder for <span className="font-mono">{row.label}</span>? The branch is kept.</>;
     if (!(await confirm({ title: "Remove worktree", body, action: "Remove worktree", danger: true })).ok) return;
-    await run("remove", () => api.worktreeRemove(root, row.worktree.path, n > 0));
+    await run("Removing worktree…", `Removed worktree ${row.label}`, () => api.worktreeRemove(root, row.worktree.path, n > 0));
   }
 
   async function deleteBranch(r: BranchRow) {
@@ -65,9 +66,9 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       : <>Delete <span className="font-mono">{b.name}</span>? Pando keeps a backup so it can be recovered.</>;
     const answer = await confirm({ title: "Delete branch", body, action: "Delete branch", danger: true, checkbox: b.upstream ? { label: `Also delete ${b.upstream}` } : undefined });
     if (!answer.ok) return;
-    await run("delete", () => api.branchDelete(root, b.name, answer.checked));
+    await run(`Deleting ${b.name}…`, `Deleted ${b.name}`, () => api.branchDelete(root, b.name, answer.checked));
   }
-  const openWin = (path: string) => openInNewWindow({ kind: "worktree", root, path }).catch((err) => onError(String(err)));
+  const openWin = (path: string) => openInNewWindow({ kind: "worktree", root, path }).catch(toastError);
   const openRow = (e: React.MouseEvent, path: string) => (wantsNewWindow(e) ? openWin(path) : onOpenWorktree(path));
   const show = (e: React.MouseEvent, items: MenuItem[]) => { e.preventDefault(); setMenu({ x: e.clientX, y: e.clientY, items }); };
   const sep: MenuItem = { divider: true };
@@ -79,45 +80,45 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   ];
 
   async function switchMain(name: string) {
-    await run("switch", () => api.branchSwitch(root, name));
+    await run(`Switching to ${name}…`, `Switched main worktree to ${name}`, () => api.branchSwitch(root, name));
   }
   async function switchMainPicker() {
     const free = data?.branches.filter((b) => !b.worktree).map((b) => ({ value: b.branch.name, label: b.branch.name })) ?? [];
-    if (free.length === 0) { onError("Every local branch already has a worktree."); return; }
+    if (free.length === 0) { toastError("Every local branch already has a worktree."); return; }
     const a = await confirm({ title: "Switch branch", body: "Check out another branch in the main worktree. Uncommitted changes must be committed or stashed first.", action: "Switch branch", select: { label: "Branch", options: free } });
     if (a.ok) await switchMain(a.choice);
   }
   async function createHere(row: WtRow) {
     const a = await confirm({ title: "Create branch", body: <>Create a branch at <span className="font-mono">{row.worktree.head?.slice(0, 7)}</span> and switch this worktree to it.</>, action: "Create branch", input: { label: "Branch name", placeholder: "feat/my-change", mono: true } });
-    if (a.ok) await run("create", () => api.branchCreateAndSwitch(row.worktree.path, a.value));
+    if (a.ok) await run("Creating branch…", `Created ${a.value}`, () => api.branchCreateAndSwitch(row.worktree.path, a.value));
   }
   async function rename(old: string) {
     const a = await confirm({ title: "Rename branch", body: <>Rename <span className="font-mono">{old}</span>. A backup of the old name is kept.</>, action: "Rename", input: { label: "New name", value: old, mono: true } });
-    if (a.ok && a.value !== old) await run("rename", () => api.branchRename(root, old, a.value));
+    if (a.ok && a.value !== old) await run("Renaming…", `Renamed to ${a.value}`, () => api.branchRename(root, old, a.value));
   }
   async function setUpstream(name: string, current: string | null) {
     const a = await confirm({ title: "Set upstream", body: <>The remote branch <span className="font-mono">{name}</span> pulls from and pushes to.</>, action: "Set upstream", input: { label: "Upstream", value: current ?? `origin/${name}`, mono: true } });
-    if (a.ok) await run("upstream", () => api.branchSetUpstream(root, name, a.value));
+    if (a.ok) await run("Setting upstream…", `Upstream set to ${a.value}`, () => api.branchSetUpstream(root, name, a.value));
   }
   async function moveWorktree(row: WtRow) {
     const a = await confirm({ title: "Move worktree", body: <>Move the folder for <span className="font-mono">{row.label}</span>.</>, action: "Move", input: { label: "New location", value: row.worktree.path, mono: true } });
-    if (a.ok && a.value !== row.worktree.path) await run("move", () => api.worktreeMove(root, row.worktree.path, a.value));
+    if (a.ok && a.value !== row.worktree.path) await run("Moving worktree…", "Moved worktree", () => api.worktreeMove(root, row.worktree.path, a.value));
   }
   async function stashChanges(row: WtRow) {
     const a = await confirm({ title: "Stash changes", body: <>Put aside the uncommitted changes in <span className="font-mono">{row.label}</span>, including new files.</>, action: "Stash", input: { label: "Message", value: `WIP on ${row.label}` } });
-    if (a.ok) await run("stash", () => api.stashSave(row.worktree.path, a.value));
+    if (a.ok) await run("Stashing…", "Stashed", () => api.stashSave(row.worktree.path, a.value));
   }
   async function applyStash(st: Stash, pop: boolean) {
     const opts = worktreeOptions();
     const match = opts.find((o) => o.label.startsWith(st.branch ?? "\u0000"))?.value;
     const a = await confirm({ title: pop ? "Pop stash" : "Apply stash", body: <>{st.message}{pop ? ". It's removed from the list afterwards." : "."}</>, action: pop ? "Pop" : "Apply", select: { label: "Into worktree", options: opts, value: match ?? mainWt?.path } });
-    if (a.ok) await run("stash", () => api.stashApply(a.choice, st.index, pop));
+    if (a.ok) await run(pop ? "Popping stash…" : "Applying stash…", pop ? "Popped stash" : "Applied stash", () => api.stashApply(a.choice, st.index, pop));
   }
   async function dropStash(st: Stash) {
-    if ((await confirm({ title: "Drop stash", body: <>Throw away <span className="italic">{st.message}</span>? This can't be undone.</>, action: "Drop stash", danger: true })).ok) await run("stash", () => api.stashDrop(root, st.index));
+    if ((await confirm({ title: "Drop stash", body: <>Throw away <span className="italic">{st.message}</span>? This can't be undone.</>, action: "Drop stash", danger: true })).ok) await run("Dropping stash…", "Dropped stash", () => api.stashDrop(root, st.index));
   }
   async function deleteRemote(r: RemoteBranch) {
-    if ((await confirm({ title: "Delete remote branch", body: <>Delete <span className="font-mono">{r.name}</span> on the remote? Anyone else using it loses it too.</>, action: "Delete on origin", danger: true })).ok) await run("delete", () => api.branchDeleteRemote(root, r.short));
+    if ((await confirm({ title: "Delete remote branch", body: <>Delete <span className="font-mono">{r.name}</span> on the remote? Anyone else using it loses it too.</>, action: "Delete on origin", danger: true })).ok) await run(`Deleting ${r.name}…`, `Deleted ${r.name}`, () => api.branchDeleteRemote(root, r.short));
   }
 
   const rowMenu = (e: React.MouseEvent, row: WtRow) => {
@@ -126,8 +127,8 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       { label: "Open in new window", onClick: () => openWin(row.worktree.path) },
       sep,
     ];
-    if (b?.upstream) items.push({ label: "Pull", onClick: () => run("pull", () => api.branchPull(row.worktree.path)) });
-    if (b) items.push({ label: b.upstream ? "Push" : "Push to origin", onClick: () => run("push", () => api.branchPush(root, b.name)) });
+    if (b?.upstream) items.push({ label: "Pull", onClick: () => run(`Pulling ${b.name}…`, `Pulled ${b.name}`, () => api.branchPull(row.worktree.path)) });
+    if (b) items.push({ label: b.upstream ? "Push" : "Push to origin", onClick: () => run(`Pushing ${b.name}…`, `Pushed ${b.name}`, () => api.branchPush(root, b.name)) });
     if (!row.isMain && row.branch) items.push({ label: "Merge…", onClick: () => setMerging(row.branch!) });
     if (changed(row.status) > 0) items.push({ label: "Stash changes…", onClick: () => stashChanges(row) });
     items.push(sep);
@@ -137,9 +138,9 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     if (b) items.push({ label: "Set upstream…", onClick: () => setUpstream(b.name, b.upstream) });
     if (!row.isMain) {
       items.push({ label: "Move…", onClick: () => moveWorktree(row) });
-      items.push({ label: row.worktree.locked != null ? "Unlock" : "Lock", onClick: () => run("lock", () => api.worktreeLock(root, row.worktree.path, row.worktree.locked == null)) });
+      items.push({ label: row.worktree.locked != null ? "Unlock" : "Lock", onClick: () => run(row.worktree.locked != null ? "Unlocking…" : "Locking…", row.worktree.locked != null ? "Unlocked" : "Locked", () => api.worktreeLock(root, row.worktree.path, row.worktree.locked == null)) });
       items.push(sep);
-      if (row.worktree.prunable) items.push({ label: "Prune missing folders", onClick: () => run("prune", () => api.worktreePrune(root)) });
+      if (row.worktree.prunable) items.push({ label: "Prune missing folders", onClick: () => run("Pruning…", "Pruned missing folders", () => api.worktreePrune(root)) });
       items.push({ label: "Remove worktree…", onClick: () => removeWorktree(row), danger: true });
     }
     show(e, items);
@@ -150,7 +151,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     { label: "Add worktree…", onClick: () => setCreating({ branch: r.branch.name }) },
     { label: "Merge…", onClick: () => setMerging(r) },
     { label: "Switch main worktree to this branch", onClick: () => switchMain(r.branch.name) },
-    { label: r.branch.upstream ? "Push" : "Push to origin", onClick: () => run("push", () => api.branchPush(root, r.branch.name)) },
+    { label: r.branch.upstream ? "Push" : "Push to origin", onClick: () => run(`Pushing ${r.branch.name}…`, `Pushed ${r.branch.name}`, () => api.branchPush(root, r.branch.name)) },
     sep,
     { label: "Rename…", onClick: () => rename(r.branch.name) },
     { label: "Set upstream…", onClick: () => setUpstream(r.branch.name, r.branch.upstream) },
@@ -201,7 +202,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
 
       <div className="flex items-center gap-1.5 border-b border-stone-200 px-3 py-2 dark:border-stone-700">
         <button onClick={() => setCreating({})} className="h-7 grow rounded-md bg-teal-700 px-2.5 text-body font-medium text-white hover:bg-teal-800">New branch<span className="ml-1.5 opacity-70">⌘N</span></button>
-        <button onClick={() => run("fetch", () => api.fetchAll(root))} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-body hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700">{busy === "fetch" ? "…" : "Fetch"}</button>
+        <button onClick={() => run("Fetching…", "Fetched", () => api.fetchAll(root))} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-body hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700">{busy === "Fetching…" ? "Fetching…" : "Fetch"}</button>
       </div>
 
       <button onClick={onOpenRepo} className={`my-1 flex items-center gap-2 px-3 py-1.5 text-left ${current === null && currentBranch === null ? "bg-teal-50 font-medium dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>

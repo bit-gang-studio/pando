@@ -11,11 +11,15 @@ import type { LogEntry } from "../lib/api";
 import { UncommittedPanel } from "./UncommittedPanel";
 import { Detail } from "./Detail";
 import { SplitHandle, useSplit } from "../ui/Split";
+import { ErrorState, Loading } from "../ui/State";
+import { withToast } from "../ui/Toast";
+import { errorParts } from "../lib/errors";
 
-type Props = { root: string; commit: string | null; worktree?: string | null; branch?: string | null; onError: (m: string) => void };
+type Props = { root: string; commit: string | null; worktree?: string | null; branch?: string | null };
 
-export function RepoScreen({ root, commit, worktree = null, branch = null, onError }: Props) {
+export function RepoScreen({ root, commit, worktree = null, branch = null }: Props) {
   const [data, setData] = useState<OverviewData | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [wtCommit, setWtCommit] = useState<string | null>(null); // selected commit while on a worktree
   const [firstId, setFirstId] = useState<string | null>(null); // newest commit, shown by default on the repo page
@@ -35,9 +39,9 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
   useEffect(() => { if (!commit && !worktree && !branch) setShowUncommitted(null); }, [commit, worktree, branch]);
 
   const refresh = useCallback(async () => {
-    try { setData(await api.overview(root)); setTick((t) => t + 1); }
-    catch (e) { onError(String(e)); }
-  }, [root, onError]);
+    try { setData(await api.overview(root)); setLoadError(null); setTick((t) => t + 1); }
+    catch (e) { setLoadError(String(e)); }
+  }, [root]);
 
   useEffect(() => {
     refresh();
@@ -81,8 +85,9 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
     ...(data?.detached.map((d) => ({ value: d.worktree.path, label: `detached at ${d.worktree.head?.slice(0, 7)}` })) ?? []),
   ];
   const mainPath = data?.branches.find((b) => b.is_main_worktree)?.worktree?.path ?? data?.detached.find((d) => d.is_main_worktree)?.worktree.path;
-  async function act(fn: () => Promise<unknown>) {
-    try { await fn(); await refresh(); } catch (e) { onError(String(e)); }
+  async function act(doing: string, done: string, fn: () => Promise<unknown>) {
+    await withToast(doing, done, fn);
+    await refresh();
   }
   async function applyCommit(entry: LogEntry, kind: "pick" | "revert") {
     const verb = kind === "pick" ? "Cherry-pick" : "Revert";
@@ -93,7 +98,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
       select: { label: kind === "pick" ? "Into worktree" : "In worktree", options: worktreeOptions(), value: worktree ?? mainPath },
     });
     if (!a.ok) return;
-    await act(async () => {
+    await act(kind === "pick" ? "Cherry-picking…" : "Reverting…", kind === "pick" ? "Cherry-picked" : "Reverted", async () => {
       const r = kind === "pick" ? await api.cherryPick(root, a.choice, entry.id) : await api.revert(root, a.choice, entry.id);
       if (r === "paused") navigate({ kind: "worktree", root, path: a.choice });
     });
@@ -107,7 +112,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
       { label: "Create branch here…", onClick: async () => {
         const a = await confirm({ title: "Create branch", body: <>Start a branch at <span className="font-mono">{entry.id.slice(0, 7)}</span> {entry.summary}</>, action: "Create branch", input: { label: "Branch name", placeholder: "feat/my-change", mono: true }, checkbox: { label: "Add a worktree for it", checked: true } });
         if (!a.ok) return;
-        await act(() => a.checked
+        await act("Creating branch…", `Created ${a.value}`, () => a.checked
           ? api.worktreeAdd(root, { branch: a.value, base: entry.id, path: null, existing_branch: false })
           : api.branchCreate(root, a.value, entry.id));
       } },
@@ -115,7 +120,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
       { label: "Revert…", onClick: () => applyCommit(entry, "revert") },
       { label: "Tag…", onClick: async () => {
         const a = await confirm({ title: "Tag commit", body: <><span className="font-mono">{entry.id.slice(0, 7)}</span> {entry.summary}</>, action: "Create tag", input: { label: "Tag name", placeholder: "v1.0.0", mono: true }, checkbox: { label: "Push to origin" } });
-        if (a.ok) await act(() => api.tagCreate(root, a.value, entry.id, null, a.checked));
+        if (a.ok) await act("Tagging…", `Tagged ${a.value}`, () => api.tagCreate(root, a.value, entry.id, null, a.checked));
       } },
     ] });
   };
@@ -124,14 +129,22 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
   const selected = worktree ? wtCommit : commit ?? firstId;
 
   const shown = worktree ? null : commit ?? firstId;
+  if (!data && loadError) return <ErrorState title="Couldn't open this repository" error={loadError} onRetry={refresh} />;
+  if (!data) return <Loading />;
   return (
     <div ref={side.box} className="flex min-h-0 min-w-0 grow">
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
       <div style={{ width: side.size }} className="flex shrink-0 flex-col">
-        <RepoSidebar root={root} data={data} current={worktree} currentBranch={branch} onOpenBranch={(name) => navigate({ kind: "branch", root, name })} onOpenRepo={() => navigate({ kind: "repo", root })} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} onError={onError} />
+        <RepoSidebar root={root} data={data} current={worktree} currentBranch={branch} onOpenBranch={(name) => navigate({ kind: "branch", root, name })} onOpenRepo={() => navigate({ kind: "repo", root })} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} />
       </div>
       <SplitHandle axis="x" onMouseDown={side.start} handleRef={side.handle} />
     <div ref={split.box} className="flex min-h-0 min-w-0 grow flex-col">
+      {loadError && (
+        <div className="flex shrink-0 items-center gap-2 border-b border-red-200 bg-red-50 px-4 py-1.5 text-body text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-200">
+          <span className="selectable min-w-0 grow truncate">Couldn't refresh: {errorParts(loadError).message}</span>
+          <button onClick={refresh} className="underline">Retry</button>
+        </div>
+      )}
       <div style={{ height: split.size, flex: "0 0 auto" }} className="flex min-h-0 flex-col">
         <CommitLog
           root={root}
@@ -153,7 +166,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
       <SplitHandle axis="y" onMouseDown={split.start} handleRef={split.handle} />
       <div className="flex min-h-0 grow">
         {branch ? (
-          brCommit ?? brFirst ? <CommitDetail root={root} id={(brCommit ?? brFirst)!} /> : <div className="flex grow items-center justify-center text-body text-stone-500">Loading…</div>
+          brCommit ?? brFirst ? <CommitDetail root={root} id={(brCommit ?? brFirst)!} /> : <Loading />
         ) : worktree ? (
           wtCommit ? (
             <CommitDetail root={root} id={wtCommit} onBack={() => setWtCommit(null)} />

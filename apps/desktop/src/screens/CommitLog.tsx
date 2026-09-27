@@ -4,6 +4,8 @@ import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { colorFor, LANE_W, layoutGraph, ROW_H, type GraphRow } from "../lib/graph";
 import { useMemo } from "react";
 import { MoreButton } from "../ui/MoreButton";
+import { ErrorState, Loading } from "../ui/State";
+import { errorParts } from "../lib/errors";
 
 type Props = {
   root: string;
@@ -34,6 +36,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async (skip: number) => {
     try {
@@ -41,6 +44,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
       setEntries((prev) => (skip === 0 ? l.entries : [...prev, ...l.entries]));
       setTruncated(l.truncated);
       setError(null);
+      setLoaded(true);
       if (skip === 0) onLoaded?.(l.entries[0]?.id ?? null);
     } catch (e) {
       setError(String(e));
@@ -57,7 +61,6 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
     <div className="flex min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-4 py-1.5 dark:border-stone-700 dark:bg-stone-800">
         <span className="text-body text-stone-500">{scope ? <span className="font-mono">{scope}</span> : "All branches"} · {entries.length}{truncated ? "+" : ""} commits</span>
-        {error && <span className="text-body text-red-700">{error}</span>}
       </div>
       <div className="min-h-0 grow overflow-auto bg-white dark:bg-stone-800">
         {dirtyWorktrees > 0 && (
@@ -67,6 +70,10 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
             <span className="text-body text-stone-500">{uncommittedLabel ?? `in ${dirtyWorktrees} ${dirtyWorktrees === 1 ? "worktree" : "worktrees"}`}</span>
           </button>
         )}
+        {!loaded && error && <ErrorState title="Couldn't load commits" error={error} onRetry={() => load(0)} />}
+        {!loaded && !error && <Loading />}
+        {loaded && error && <div className="flex items-center gap-2 px-4 py-1.5 text-body text-red-700"><span className="selectable min-w-0 grow truncate">{errorParts(error).message}</span><button onClick={() => load(0)} className="underline">Retry</button></div>}
+        {loaded && entries.length === 0 && dirtyWorktrees === 0 && <div className="p-4 text-body text-stone-500">No commits yet.</div>}
         {entries.map((e, i) => (
           <div
             key={e.id}
