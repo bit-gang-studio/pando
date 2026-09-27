@@ -63,19 +63,19 @@ export function DiffView({ diff, loading, mode, onMode, onHunk, readOnly }: Prop
   return (
     <div className="flex min-h-0 grow flex-col">
       <div className="flex h-10 shrink-0 items-center gap-3 border-b border-stone-300 px-4 dark:border-stone-700">
-        <span className="font-mono text-xs font-medium">{diff.path}</span>
-        <span className="font-mono text-[11px] text-stone-500">+{diff.added} −{diff.deleted} · {diff.hunks.length} {diff.hunks.length === 1 ? "hunk" : "hunks"}</span>
+        <span className="font-mono text-body font-medium">{diff.path}</span>
+        <span className="font-mono text-label text-stone-500">+{diff.added} −{diff.deleted} · {diff.hunks.length} {diff.hunks.length === 1 ? "hunk" : "hunks"}</span>
         <div className="grow" />
         <div className="flex overflow-hidden rounded-md border border-stone-300 dark:border-stone-600">
           {(["unified", "split"] as const).map((m) => (
-            <button key={m} onClick={() => onMode(m)} className={`h-6.5 px-2.5 text-xs capitalize ${mode === m ? "bg-stone-200 dark:bg-stone-600" : "bg-white dark:bg-stone-700"}`}>{m}</button>
+            <button key={m} onClick={() => onMode(m)} className={`h-6.5 px-2.5 text-body capitalize ${mode === m ? "bg-stone-200 dark:bg-stone-600" : "bg-white dark:bg-stone-700"}`}>{m}</button>
           ))}
         </div>
       </div>
-      <div className="selectable min-h-0 grow overflow-auto font-mono text-[12px] leading-5">
+      <div className="selectable min-h-0 grow overflow-auto font-mono text-body leading-5">
         {mode === "unified" ? <Unified rows={shown} diff={diff} onHunk={readOnly ? undefined : onHunk} /> : <Split rows={shown} diff={diff} onHunk={readOnly ? undefined : onHunk} />}
         {capped && (
-          <button onClick={() => setShowAll(true)} className="m-3 rounded-md border border-stone-300 bg-white px-3 py-1.5 font-sans text-xs dark:border-stone-600 dark:bg-stone-700">
+          <button onClick={() => setShowAll(true)} className="m-3 rounded-md border border-stone-300 bg-white px-3 py-1.5 font-sans text-body dark:border-stone-600 dark:bg-stone-700">
             Show all {total} lines
           </button>
         )}
@@ -85,7 +85,7 @@ export function DiffView({ diff, loading, mode, onMode, onHunk, readOnly }: Prop
 }
 
 function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="flex grow items-center justify-center text-xs text-stone-500">{children}</div>;
+  return <div className="flex grow items-center justify-center text-body text-stone-500">{children}</div>;
 }
 
 function HunkBar({ hunk, diff, onHunk }: { hunk: Hunk; diff: FileDiff; onHunk?: (h: Hunk, r: boolean) => void }) {
@@ -94,7 +94,7 @@ function HunkBar({ hunk, diff, onHunk }: { hunk: Hunk; diff: FileDiff; onHunk?: 
       <span className="truncate">{hunk.header}</span>
       <div className="grow" />
       {!diff.new_file && onHunk && (
-        <button onClick={() => onHunk(hunk, diff.staged)} className="h-5.5 rounded border border-stone-300 bg-white px-2 font-sans text-[11px] dark:border-stone-600 dark:bg-stone-700">
+        <button onClick={() => onHunk(hunk, diff.staged)} className="h-5.5 rounded border border-stone-300 bg-white px-2 font-sans text-label dark:border-stone-600 dark:bg-stone-700">
           {diff.staged ? "Unstage hunk" : "Stage hunk"}
         </button>
       )}
@@ -123,7 +123,7 @@ function Unified({ rows, diff, onHunk }: { rows: { hunk: Hunk; hi: number; line:
               <span className={num}>{r.line.old_no ?? ""}</span>
               <span className={num}>{r.line.new_no ?? ""}</span>
               <span className="select-none text-center text-stone-400">{r.line.kind === "add" ? "+" : r.line.kind === "del" ? "−" : ""}</span>
-              <span className="pr-4"><Code toks={r.toks} />{r.line.no_newline && <span className="ml-2 text-[10px] text-stone-400">⏎ missing</span>}</span>
+              <span className="pr-4"><Code toks={r.toks} />{r.line.no_newline && <span className="ml-2 text-label text-stone-400">⏎ missing</span>}</span>
             </div>
           </div>
         );

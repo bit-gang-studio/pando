@@ -18,7 +18,7 @@ const STRATEGIES: { id: Strategy; label: string; hint: string }[] = [
 ];
 const LAST_KEY = "pando.mergeStrategy";
 
-const btn = "h-8 rounded-lg border border-stone-300 bg-white px-3 text-[13px] dark:border-stone-600 dark:bg-stone-700";
+const btn = "h-8 rounded-lg border border-stone-300 bg-white px-3 text-body dark:border-stone-600 dark:bg-stone-700";
 
 export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged }: Props) {
   const [pf, setPf] = useState<Preflight | null>(null);
@@ -81,14 +81,14 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>
-      <div role="dialog" className="flex max-h-[90vh] w-[560px] flex-col overflow-hidden rounded-xl border border-stone-300 bg-white text-[13px] shadow-xl dark:border-stone-700 dark:bg-stone-800">
+      <div role="dialog" className="flex max-h-[90vh] w-[560px] flex-col overflow-hidden rounded-xl border border-stone-300 bg-white text-body shadow-xl dark:border-stone-700 dark:bg-stone-800">
         <div className="flex flex-col gap-1 border-b border-stone-300 px-5 py-4 dark:border-stone-700">
-          <h2 className="text-base font-semibold">Merge <span className="font-mono text-sm">{branch}</span> into <span className="font-mono text-sm">{pf?.base_local ?? "…"}</span></h2>
-          <span className="text-xs text-stone-500">{summary}</span>
+          <h2 className="text-title font-semibold">Merge <span className="font-mono">{branch}</span> into <span className="font-mono">{pf?.base_local ?? "…"}</span></h2>
+          <span className="text-body text-stone-500">{summary}</span>
         </div>
 
         <div className="flex grow flex-col gap-4 overflow-y-auto p-5">
-          {error && <div className="selectable rounded-md border border-red-300 bg-red-50 p-2 text-xs text-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
+          {error && <div className="selectable rounded-md border border-red-300 bg-red-50 p-2 text-body text-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
 
           {!result && pf && blocked && (
             <div className="flex flex-col gap-1 rounded-md border border-red-300 bg-red-50 p-3 text-red-800 dark:bg-red-900/30 dark:text-red-200">
@@ -102,21 +102,21 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
                 {STRATEGIES.map((s) => (
                   <label key={s.id} className="flex cursor-pointer items-start gap-2">
                     <input type="radio" name="strategy" checked={strategy === s.id} onChange={() => setStrategy(s.id)} className="mt-0.5" />
-                    <span className="flex flex-col"><span>{s.label}</span><span className="text-xs text-stone-500">{s.hint}</span></span>
+                    <span className="flex flex-col"><span>{s.label}</span><span className="text-body text-stone-500">{s.hint}</span></span>
                   </label>
                 ))}
               </fieldset>
 
               {strategy !== "rebase" && (
                 <label className="flex flex-col gap-1.5">
-                  <span className="text-xs font-medium text-stone-600 dark:text-stone-300">Message</span>
-                  <textarea rows={2} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full resize-none rounded-md border border-stone-300 bg-white p-2 text-[13px] focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700" />
+                  <span className="text-body font-medium text-stone-600 dark:text-stone-300">Message</span>
+                  <textarea rows={2} value={message} onChange={(e) => setMessage(e.target.value)} className="w-full resize-none rounded-md border border-stone-300 bg-white p-2 text-body focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700" />
                 </label>
               )}
 
               <div className="flex flex-col gap-2">
                 <label className="flex items-center gap-2"><input type="checkbox" checked={pushBase} onChange={(e) => setPushBase(e.target.checked)} /> Push {pf.base_local} to origin</label>
-                <label className="flex items-center gap-2"><input type="checkbox" checked={deleteBranch} onChange={(e) => setDeleteBranch(e.target.checked)} /> Delete <span className="font-mono text-xs">{branch}</span> and its worktree</label>
+                <label className="flex items-center gap-2"><input type="checkbox" checked={deleteBranch} onChange={(e) => setDeleteBranch(e.target.checked)} /> Delete <span className="font-mono text-body">{branch}</span> and its worktree</label>
               </div>
             </>
           )}
@@ -129,7 +129,7 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
               {result.steps.map((s, i) => (
                 <div key={i} className="flex flex-col gap-1 rounded-md border border-stone-200 p-2 dark:border-stone-700">
                   <div className="flex items-center gap-2"><span className={`font-semibold ${s.ok ? "text-teal-700" : "text-red-700"}`}>{s.ok ? "✓" : "✕"}</span><span>{s.name}</span></div>
-                  {s.output.trim() && <pre className="max-h-32 overflow-auto rounded bg-stone-900 p-2 font-mono text-[11px] text-stone-100">{s.output.trim()}</pre>}
+                  {s.output.trim() && <pre className="max-h-32 overflow-auto rounded bg-stone-900 p-2 font-mono text-label text-stone-100">{s.output.trim()}</pre>}
                 </div>
               ))}
             </div>
@@ -137,8 +137,8 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t border-stone-300 bg-stone-50 px-5 py-3.5 dark:border-stone-700 dark:bg-stone-900/40">
-          <button onClick={onClose} disabled={busy} className={btn}>{result ? "Close" : "Cancel"}<span className="ml-2 text-xs text-stone-400">Esc</span></button>
-          {!result && <button onClick={merge} disabled={!canMerge} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800 disabled:opacity-50">{busy ? "Merging…" : "Merge"}<span className="ml-2 text-xs opacity-70">⌘↵</span></button>}
+          <button onClick={onClose} disabled={busy} className={btn}>{result ? "Close" : "Cancel"}<span className="ml-2 text-body text-stone-400">Esc</span></button>
+          {!result && <button onClick={merge} disabled={!canMerge} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800 disabled:opacity-50">{busy ? "Merging…" : "Merge"}<span className="ml-2 text-body opacity-70">⌘↵</span></button>}
         </div>
       </div>
     </div>

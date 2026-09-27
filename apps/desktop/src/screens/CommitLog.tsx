@@ -47,15 +47,15 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
   return (
     <div className="flex min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-4 py-1.5 dark:border-stone-700 dark:bg-stone-800">
-        <span className="text-xs text-stone-500">{scope ? <span className="font-mono">{scope}</span> : "All branches"} · {entries.length}{truncated ? "+" : ""} commits</span>
-        {error && <span className="text-xs text-red-700">{error}</span>}
+        <span className="text-body text-stone-500">{scope ? <span className="font-mono">{scope}</span> : "All branches"} · {entries.length}{truncated ? "+" : ""} commits</span>
+        {error && <span className="text-body text-red-700">{error}</span>}
       </div>
       <div className="min-h-0 grow overflow-auto bg-white dark:bg-stone-800">
         {dirtyWorktrees > 0 && (
           <button onClick={onUncommitted} className={`flex w-full items-center gap-3 px-4 py-1.5 text-left ${uncommittedSelected || (selected === null && uncommittedLabel) ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
             <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-stone-400" />
             <span className="font-medium">Uncommitted changes</span>
-            <span className="text-xs text-stone-500">{uncommittedLabel ?? `in ${dirtyWorktrees} ${dirtyWorktrees === 1 ? "worktree" : "worktrees"}`}</span>
+            <span className="text-body text-stone-500">{uncommittedLabel ?? `in ${dirtyWorktrees} ${dirtyWorktrees === 1 ? "worktree" : "worktrees"}`}</span>
           </button>
         )}
         {entries.map((e, i) => (
@@ -70,12 +70,12 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
               {e.refs.map((r) => <RefChip key={r} name={r} />)}
             </span>
             <span className="min-w-0 grow truncate">{e.summary}</span>
-            <span className="shrink-0 text-xs text-stone-500">{e.author}</span>
-            <span className="w-14 shrink-0 text-right text-xs text-stone-500">{ago(e.time)}</span>
+            <span className="shrink-0 text-body text-stone-500">{e.author}</span>
+            <span className="w-14 shrink-0 text-right text-body text-stone-500">{ago(e.time)}</span>
           </div>
         ))}
         {truncated && (
-          <button onClick={() => load(entries.length)} className="m-2 rounded-md border border-stone-300 bg-white px-3 py-1 text-xs dark:border-stone-600 dark:bg-stone-700">Load {PAGE} more</button>
+          <button onClick={() => load(entries.length)} className="m-2 rounded-md border border-stone-300 bg-white px-3 py-1 text-body dark:border-stone-600 dark:bg-stone-700">Load {PAGE} more</button>
         )}
       </div>
     </div>
@@ -91,7 +91,7 @@ function RefChip({ name }: { name: string }) {
     : remote
       ? "bg-stone-200 text-stone-700 dark:bg-stone-700 dark:text-stone-200"
       : "bg-teal-100 text-teal-800 dark:bg-teal-900/40 dark:text-teal-200";
-  return <span className={`rounded px-1.5 py-px font-mono text-[11px] ${cls}`} title={name}>{label}</span>;
+  return <span className={`rounded px-1.5 py-px font-mono text-label ${cls}`} title={name}>{label}</span>;
 }
 
 function GraphCell({ row, width, head }: { row: GraphRow; width: number; head: boolean }) {

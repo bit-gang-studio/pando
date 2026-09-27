@@ -52,8 +52,8 @@ export function ConfirmHost() {
   if (!p) return null;
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/40" onMouseDown={(e) => { if (e.target === e.currentTarget) done(false); }}>
-      <div role="alertdialog" aria-labelledby="confirm-title" className="flex w-[420px] flex-col gap-3 rounded-xl border border-stone-300 bg-white p-5 text-[13px] shadow-xl dark:border-stone-700 dark:bg-stone-800">
-        <h2 id="confirm-title" className="text-base font-semibold">{p.title}</h2>
+      <div role="alertdialog" aria-labelledby="confirm-title" className="flex w-[420px] flex-col gap-3 rounded-xl border border-stone-300 bg-white p-5 text-body shadow-xl dark:border-stone-700 dark:bg-stone-800">
+        <h2 id="confirm-title" className="text-title font-semibold">{p.title}</h2>
         <div className="text-stone-600 dark:text-stone-300">{p.body}</div>
         {p.checkbox && (
           <label className="flex items-center gap-2"><input type="checkbox" checked={checked} onChange={(e) => setChecked(e.target.checked)} /> {p.checkbox.label}</label>

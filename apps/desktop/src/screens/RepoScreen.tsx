@@ -81,7 +81,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
       <SplitHandle axis="y" onMouseDown={split.start} handleRef={split.handle} />
       <div className="flex min-h-0 grow">
         {branch ? (
-          brCommit ?? brFirst ? <CommitDetail root={root} id={(brCommit ?? brFirst)!} /> : <div className="flex grow items-center justify-center text-xs text-stone-500">Loading…</div>
+          brCommit ?? brFirst ? <CommitDetail root={root} id={(brCommit ?? brFirst)!} /> : <div className="flex grow items-center justify-center text-body text-stone-500">Loading…</div>
         ) : worktree ? (
           wtCommit ? (
             <CommitDetail root={root} id={wtCommit} onBack={() => setWtCommit(null)} />
@@ -93,7 +93,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, onErr
         ) : shown ? (
           <CommitDetail root={root} id={shown} />
         ) : (
-          <div className="flex grow items-center justify-center text-xs text-stone-500">No commits yet.</div>
+          <div className="flex grow items-center justify-center text-body text-stone-500">No commits yet.</div>
         )}
       </div>
     </div>

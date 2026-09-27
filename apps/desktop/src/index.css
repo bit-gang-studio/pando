@@ -1,11 +1,19 @@
 @import "tailwindcss";
 
+/* Three font sizes only. Default everything to body. */
+@theme {
+  --text-body: 13px;
+  --text-label: 11px;
+  --text-title: 15px;
+}
+
 :root {
   color-scheme: light dark;
 }
 
 body {
   margin: 0;
+  font-size: var(--text-body);
   font-family: system-ui, sans-serif;
   background: #f3f2ee;
   color: #1a1a18;

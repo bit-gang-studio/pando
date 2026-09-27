@@ -32,12 +32,12 @@ export function CommitDetail({ root, id, onBack }: { root: string; id: string; o
     return () => window.removeEventListener("keydown", onKey);
   }, [onBack]);
 
-  if (error) return <div className="p-4 text-xs text-red-700">{error}</div>;
-  if (!c) return <div className="p-4 text-xs text-stone-500">Loading…</div>;
+  if (error) return <div className="p-4 text-body text-red-700">{error}</div>;
+  if (!c) return <div className="p-4 text-body text-stone-500">Loading…</div>;
 
   return (
     <div className="flex min-h-0 grow flex-col">
-      <div className="flex h-9 shrink-0 items-center gap-3 border-b border-stone-200 bg-white px-4 text-xs dark:border-stone-700 dark:bg-stone-800">
+      <div className="flex h-9 shrink-0 items-center gap-3 border-b border-stone-200 bg-white px-4 text-body dark:border-stone-700 dark:bg-stone-800">
         {onBack && <button onClick={onBack} className="text-stone-500 hover:text-stone-800 dark:hover:text-stone-200">‹ Back to list</button>}
         <span className="selectable font-mono" title={c.commit.id}>{c.commit.id.slice(0, 7)}</span>
         <span className="text-stone-500">{c.commit.author} · {ago(c.commit.time)}</span>
@@ -45,12 +45,12 @@ export function CommitDetail({ root, id, onBack }: { root: string; id: string; o
       </div>
       <div ref={split.box} className="flex min-h-0 grow">
         <aside style={{ width: split.size }} className="flex shrink-0 flex-col overflow-y-auto bg-white dark:bg-stone-800">
-          <pre className="whitespace-pre-wrap border-b border-stone-200 p-3 font-sans text-[13px] dark:border-stone-700">{c.message}</pre>
+          <pre className="whitespace-pre-wrap border-b border-stone-200 p-3 font-sans text-body dark:border-stone-700">{c.message}</pre>
           {c.files.map((f) => (
             <button key={f.path} onClick={() => setSel(f.path)} className={`flex items-center gap-2 px-3 py-1.5 text-left ${sel === f.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
-              <span className="grow truncate font-mono text-xs" title={f.path}>{f.path}</span>
-              <span className="shrink-0 font-mono text-[11px] text-teal-700">+{f.added}</span>
-              <span className="shrink-0 font-mono text-[11px] text-red-700">−{f.deleted}</span>
+              <span className="grow truncate font-mono text-body" title={f.path}>{f.path}</span>
+              <span className="shrink-0 font-mono text-label text-teal-700">+{f.added}</span>
+              <span className="shrink-0 font-mono text-label text-red-700">−{f.deleted}</span>
             </button>
           ))}
         </aside>

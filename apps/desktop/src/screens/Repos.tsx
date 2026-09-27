@@ -62,10 +62,10 @@ export function Repos({ onError }: Props) {
     <main className="flex min-w-0 grow flex-col gap-3 overflow-auto p-6">
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
       <div className="flex items-baseline gap-3">
-        <h1 className="text-base font-semibold">Repositories</h1>
-        <span className="text-xs text-stone-500">{cfg ? cfg.repos.length : "…"}</span>
+        <h1 className="text-title font-semibold">Repositories</h1>
+        <span className="text-body text-stone-500">{cfg ? cfg.repos.length : "…"}</span>
         <div className="grow" />
-        <button onClick={addRepo} className="h-7 rounded-md bg-teal-700 px-3 text-xs font-medium text-white hover:bg-teal-800">Add repository</button>
+        <button onClick={addRepo} className="h-7 rounded-md bg-teal-700 px-3 text-body font-medium text-white hover:bg-teal-800">Add repository</button>
       </div>
       {cfg && cfg.repos.length === 0 && (
         <div className="rounded-lg border border-dashed border-stone-400 p-10 text-center">
@@ -75,9 +75,9 @@ export function Repos({ onError }: Props) {
         </div>
       )}
       {cfg && cfg.repos.length > 0 && (
-        <table className="w-full border-collapse text-[13px]">
+        <table className="w-full border-collapse text-body">
           <thead>
-            <tr className="text-left text-[11px] font-semibold tracking-wider text-stone-500">
+            <tr className="text-left text-label font-semibold tracking-wider text-stone-500">
               <th className="w-[220px] px-2 py-1.5 font-semibold">NAME</th>
               <th className="px-2 py-1.5 font-semibold">PATH</th>
               <th className="w-[110px] px-2 py-1.5 text-right font-semibold">WORKTREES</th>
@@ -117,7 +117,7 @@ export function Repos({ onError }: Props) {
           </tbody>
         </table>
       )}
-      {cfg && cfg.repos.length > 0 && <div className="px-1 text-xs text-stone-500">⌘-click a row to open it in a new window. Right-click for more.</div>}
+      {cfg && cfg.repos.length > 0 && <div className="px-1 text-body text-stone-500">⌘-click a row to open it in a new window. Right-click for more.</div>}
     </main>
   );
 }

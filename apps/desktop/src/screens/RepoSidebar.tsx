@@ -9,7 +9,7 @@ import { confirm } from "../ui/Confirm";
 
 type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; onError: (msg: string) => void };
 
-const small = "h-6 rounded border border-stone-300 bg-white px-1.5 text-[11px] hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
+const small = "h-6 rounded border border-stone-300 bg-white px-1.5 text-label hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 const iconBtn = "inline-flex h-6 items-center rounded px-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100";
 
 type WtRow = { key: string; label: string; worktree: Worktree; status: Summary | null; branch: BranchRow | null; isMain: boolean; ahead: number | null; stale: boolean; time: number | null };
@@ -105,13 +105,13 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
 
   const head = (title: string, count: string) => (
     <div className="flex items-baseline gap-2 px-3 pb-1 pt-3">
-      <span className="text-[11px] font-semibold tracking-wider text-stone-500">{title}</span>
-      <span className="text-[11px] text-stone-400">{count}</span>
+      <span className="text-label font-semibold tracking-wider text-stone-500">{title}</span>
+      <span className="text-label text-stone-400">{count}</span>
     </div>
   );
 
   return (
-    <aside className="flex min-h-0 flex-col overflow-y-auto bg-stone-50 text-[13px] dark:bg-stone-900">
+    <aside className="flex min-h-0 flex-col overflow-y-auto bg-stone-50 text-body dark:bg-stone-900">
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
       {creating && data && (
         <NewBranchDialog root={root} base={data.base} initialBranch={creating.branch ?? null} onClose={() => setCreating(null)} onCreated={refresh} />
@@ -121,16 +121,16 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       )}
 
       <div className="flex items-center gap-1.5 border-b border-stone-200 px-3 py-2 dark:border-stone-700">
-        <button onClick={() => setCreating({})} className="h-7 grow rounded-md bg-teal-700 px-2.5 text-xs font-medium text-white hover:bg-teal-800">New branch<span className="ml-1.5 opacity-70">⌘N</span></button>
-        <button onClick={() => run("fetch", () => api.fetchAll(root))} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-xs hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700">{busy === "fetch" ? "…" : "Fetch"}</button>
+        <button onClick={() => setCreating({})} className="h-7 grow rounded-md bg-teal-700 px-2.5 text-body font-medium text-white hover:bg-teal-800">New branch<span className="ml-1.5 opacity-70">⌘N</span></button>
+        <button onClick={() => run("fetch", () => api.fetchAll(root))} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-body hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700">{busy === "fetch" ? "…" : "Fetch"}</button>
       </div>
 
       <button onClick={onOpenRepo} className={`mt-2 flex items-center gap-2 px-3 py-1.5 text-left ${current === null && currentBranch === null ? "bg-teal-50 font-medium dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
         <span className="h-2 w-2 shrink-0 rounded-full border-2 border-stone-400" />
-        <span className="grow text-xs">All branches</span>
+        <span className="grow text-body">All branches</span>
         {data && (() => {
           const n = data.branches.reduce((t, b) => t + changed(b.status), 0) + data.detached.reduce((t, d) => t + changed(d.status), 0);
-          return n > 0 ? <span className="text-[11px] text-amber-700">{n} uncommitted</span> : null;
+          return n > 0 ? <span className="text-label text-amber-700">{n} uncommitted</span> : null;
         })()}
       </button>
 
@@ -143,8 +143,8 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
           <div key={r.key} onClick={(e) => openRow(e, r.worktree.path)} onContextMenu={(e) => rowMenu(e, r)} title={r.worktree.path} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${current === r.worktree.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
             <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
             <div className="min-w-0 grow">
-              <div className="truncate font-mono text-xs font-medium">{r.label}</div>
-              <div className="truncate text-[11px] text-stone-500">
+              <div className="truncate font-mono text-body font-medium">{r.label}</div>
+              <div className="truncate text-label text-stone-500">
                 {r.isMain ? "main worktree" : null}
                 {r.isMain && (n > 0 || r.ahead) ? " · " : ""}
                 {r.worktree.prunable ? "folder missing" : conflicts ? `${conflicts} conflicts` : n > 0 ? `${n} changed` : r.isMain ? "" : "clean"}
@@ -166,34 +166,34 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       {without.map((r) => (
         <div key={r.branch.name} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.branch.name }) : onOpenBranch(r.branch.name))} onContextMenu={(e) => branchMenu(e, r)} title={r.branch.last_commit?.summary} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${currentBranch === r.branch.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
           <div className="min-w-0 grow">
-            <div className="truncate font-mono text-xs">{r.branch.name}</div>
-            <div className="truncate text-[11px] text-stone-500">{r.ahead_of_base ? `${r.ahead_of_base} ahead` : "0 ahead"}{r.branch.last_commit ? ` · ${ago(r.branch.last_commit.time)}` : ""}</div>
+            <div className="truncate font-mono text-body">{r.branch.name}</div>
+            <div className="truncate text-label text-stone-500">{r.ahead_of_base ? `${r.ahead_of_base} ahead` : "0 ahead"}{r.branch.last_commit ? ` · ${ago(r.branch.last_commit.time)}` : ""}</div>
           </div>
           <button onClick={(e) => { e.stopPropagation(); setCreating({ branch: r.branch.name }); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
         </div>
       ))}
-      {data && without.length === 0 && <div className="px-3 py-1 text-[11px] text-stone-500">Every local branch has a worktree.</div>}
+      {data && without.length === 0 && <div className="px-3 py-1 text-label text-stone-500">Every local branch has a worktree.</div>}
 
       <button onClick={() => setRemoteOpen((v) => !v)} className="flex items-baseline gap-2 px-3 pb-1 pt-3 text-left">
-        <span className="text-[11px] font-semibold tracking-wider text-stone-500">{remoteOpen ? "▾" : "▸"} REMOTE BRANCHES</span>
-        <span className="text-[11px] text-stone-400">{data ? remote.length : ""}</span>
+        <span className="text-label font-semibold tracking-wider text-stone-500">{remoteOpen ? "▾" : "▸"} REMOTE BRANCHES</span>
+        <span className="text-label text-stone-400">{data ? remote.length : ""}</span>
       </button>
       {remoteOpen && (
         <>
           <div className="px-3 pb-1">
-            <input value={remoteQuery} onChange={(e) => setRemoteQuery(e.target.value)} placeholder="Search" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-[11px] dark:border-stone-600 dark:bg-stone-700" />
+            <input value={remoteQuery} onChange={(e) => setRemoteQuery(e.target.value)} placeholder="Search" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-label dark:border-stone-600 dark:bg-stone-700" />
           </div>
           {remoteShown.map((r: RemoteBranch) => (
             <div key={r.name} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.name }) : onOpenBranch(r.name))} onContextMenu={(e) => remoteMenu(e, r)} title={r.last_commit?.summary} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${currentBranch === r.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
               <div className="min-w-0 grow">
-                <div className="truncate font-mono text-xs text-stone-600 dark:text-stone-300">{r.name}</div>
-                <div className="truncate text-[11px] text-stone-500">{r.last_commit ? `${r.last_commit.author} · ${ago(r.last_commit.time)}` : ""}</div>
+                <div className="truncate font-mono text-body text-stone-600 dark:text-stone-300">{r.name}</div>
+                <div className="truncate text-label text-stone-500">{r.last_commit ? `${r.last_commit.author} · ${ago(r.last_commit.time)}` : ""}</div>
               </div>
               <button onClick={(e) => { e.stopPropagation(); setCreating({ branch: r.short }); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
             </div>
           ))}
-          {!q && remote.length > 8 && <div className="px-3 py-1 text-[11px] text-stone-500">Showing 8 of {remote.length}. Type to search.</div>}
-          {q && remoteShown.length === 0 && <div className="px-3 py-1 text-[11px] text-stone-500">No match.</div>}
+          {!q && remote.length > 8 && <div className="px-3 py-1 text-label text-stone-500">Showing 8 of {remote.length}. Type to search.</div>}
+          {q && remoteShown.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No match.</div>}
         </>
       )}
       <div className="h-4" />

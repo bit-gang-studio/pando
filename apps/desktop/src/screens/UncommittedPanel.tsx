@@ -47,30 +47,30 @@ export function UncommittedPanel({ root, worktrees }: { root: string; worktrees:
   return (
     <div ref={split.box} className="flex min-h-0 grow">
       <aside style={{ width: split.size }} className="flex shrink-0 flex-col overflow-y-auto bg-white dark:bg-stone-800">
-        {error && <div className="p-2 text-xs text-red-700">{error}</div>}
+        {error && <div className="p-2 text-body text-red-700">{error}</div>}
         {details.map((d) => (
           <div key={d.worktree.path} className="border-b border-stone-200 dark:border-stone-700">
             <div className="flex items-center gap-2 px-3 pb-1 pt-2">
-              <span className="truncate font-mono text-xs font-medium" title={d.worktree.path}>{d.worktree.branch ?? `detached at ${d.worktree.head?.slice(0, 7)}`}</span>
-              <span className="text-[11px] text-stone-500">{d.files.length} {d.files.length === 1 ? "file" : "files"}</span>
+              <span className="truncate font-mono text-body font-medium" title={d.worktree.path}>{d.worktree.branch ?? `detached at ${d.worktree.head?.slice(0, 7)}`}</span>
+              <span className="text-label text-stone-500">{d.files.length} {d.files.length === 1 ? "file" : "files"}</span>
               <div className="grow" />
-              <button onClick={() => navigate({ kind: "worktree", root, path: d.worktree.path })} className="text-[11px] text-teal-700 hover:underline">Open worktree</button>
+              <button onClick={() => navigate({ kind: "worktree", root, path: d.worktree.path })} className="text-label text-teal-700 hover:underline">Open worktree</button>
             </div>
             {d.files.map((f) => {
               const active = sel?.path === d.worktree.path && sel.file.path === f.path;
               const code = f.conflicted ? "U" : f.untracked ? "?" : f.unstaged ?? f.staged ?? "";
               return (
                 <button key={f.path} onClick={() => setSel({ path: d.worktree.path, file: f })} className={`flex w-full items-center gap-2 px-3 py-1 text-left ${active ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
-                  <span title={STATUS_LABEL[String(f.conflicted ? "U" : code)] ?? ""} className={`w-3 shrink-0 cursor-help text-center font-mono text-[11px] ${f.conflicted ? "text-red-700" : "text-stone-500"}`}>{code}</span>
-                  <span className="min-w-0 grow truncate font-mono text-xs" title={f.path}>{f.path}</span>
-                  {f.staged && f.unstaged && <span className="text-[10px] text-stone-400">partly staged</span>}
-                  {f.staged && !f.unstaged && !f.untracked && <span className="text-[10px] text-stone-400">staged</span>}
+                  <span title={STATUS_LABEL[String(f.conflicted ? "U" : code)] ?? ""} className={`w-3 shrink-0 cursor-help text-center font-mono text-label ${f.conflicted ? "text-red-700" : "text-stone-500"}`}>{code}</span>
+                  <span className="min-w-0 grow truncate font-mono text-body" title={f.path}>{f.path}</span>
+                  {f.staged && f.unstaged && <span className="text-label text-stone-400">partly staged</span>}
+                  {f.staged && !f.unstaged && !f.untracked && <span className="text-label text-stone-400">staged</span>}
                 </button>
               );
             })}
           </div>
         ))}
-        {details.length > 0 && details.every((d) => d.files.length === 0) && <div className="p-3 text-xs text-stone-500">Nothing uncommitted.</div>}
+        {details.length > 0 && details.every((d) => d.files.length === 0) && <div className="p-3 text-body text-stone-500">Nothing uncommitted.</div>}
       </aside>
       <SplitHandle axis="x" onMouseDown={split.start} handleRef={split.handle} />
       <main className="flex min-w-0 grow flex-col bg-white dark:bg-stone-800">
