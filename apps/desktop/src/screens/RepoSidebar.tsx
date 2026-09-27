@@ -7,14 +7,14 @@ import { NewWindowIcon } from "../ui/icons";
 import { MergeDialog } from "../dialogs/MergeDialog";
 import { NewBranchDialog } from "../dialogs/NewBranchDialog";
 
-type Props = { root: string; data: OverviewData | null; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; onError: (msg: string) => void };
+type Props = { root: string; data: OverviewData | null; current?: string | null; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; onError: (msg: string) => void };
 
 const small = "h-6 rounded border border-stone-300 bg-white px-1.5 text-[11px] hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 const iconBtn = "inline-flex h-6 items-center rounded px-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100";
 
 type WtRow = { key: string; label: string; worktree: Worktree; status: Summary | null; branch: BranchRow | null; isMain: boolean; ahead: number | null; stale: boolean; time: number | null };
 
-export function RepoSidebar({ root, data, onRefresh: refresh, onOpenWorktree, onError }: Props) {
+export function RepoSidebar({ root, data, current = null, onRefresh: refresh, onOpenWorktree, onError }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ branch?: string } | null>(null);
   const [merging, setMerging] = useState<BranchRow | null>(null);
@@ -97,7 +97,7 @@ export function RepoSidebar({ root, data, onRefresh: refresh, onOpenWorktree, on
         const conflicts = r.status?.conflicts ?? 0;
         const dot = r.worktree.prunable || conflicts ? "bg-red-700" : n > 0 ? "bg-amber-700" : r.isMain ? "bg-stone-400" : "bg-teal-700";
         return (
-          <div key={r.key} onClick={(e) => openRow(e, r.worktree.path)} onContextMenu={(e) => rowMenu(e, r)} title={r.worktree.path} className="group flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+          <div key={r.key} onClick={(e) => openRow(e, r.worktree.path)} onContextMenu={(e) => rowMenu(e, r)} title={r.worktree.path} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${current === r.worktree.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
             <span className={`h-2 w-2 shrink-0 rounded-full ${dot}`} />
             <div className="min-w-0 grow">
               <div className="truncate font-mono text-xs font-medium">{r.label}</div>

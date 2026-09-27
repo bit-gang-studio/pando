@@ -52,14 +52,10 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
   const shown = worktree ? null : commit ?? firstId;
   return (
     <div ref={side.box} className="flex min-h-0 min-w-0 grow">
-      {!worktree && (
-        <>
-          <div style={{ width: side.size }} className="flex shrink-0 flex-col">
-            <RepoSidebar root={root} data={data} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} onError={onError} />
-          </div>
-          <SplitHandle axis="x" onMouseDown={side.start} handleRef={side.handle} />
-        </>
-      )}
+      <div style={{ width: side.size }} className="flex shrink-0 flex-col">
+        <RepoSidebar root={root} data={data} current={worktree} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} onError={onError} />
+      </div>
+      <SplitHandle axis="x" onMouseDown={side.start} handleRef={side.handle} />
     <div ref={split.box} className="flex min-h-0 min-w-0 grow flex-col">
       <div style={{ height: split.size, flex: "0 0 auto" }} className="flex min-h-0 flex-col">
         <CommitLog
