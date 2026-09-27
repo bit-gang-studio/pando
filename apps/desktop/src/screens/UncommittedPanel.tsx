@@ -10,7 +10,8 @@ const STATUS_LABEL: Record<string, string> = { M: "Modified", A: "Added", D: "De
 type Sel = { path: string; file: FileStatus } | null;
 
 /// Uncommitted changes across every worktree of a repo, read-only.
-export function UncommittedPanel({ root, worktrees }: { root: string; worktrees: string[] }) {
+/// `refreshKey` changes whenever the repo page refreshes, so file lists stay current.
+export function UncommittedPanel({ root, worktrees, refreshKey = 0 }: { root: string; worktrees: string[]; refreshKey?: number }) {
   const [details, setDetails] = useState<Detail[] | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [sel, setSel] = useState<Sel>(null);
@@ -26,14 +27,14 @@ export function UncommittedPanel({ root, worktrees }: { root: string; worktrees:
       if (!live) return;
       setDetails(ds);
       setSel((s) => {
-        if (s && ds.some((d) => d.worktree.path === s.path && d.files.some((f) => f.path === s.file.path))) return s;
+        if (s && ds.some((d) => d.worktree.path === s.path && d.files.some((f) => f.path === s.file.path))) return { ...s }; // new object: reload its diff too
         const first = ds.find((d) => d.files.length > 0);
         return first ? { path: first.worktree.path, file: first.files[0] } : null;
       });
       setError(null);
     }).catch((e) => { if (live) setError(String(e)); });
     return () => { live = false; };
-  }, [root, worktrees.join("\0"), attempt]);
+  }, [root, worktrees.join("\0"), attempt, refreshKey]);
 
   useEffect(() => {
     if (!sel) { setDiff(null); return; }

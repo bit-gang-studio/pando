@@ -177,7 +177,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
             <Detail root={root} path={worktree} onBack={() => navigate({ kind: "repo", root })} onChanged={refresh} />
           )
         ) : showUncommitted && dirtyPaths.length > 0 ? (
-          <UncommittedPanel root={root} worktrees={dirtyPaths} />
+          <UncommittedPanel root={root} worktrees={dirtyPaths} refreshKey={tick} />
         ) : shown ? (
           <CommitDetail root={root} id={shown} />
         ) : (
