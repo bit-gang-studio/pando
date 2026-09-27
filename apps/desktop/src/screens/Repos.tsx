@@ -39,7 +39,7 @@ export function Repos() {
 
   useEffect(() => {
     refresh();
-    const t = setInterval(() => { if (document.hasFocus()) refresh(); }, 6000);
+    const t = setInterval(() => { if (document.hasFocus()) refresh(); }, 15000);
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
     return () => { clearInterval(t); window.removeEventListener("focus", onFocus); };

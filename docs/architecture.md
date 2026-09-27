@@ -19,7 +19,8 @@ Core is the only place that touches git. Its API is plain serde request and resp
 
 - Mutations: the user's `git` CLI, porcelain and `-z` output. Hooks, credentials, signing, and fsmonitor keep working.
 - Reads: gix (gitoxide) in-process.
-- Status: `git status --porcelain=v2 -z`.
+- Status: `git status --porcelain=v2 -z` with `-c core.untrackedCache=true`. The repo page loads without status first (`overview::load_quick`), then with it.
+- File watching: `watch` watches the git dir and every worktree folder, ignores what git ignores, and the app refreshes on change. It falls back to polling.
 - No libgit2. Floor is git 2.39.
 
 ## Screens and core calls
