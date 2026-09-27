@@ -90,11 +90,9 @@ export type MergeResult = { merged: boolean; steps: Step[]; backup_refs: string[
 // ---- calls -------------------------------------------------------------------
 
 export const api = {
-  version: () => invoke<string>("version"),
   reposList: () => invoke<UserConfig>("repos_list"),
   reposAdd: (path: string) => invoke<UserConfig>("repos_add", { path }),
   reposRemove: (path: string) => invoke<UserConfig>("repos_remove", { path }),
-  userConfigSave: (config: UserConfig) => invoke<void>("user_config_save", { config }),
 
   watchRepo: (root: string, worktrees: string[]) => invoke<void>("watch_repo", { root, worktrees }),
   /// `quick` skips git status (fast on big repos); every status is then null.

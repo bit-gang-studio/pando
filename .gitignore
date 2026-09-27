@@ -8,6 +8,10 @@ target/
 node_modules/
 dist/
 
+# Playwright
+apps/desktop/test-results/
+apps/desktop/playwright-report/
+
 # Tauri generated
 apps/desktop/src-tauri/gen/schemas/
 

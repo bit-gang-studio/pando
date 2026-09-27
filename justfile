@@ -13,9 +13,11 @@ dev:
 cli *args:
     cargo run -p pando-cli -- {{args}}
 
+# Core, CLI and screen tests
 test:
     cargo test --workspace
     pnpm --filter @pando/desktop exec tsc --noEmit
+    pnpm --filter @pando/desktop exec playwright test
 
 lint:
     cargo fmt --all --check

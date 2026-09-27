@@ -26,16 +26,6 @@ fn repo(root: &std::path::Path) -> R<Repo> {
     Repo::discover(root).map_err(err)
 }
 
-#[tauri::command]
-fn version() -> &'static str {
-    pando_core::VERSION
-}
-
-#[tauri::command]
-fn doctor() -> pando_core::Doctor {
-    pando_core::doctor()
-}
-
 // ---- repos ---------------------------------------------------------------
 
 #[tauri::command]
@@ -55,11 +45,6 @@ async fn repos_add(path: PathBuf) -> R<UserConfig> {
 #[tauri::command]
 async fn repos_remove(path: PathBuf) -> R<UserConfig> {
     blocking(move || user_config::remove_repo(&path).map_err(err)).await
-}
-
-#[tauri::command]
-async fn user_config_save(config: UserConfig) -> R<()> {
-    blocking(move || user_config::save(&config).map_err(err)).await
 }
 
 // ---- the list --------------------------------------------------------------
@@ -419,12 +404,9 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
-            version,
-            doctor,
             repos_list,
             repos_add,
             repos_remove,
-            user_config_save,
             overview_load,
             fetch_all,
             branch_create,

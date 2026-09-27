@@ -61,3 +61,17 @@ jobs:
       - run: echo "$HOME/git-2.39.5/bin" >> $GITHUB_PATH
       - run: git --version | grep -q "2.39.5"
       - run: cargo test -p pando-core -p pando-cli
+
+  # The desktop screens in Chromium with Tauri mocked (apps/desktop/e2e).
+  screens:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter @pando/desktop exec playwright install --with-deps chromium
+      - run: pnpm --filter @pando/desktop exec playwright test

@@ -113,7 +113,7 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
           <label className="flex flex-col gap-1.5">
             <span className="text-body font-medium text-stone-600 dark:text-stone-300">Branch name</span>
             {(
-              <input ref={branchRef} value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="feat/my-change" spellCheck={false} className="h-8 rounded-md border border-stone-300 bg-white px-2 font-mono text-body focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700" />
+              <input ref={branchRef} value={branch} onChange={(e) => setBranch(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) submit(); }} placeholder="feat/my-change" spellCheck={false} className="h-8 rounded-md border border-stone-300 bg-white px-2 font-mono text-body focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700" />
             )}
             {mode === "new" && (
               <div className="flex items-center gap-1.5 text-body text-stone-500">
@@ -133,7 +133,7 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
           {(mode === "existing" || withWorktree) && (
           <label className="flex flex-col gap-1.5">
             <span className="text-body font-medium text-stone-600 dark:text-stone-300">Location</span>
-            <input value={path} onChange={(e) => { setPath(e.target.value); setPathEdited(true); }} spellCheck={false} className="h-8 rounded-md border border-stone-300 bg-stone-50 px-2 font-mono text-body text-stone-600 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-300" />
+            <input value={path} onChange={(e) => { setPath(e.target.value); setPathEdited(true); }} onKeyDown={(e) => { if (e.key === "Enter" && !e.metaKey && !e.ctrlKey) submit(); }} spellCheck={false} className="h-8 rounded-md border border-stone-300 bg-stone-50 px-2 font-mono text-body text-stone-600 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-300" />
           </label>
           )}
 

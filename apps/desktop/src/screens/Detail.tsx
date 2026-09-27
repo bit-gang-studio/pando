@@ -72,11 +72,12 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   });
 
-  async function run(label: string, fn: () => Promise<unknown>) {
+  /// Returns true if the action worked.
+  async function run(label: string, fn: () => Promise<unknown>): Promise<boolean> {
     setBusy(label);
     setError(null);
-    try { await fn(); await refresh(); onChanged(); }
-    catch (e) { setError(String(e)); }
+    try { await fn(); await refresh(); onChanged(); return true; }
+    catch (e) { setError(String(e)); return false; }
     finally { setBusy(null); }
   }
 
@@ -92,7 +93,8 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
 
   async function doCommit() {
     if (!canCommit) return;
-    await run("commit", () => api.commitCreate(wt, message.trim(), amend));
+    // Keep what they typed if the commit fails (hook, signing, lock).
+    if (!(await run("commit", () => api.commitCreate(wt, message.trim(), amend)))) return;
     setMessage("");
     setAmend(false);
   }
