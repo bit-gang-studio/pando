@@ -22,9 +22,12 @@ Core is the only place that touches git. Its API is plain serde request and resp
 - Status: `git status --porcelain=v2 -z`.
 - No libgit2. Floor is git 2.39.
 
-## One screen
+## Screens and core calls
 
-`overview::load(repo)` returns every local branch with its worktree (if any), status, port, and commits ahead of the base, plus remote-only branches. The desktop's home screen is that list. Clicking a row opens `detail::load` for that worktree.
+- Repositories: `user_config` repo list, plus `overview::load` per repo for counts.
+- Repo page: `overview::load` feeds the sidebar (worktrees, branches without one, remote-only, detached worktrees). `log::list` feeds the graph; the lane layout is computed in the frontend (`src/lib/graph.ts`). `history::commit_diff` and `commit_file_diff` feed the details pane (merge commits diff against the first parent).
+- Worktree page: same sidebar and graph (scoped to the branch), `detail::load` for staging, `diff::file` for diffs, `operation` and `conflict` for paused rebases.
+- Every screen has a hash route, so any screen opens in a new window.
 
 ## Core model
 
@@ -35,7 +38,8 @@ Worktree  { path, branch, base, kind: Main | Linked, locked }
 Status     { staged, unstaged, untracked, ahead, behind, conflicts }
 Overlap    { a, b, files: [{ path, hunks }] }
 Operation  { kind: Rebase | Merge | CherryPick, applied, total, conflicted, resolved }
-Overview   { repo, base, branches: [BranchRow { branch, worktree?, status?, port?, ahead_of_base, stale }], remote_only }
+Overview   { repo, base, branches: [BranchRow { branch, worktree?, status?, ahead_of_base, stale }], detached, remote_only }
+LogEntry   { id, parents, author, time, summary, refs, is_head }
 ```
 
 ## Worktree folders
