@@ -21,6 +21,9 @@ export function RepoScreen({ root, commit, worktree = null, onError }: Props) {
   const side = useSplit("pando.split.sidebar.px", 300, "x", 200, 700);
   const onLoaded = useCallback((id: string | null) => setFirstId(id), []);
   useEffect(() => { setWtCommit(null); }, [worktree]);
+  // Arriving at the plain repo page (not a commit, not a worktree) starts fresh:
+  // Uncommitted changes if there are any, else the newest commit.
+  useEffect(() => { if (!commit && !worktree) setShowUncommitted(null); }, [commit, worktree]);
 
   const refresh = useCallback(async () => {
     try { setData(await api.overview(root)); setTick((t) => t + 1); }
