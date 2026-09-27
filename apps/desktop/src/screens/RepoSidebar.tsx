@@ -7,14 +7,14 @@ import { NewWindowIcon } from "../ui/icons";
 import { MergeDialog } from "../dialogs/MergeDialog";
 import { NewBranchDialog } from "../dialogs/NewBranchDialog";
 
-type Props = { root: string; data: OverviewData | null; current?: string | null; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; onError: (msg: string) => void };
+type Props = { root: string; data: OverviewData | null; current?: string | null; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; onError: (msg: string) => void };
 
 const small = "h-6 rounded border border-stone-300 bg-white px-1.5 text-[11px] hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 const iconBtn = "inline-flex h-6 items-center rounded px-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100";
 
 type WtRow = { key: string; label: string; worktree: Worktree; status: Summary | null; branch: BranchRow | null; isMain: boolean; ahead: number | null; stale: boolean; time: number | null };
 
-export function RepoSidebar({ root, data, current = null, onRefresh: refresh, onOpenWorktree, onError }: Props) {
+export function RepoSidebar({ root, data, current = null, onOpenRepo, onRefresh: refresh, onOpenWorktree, onError }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ branch?: string } | null>(null);
   const [merging, setMerging] = useState<BranchRow | null>(null);
@@ -120,6 +120,15 @@ export function RepoSidebar({ root, data, current = null, onRefresh: refresh, on
         <button onClick={() => setCreating({})} className="h-7 grow rounded-md bg-teal-700 px-2.5 text-xs font-medium text-white hover:bg-teal-800">New branch<span className="ml-1.5 opacity-70">⌘N</span></button>
         <button onClick={() => run("fetch", () => api.fetchAll(root))} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-xs hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700">{busy === "fetch" ? "…" : "Fetch"}</button>
       </div>
+
+      <button onClick={onOpenRepo} className={`mt-2 flex items-center gap-2 px-3 py-1.5 text-left ${current === null ? "bg-teal-50 font-medium dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
+        <span className="h-2 w-2 shrink-0 rounded-full border-2 border-stone-400" />
+        <span className="grow text-xs">All branches</span>
+        {data && (() => {
+          const n = data.branches.reduce((t, b) => t + changed(b.status), 0) + data.detached.reduce((t, d) => t + changed(d.status), 0);
+          return n > 0 ? <span className="text-[11px] text-amber-700">{n} uncommitted</span> : null;
+        })()}
+      </button>
 
       {head("WORKTREES", data ? String(rows.length) : "…")}
       {rows.map((r) => {
