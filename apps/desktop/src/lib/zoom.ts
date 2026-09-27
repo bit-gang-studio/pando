@@ -1,7 +1,7 @@
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 
-// Keyboard zoom with limits. Uses the webview's own zoom so layout and mouse
-// coordinates stay consistent. Pinch zoom is blocked.
+// Zoom with limits, from the keyboard or a trackpad pinch. Uses the webview's
+// own zoom so layout and mouse coordinates stay consistent.
 
 const KEY = "pando.zoom";
 export const MIN_ZOOM = 0.7;
@@ -14,8 +14,8 @@ function clamp(z: number) {
   return Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, Math.round(z * 10) / 10));
 }
 
-function apply(z: number) {
-  current = clamp(z);
+function apply(z: number, round = true) {
+  current = round ? clamp(z) : Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, z));
   getCurrentWebview().setZoom(current).catch(() => {});
   try { localStorage.setItem(KEY, String(current)); } catch { /* ignore */ }
 }
@@ -31,20 +31,29 @@ export function installZoom(): () => void {
     else if (e.key === "-") { e.preventDefault(); apply(current - STEP); }
     else if (e.key === "0") { e.preventDefault(); apply(1); }
   };
-  // Trackpad pinch: WebKit fires gesture events; Chromium/WebView2 sends ctrl+wheel.
-  const stop = (e: Event) => e.preventDefault();
-  const onWheel = (e: WheelEvent) => { if (e.ctrlKey) e.preventDefault(); };
+  // Trackpad pinch. WebKit (macOS, Linux) fires gesture events with a scale;
+  // Chromium/WebView2 (Windows) sends ctrl+wheel. Both drive the same clamped zoom.
+  let base = 1;
+  type Gesture = Event & { scale: number };
+  const onStart = (e: Event) => { e.preventDefault(); base = current; };
+  const onChange = (e: Event) => { e.preventDefault(); apply(base * (e as Gesture).scale, false); };
+  const onEnd = (e: Event) => { e.preventDefault(); apply(current); };
+  const onWheel = (e: WheelEvent) => {
+    if (!e.ctrlKey) return;
+    e.preventDefault();
+    apply(current * Math.exp(-e.deltaY / 200), false);
+  };
 
   window.addEventListener("keydown", onKey);
-  window.addEventListener("gesturestart", stop);
-  window.addEventListener("gesturechange", stop);
-  window.addEventListener("gestureend", stop);
+  window.addEventListener("gesturestart", onStart);
+  window.addEventListener("gesturechange", onChange);
+  window.addEventListener("gestureend", onEnd);
   window.addEventListener("wheel", onWheel, { passive: false });
   return () => {
     window.removeEventListener("keydown", onKey);
-    window.removeEventListener("gesturestart", stop);
-    window.removeEventListener("gesturechange", stop);
-    window.removeEventListener("gestureend", stop);
+    window.removeEventListener("gesturestart", onStart);
+    window.removeEventListener("gesturechange", onChange);
+    window.removeEventListener("gestureend", onEnd);
     window.removeEventListener("wheel", onWheel);
   };
 }
