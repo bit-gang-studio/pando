@@ -6,6 +6,8 @@ type Props = {
   base: string | null;
   /// An existing branch to add a worktree for. Null means create a new branch.
   initialBranch: string | null;
+  /// Set when adding a worktree for a remote-only branch, e.g. "origin/feat/x".
+  remote?: string | null;
   onClose: () => void;
   onCreated: () => void;
 };
@@ -13,7 +15,7 @@ type Props = {
 type Mode = "new" | "existing";
 const PREFIXES = ["feat/", "fix/", "chore/", "spike/"];
 
-export function NewBranchDialog({ root, base: defaultBase, initialBranch, onClose, onCreated }: Props) {
+export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote = null, onClose, onCreated }: Props) {
   const repo = root;
   const mode: Mode = initialBranch ? "existing" : "new";
   const [branch, setBranch] = useState(initialBranch ?? "");
@@ -73,12 +75,19 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, onClos
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div role="dialog" aria-labelledby="nw-title" className="flex max-h-[90vh] w-[720px] flex-col overflow-hidden rounded-xl border border-stone-300 bg-white text-body shadow-xl dark:border-stone-700 dark:bg-stone-800">
-        <div className="flex items-center gap-3 border-b border-stone-300 px-5 py-4 dark:border-stone-700">
-          <h2 id="nw-title" className="text-title font-semibold">{mode === "new" ? "New branch" : `Add worktree for ${initialBranch}`}</h2>
+      <div role="dialog" aria-labelledby="nw-title" className="flex max-h-[90vh] w-[640px] flex-col overflow-hidden rounded-xl border border-stone-300 bg-white text-body shadow-xl dark:border-stone-700 dark:bg-stone-800">
+        <div className="flex flex-col gap-1 border-b border-stone-300 px-5 py-4 dark:border-stone-700">
+          <h2 id="nw-title" className="text-title font-semibold">{mode === "new" ? "New branch" : "Add worktree"}</h2>
+          {mode === "existing" && (
+            <span className="text-stone-500">
+              <span className="font-mono text-stone-800 dark:text-stone-200">{initialBranch}</span>
+              {remote && <> · creates a local branch tracking <span className="font-mono">{remote}</span></>}
+            </span>
+          )}
         </div>
 
         <div className="flex grow flex-col gap-4 overflow-y-auto p-5">
+          {mode === "new" && (
           <div className="grid grid-cols-2 gap-3">
             {mode === "new" ? (
               <label className="flex flex-col gap-1.5">
@@ -90,13 +99,13 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, onClos
               </label>
             ) : <div />}
           </div>
+          )}
 
+          {mode === "new" && (
           <label className="flex flex-col gap-1.5">
             <span className="text-body font-medium text-stone-600 dark:text-stone-300">Branch name</span>
-            {mode === "new" ? (
+            {(
               <input ref={branchRef} value={branch} onChange={(e) => setBranch(e.target.value)} placeholder="feat/my-change" spellCheck={false} className="h-8 rounded-md border border-stone-300 bg-white px-2 font-mono text-body focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700" />
-            ) : (
-              <div className="flex h-8 items-center rounded-md border border-stone-300 bg-stone-50 px-2 font-mono text-body dark:border-stone-600 dark:bg-stone-700">{initialBranch}</div>
             )}
             {mode === "new" && (
               <div className="flex items-center gap-1.5 text-body text-stone-500">
@@ -107,6 +116,7 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, onClos
               </div>
             )}
           </label>
+          )}
 
           <label className="flex flex-col gap-1.5">
             <span className="text-body font-medium text-stone-600 dark:text-stone-300">Location</span>
@@ -117,7 +127,7 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, onClos
         </div>
 
         <div className="flex items-center gap-2 border-t border-stone-300 bg-stone-50 px-5 py-3.5 dark:border-stone-700 dark:bg-stone-900/40">
-          <span className="text-body text-stone-500">Runs git worktree add. Nothing is pushed.</span>
+          <span className="text-stone-500">Runs git worktree add. Nothing is pushed.</span>
           <div className="grow" />
           <button onClick={onClose} className="h-8 rounded-lg border border-stone-300 bg-white px-3 dark:border-stone-600 dark:bg-stone-700">{result ? "Close" : "Cancel"}<span className="ml-2 text-body text-stone-400">Esc</span></button>
           {!result && (

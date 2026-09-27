@@ -16,7 +16,7 @@ type WtRow = { key: string; label: string; worktree: Worktree; status: Summary |
 
 export function RepoSidebar({ root, data, current = null, currentBranch = null, onOpenBranch, onOpenRepo, onRefresh: refresh, onOpenWorktree, onError }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
-  const [creating, setCreating] = useState<{ branch?: string } | null>(null);
+  const [creating, setCreating] = useState<{ branch?: string; remote?: string } | null>(null);
   const [merging, setMerging] = useState<BranchRow | null>(null);
   const [remoteOpen, setRemoteOpen] = useState(false);
   const [remoteQuery, setRemoteQuery] = useState("");
@@ -71,7 +71,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     setMenu({ x: e.clientX, y: e.clientY, items: [
       { label: "Open", onClick: () => onOpenBranch(r.name) },
       { label: "Open in new window", onClick: () => openInNewWindow({ kind: "branch", root, name: r.name }) },
-      { label: "Add worktree", onClick: () => setCreating({ branch: r.short }) },
+      { label: "Add worktree", onClick: () => setCreating({ branch: r.short, remote: r.name }) },
     ] });
   };
 
@@ -114,7 +114,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     <aside className="flex min-h-0 flex-col overflow-y-auto bg-stone-50 text-body dark:bg-stone-900">
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
       {creating && data && (
-        <NewBranchDialog root={root} base={data.base} initialBranch={creating.branch ?? null} onClose={() => setCreating(null)} onCreated={refresh} />
+        <NewBranchDialog root={root} base={data.base} initialBranch={creating.branch ?? null} remote={creating.remote ?? null} onClose={() => setCreating(null)} onCreated={refresh} />
       )}
       {merging && merging.worktree && (
         <MergeDialog root={root} path={merging.worktree.path} branch={merging.branch.name} headSummary={merging.branch.last_commit?.summary ?? null} onClose={() => setMerging(null)} onMerged={refresh} />
@@ -189,7 +189,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
                 <div className="truncate font-mono text-body text-stone-600 dark:text-stone-300">{r.name}</div>
                 <div className="truncate text-label text-stone-500">{r.last_commit ? `${r.last_commit.author} · ${ago(r.last_commit.time)}` : ""}</div>
               </div>
-              <button onClick={(e) => { e.stopPropagation(); setCreating({ branch: r.short }); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
+              <button onClick={(e) => { e.stopPropagation(); setCreating({ branch: r.short, remote: r.name }); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
             </div>
           ))}
           {!q && remote.length > 8 && <div className="px-3 py-1 text-label text-stone-500">Showing 8 of {remote.length}. Type to search.</div>}
