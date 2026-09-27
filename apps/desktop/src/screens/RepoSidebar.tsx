@@ -183,7 +183,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     <button onClick={() => toggle(key)} className="mt-2 flex items-baseline gap-2 border-t border-stone-200 px-3 pb-1 pt-2.5 text-left dark:border-stone-700">
       <span className="w-2.5 text-label text-stone-400">{open[key] ? "▾" : "▸"}</span>
       <span className="text-label font-semibold tracking-wider text-stone-500">{title}</span>
-      <span className="text-label text-stone-400">{count}</span>
+      <span className="truncate text-label text-stone-400">{count}</span>
     </button>
   );
 

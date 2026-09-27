@@ -9,7 +9,7 @@ const tones: Record<Tone, string> = {
 
 export function Chip({ tone = "grey", mono, children }: { tone?: Tone; mono?: boolean; children: React.ReactNode }) {
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-body ${mono ? "font-mono" : ""} ${tones[tone]}`}>
+    <span className={`inline-flex shrink-0 items-center whitespace-nowrap rounded-full px-2 py-0.5 text-body ${mono ? "font-mono" : ""} ${tones[tone]}`}>
       {children}
     </span>
   );

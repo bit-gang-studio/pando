@@ -60,7 +60,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
   return (
     <div className="flex min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-4 py-1.5 dark:border-stone-700 dark:bg-stone-800">
-        <span className="text-body text-stone-500">{scope ? <span className="font-mono">{scope}</span> : "All branches"} · {entries.length}{truncated ? "+" : ""} commits</span>
+        <span className="min-w-0 truncate text-body text-stone-500">{scope ? <span className="font-mono">{scope}</span> : "All branches"} · {entries.length}{truncated ? "+" : ""} commits</span>
       </div>
       <div className="min-h-0 grow overflow-auto bg-white dark:bg-stone-800">
         {dirtyWorktrees > 0 && (

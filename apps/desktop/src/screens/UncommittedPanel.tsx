@@ -59,7 +59,7 @@ export function UncommittedPanel({ root, worktrees, refreshKey = 0 }: { root: st
           <div key={d.worktree.path} className="border-b border-stone-200 dark:border-stone-700">
             <div className="flex items-center gap-2 px-3 pb-1 pt-2">
               <span className="truncate font-mono text-body font-medium" title={d.worktree.path}>{d.worktree.branch ?? `detached at ${d.worktree.head?.slice(0, 7)}`}</span>
-              <span className="text-label text-stone-500">{d.files.length} {d.files.length === 1 ? "file" : "files"}</span>
+              <span className="shrink-0 whitespace-nowrap text-label text-stone-500">{d.files.length} {d.files.length === 1 ? "file" : "files"}</span>
               <div className="grow" />
               <button onClick={() => navigate({ kind: "worktree", root, path: d.worktree.path })} className="text-label text-teal-700 hover:underline">Open worktree</button>
             </div>
@@ -70,8 +70,8 @@ export function UncommittedPanel({ root, worktrees, refreshKey = 0 }: { root: st
                 <button key={f.path} onClick={() => setSel({ path: d.worktree.path, file: f })} className={`flex w-full items-center gap-2 px-3 py-1 text-left ${active ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
                   <span title={STATUS_LABEL[String(f.conflicted ? "U" : code)] ?? ""} className={`w-3 shrink-0 cursor-help text-center font-mono text-label ${f.conflicted ? "text-red-700" : "text-stone-500"}`}>{code}</span>
                   <span className="min-w-0 grow truncate font-mono text-body" title={f.path}>{f.path}</span>
-                  {f.staged && f.unstaged && <span className="text-label text-stone-400">partly staged</span>}
-                  {f.staged && !f.unstaged && !f.untracked && <span className="text-label text-stone-400">staged</span>}
+                  {f.staged && f.unstaged && <span className="shrink-0 whitespace-nowrap text-label text-stone-400">partly staged</span>}
+                  {f.staged && !f.unstaged && !f.untracked && <span className="shrink-0 whitespace-nowrap text-label text-stone-400">staged</span>}
                 </button>
               );
             })}

@@ -181,3 +181,16 @@ test("⌘N opens New branch and Escape closes it", async ({ page }) => {
   await page.keyboard.press("Escape");
   await expect(page.getByRole("dialog")).toBeHidden();
 });
+
+test("counts and labels stay on one line next to long names", async ({ page }) => {
+  const long = "feat/" + "a-really-long-branch-name-".repeat(4);
+  const files = Array.from({ length: 62 }, (_, i) => ({ path: `src/very/deep/folder/structure/file-${i}.ts`, orig_path: null, staged: i % 3 ? null : "M", unstaged: i % 3 ? "M" : "M", untracked: false, conflicted: false }));
+  const o = overview({ branches: [row("main", { worktree: wt(ROOT, "main") }), row(long, { worktree: wt(`${ROOT}-long`, long), status: dirty(62) })] });
+  await open(page, { ...typical(), overview_load: o, detail_load: { ...typical().detail_load, worktree: wt(`${ROOT}-long`, long), files } });
+  for (const text of ["62 files", "partly staged"]) {
+    const el = page.getByText(text, { exact: true }).first();
+    await expect(el).toBeVisible();
+    const box = await el.boundingBox();
+    expect(box!.height, `${text} wrapped`).toBeLessThan(22);
+  }
+});
