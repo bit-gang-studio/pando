@@ -19,6 +19,13 @@ body {
   color: #1a1a18;
 }
 
+/* Monospace looks larger than sans at the same size. Match its letter height
+   to the body font so code and text read as the same size. */
+.font-mono,
+.font-mono * {
+  font-size-adjust: 0.47;
+}
+
 /* Like a native app: nothing selects by default. Text worth copying opts in
    with the `selectable` class. Inputs and textareas always allow it. */
 body {
