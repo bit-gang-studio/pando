@@ -35,7 +35,7 @@ fn fires_for_tracked_changes_not_ignored_ones() {
 
     let repo = Repo::discover(&root).unwrap();
     let (tx, rx) = mpsc::channel();
-    let _w = watch::watch(&repo, &[root.clone()], move || {
+    let _w = watch::watch(&repo, std::slice::from_ref(&root), move || {
         let _ = tx.send(());
     })
     .unwrap();
