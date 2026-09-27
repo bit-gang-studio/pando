@@ -3,7 +3,7 @@
 ## Two nouns
 
 - **Branch**: a git branch. Checked out in the main worktree, in a worktree, or nowhere.
-- **Worktree**: a git worktree plus what is attached to it: branch, base, status, PR, ports, processes, overlaps.
+- **Worktree**: a folder on disk with one branch checked out. Pando shows its status, commits ahead of the base, and lets you stage, commit, sync and merge.
 
 ## Layers
 
