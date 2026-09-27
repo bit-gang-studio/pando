@@ -96,6 +96,9 @@ export const api = {
 
   overview: (root: string) => invoke<Overview>("overview_load", { root }),
   fetchAll: (root: string) => invoke<void>("fetch_all", { root }),
+  branchPush: (root: string, name: string) => invoke<void>("branch_push", { root, name }),
+  branchPull: (worktree: string) => invoke<void>("branch_pull", { worktree }),
+  branchDelete: (root: string, name: string, remote: boolean) => invoke<void>("branch_delete", { root, name, remote }),
   worktreePathPreview: (root: string, branch: string) => invoke<string>("worktree_path_preview", { root, branch }),
   worktreeAdd: (root: string, req: CreateWorktree) => invoke<Created>("worktree_add", { root, req }),
   worktreeRemove: (root: string, path: string, force: boolean) => invoke<void>("worktree_remove", { root, path, force }),

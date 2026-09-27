@@ -71,6 +71,32 @@ async fn fetch_all(root: PathBuf) -> R<()> {
     blocking(move || branch::fetch_all(&repo(&root)?).map_err(err)).await
 }
 
+/// `git push -u origin <branch>`.
+#[tauri::command]
+async fn branch_push(root: PathBuf, name: String) -> R<()> {
+    blocking(move || branch::push(&repo(&root)?, &name, "origin", false).map_err(err)).await
+}
+
+/// `git pull --rebase` in a worktree.
+#[tauri::command]
+async fn branch_pull(worktree: PathBuf) -> R<()> {
+    blocking(move || branch::pull(&worktree, true).map_err(err)).await
+}
+
+/// `git branch -D`, after a backup ref. Optionally also deletes it on origin.
+#[tauri::command]
+async fn branch_delete(root: PathBuf, name: String, remote: bool) -> R<()> {
+    blocking(move || {
+        let r = repo(&root)?;
+        branch::delete(&r, &name, true).map_err(err)?;
+        if remote {
+            branch::delete_remote(&r, "origin", &name).map_err(err)?;
+        }
+        Ok(())
+    })
+    .await
+}
+
 #[tauri::command]
 async fn worktree_path_preview(root: PathBuf, branch: String) -> R<String> {
     blocking(move || {
@@ -227,6 +253,9 @@ pub fn run() {
             user_config_save,
             overview_load,
             fetch_all,
+            branch_push,
+            branch_pull,
+            branch_delete,
             worktree_path_preview,
             worktree_add,
             worktree_remove,

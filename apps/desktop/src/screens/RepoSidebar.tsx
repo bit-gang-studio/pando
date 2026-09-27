@@ -46,6 +46,31 @@ export function RepoSidebar({ root, data, current = null, onRefresh: refresh, on
     await run("remove", () => api.worktreeRemove(root, row.worktree.path, n > 0));
   }
 
+  async function deleteBranch(r: BranchRow) {
+    const b = r.branch;
+    const unpushed = !b.upstream || (b.ahead ?? 0) > 0;
+    const msg = unpushed
+      ? `${b.name} has commits that aren't on origin. Delete it anyway? A backup ref is kept.`
+      : `Delete ${b.name}? A backup ref is kept.`;
+    if (!(await ask(msg, { title: "Delete branch", kind: "warning" }))) return;
+    const alsoRemote = !!b.upstream && (await ask(`Also delete ${b.upstream}?`, { title: "Delete remote branch", kind: "warning" }));
+    await run("delete", () => api.branchDelete(root, b.name, alsoRemote));
+  }
+  const branchMenu = (e: React.MouseEvent, r: BranchRow) => {
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: "Add worktree", onClick: () => setCreating({ branch: r.branch.name }) },
+      { label: r.branch.upstream ? "Push" : "Push to origin", onClick: () => run("push", () => api.branchPush(root, r.branch.name)) },
+      { label: "Delete branch", onClick: () => deleteBranch(r), danger: true },
+    ] });
+  };
+  const remoteMenu = (e: React.MouseEvent, r: RemoteBranch) => {
+    e.preventDefault();
+    setMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: "Add worktree", onClick: () => setCreating({ branch: r.short }) },
+    ] });
+  };
+
   const openWin = (path: string) => openInNewWindow({ kind: "worktree", root, path }).catch((err) => onError(String(err)));
   const openRow = (e: React.MouseEvent, path: string) => (wantsNewWindow(e) ? openWin(path) : onOpenWorktree(path));
   const rowMenu = (e: React.MouseEvent, row: WtRow) => {
@@ -54,6 +79,11 @@ export function RepoSidebar({ root, data, current = null, onRefresh: refresh, on
       { label: "Open", onClick: () => onOpenWorktree(row.worktree.path) },
       { label: "Open in new window", onClick: () => openWin(row.worktree.path) },
     ];
+    const b = row.branch?.branch;
+    if (b) {
+      if (b.upstream) items.push({ label: "Pull", onClick: () => run("pull", () => api.branchPull(row.worktree.path)) });
+      items.push({ label: b.upstream ? "Push" : "Push to origin", onClick: () => run("push", () => api.branchPush(root, b.name)) });
+    }
     if (!row.isMain && row.branch) items.push({ label: "Merge", onClick: () => setMerging(row.branch!) });
     if (!row.isMain) items.push({ label: "Remove worktree", onClick: () => removeWorktree(row), danger: true });
     setMenu({ x: e.clientX, y: e.clientY, items });
@@ -121,7 +151,7 @@ export function RepoSidebar({ root, data, current = null, onRefresh: refresh, on
 
       {head("BRANCHES", data ? `${without.length} without a worktree` : "")}
       {without.map((r) => (
-        <div key={r.branch.name} title={r.branch.last_commit?.summary} className="group flex items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+        <div key={r.branch.name} onContextMenu={(e) => branchMenu(e, r)} title={r.branch.last_commit?.summary} className="group flex items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
           <div className="min-w-0 grow">
             <div className="truncate font-mono text-xs">{r.branch.name}</div>
             <div className="truncate text-[11px] text-stone-500">{r.ahead_of_base ? `${r.ahead_of_base} ahead` : "0 ahead"}{r.branch.last_commit ? ` · ${ago(r.branch.last_commit.time)}` : ""}</div>
@@ -141,7 +171,7 @@ export function RepoSidebar({ root, data, current = null, onRefresh: refresh, on
             <input value={remoteQuery} onChange={(e) => setRemoteQuery(e.target.value)} placeholder="Search" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-[11px] dark:border-stone-600 dark:bg-stone-700" />
           </div>
           {remoteShown.map((r: RemoteBranch) => (
-            <div key={r.name} title={r.last_commit?.summary} className="group flex items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+            <div key={r.name} onContextMenu={(e) => remoteMenu(e, r)} title={r.last_commit?.summary} className="group flex items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
               <div className="min-w-0 grow">
                 <div className="truncate font-mono text-xs text-stone-600 dark:text-stone-300">{r.name}</div>
                 <div className="truncate text-[11px] text-stone-500">{r.last_commit ? `${r.last_commit.author} · ${ago(r.last_commit.time)}` : ""}</div>
