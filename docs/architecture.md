@@ -32,12 +32,11 @@ Core is the only place that touches git. Its API is plain serde request and resp
 ## Core model
 
 ```
-Repo       { root, common_git_dir, default_branch, forge, config }
-Branch     { name, upstream, ahead, behind, tip, checked_out_in, pr }
-Worktree  { path, branch, base, kind: Main | Linked, locked }
-Status     { staged, unstaged, untracked, ahead, behind, conflicts }
-Overlap    { a, b, files: [{ path, hunks }] }
-Operation  { kind: Rebase | Merge | CherryPick, applied, total, conflicted, resolved }
+Repo       { root, common_git_dir, default_branch, bare }
+Branch     { name, tip, upstream, ahead, behind, checked_out_in, last_commit }
+Worktree   { path, kind: Main | Linked, head, branch, detached, locked, prunable }
+Summary    { staged, unstaged, untracked, conflicts }
+Operation  { kind: Rebase | Merge | CherryPick | Revert, applied, total, conflicted, resolved }
 Overview   { repo, base, branches: [BranchRow { branch, worktree?, status?, ahead_of_base, stale }], detached, remote_only }
 LogEntry   { id, parents, author, time, summary, refs, is_head }
 ```
@@ -49,11 +48,10 @@ New worktrees go next to the repo as `<repo>-<branch-slug>`. The New branch dial
 ## Safety
 
 - Backup ref under `refs/pando/backup/<branch>` before every mutation.
-- Every action is logged so Recent actions can undo it.
-- Merge always runs a preflight first: clean tree, ahead/behind, `merge-tree` conflict prediction, base worktree state.
-- Merge and Sync leave a conflicted rebase paused for the conflict screen; they never auto-abort.
+- Merge runs a preflight first: clean tree, ahead/behind, `merge-tree` conflict prediction, base worktree state. If it still hits conflicts, it undoes itself and points you to Sync with base.
+- Sync with base, cherry-pick and revert pause on conflicts for the conflict screen. They never auto-abort.
 
 ## Targets
 
-- Board for a 100k-file repo in under 1 s.
+- Repo page for a 100k-file repo in under 1 s.
 - Status update in under 200 ms.

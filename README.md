@@ -1,8 +1,8 @@
 # Pando
 
-The worktree-native Git client. Open source, cross-platform.
+A simple, honest Git GUI where worktrees are first class. Open source, cross-platform.
 
-**Status:** pre-alpha. Nothing to install yet.
+**Status:** pre-alpha. Unsigned builds on [Releases](https://github.com/bit-gang-studio/pando/releases). CLI: `brew install bit-gang-studio/tap/pando`.
 
 ## Develop
 
