@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 
 import { fromHash, type Route } from "./lib/routes";
 import { openInNewWindow, setWindowTitle } from "./lib/windows";
+import { installZoom } from "./lib/zoom";
 import { RepoScreen } from "./screens/RepoScreen";
 import { Repos } from "./screens/Repos";
 import { Header } from "./ui/Header";
@@ -9,6 +10,8 @@ import { Header } from "./ui/Header";
 export default function App() {
   const [route, setRoute] = useState<Route>(() => fromHash(window.location.hash));
   const [fatal, setFatal] = useState<string | null>(null);
+
+  useEffect(() => installZoom(), []);
 
   useEffect(() => {
     const onNewWindowKey = (e: KeyboardEvent) => {
