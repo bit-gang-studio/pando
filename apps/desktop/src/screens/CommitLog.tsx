@@ -97,14 +97,17 @@ function RefChip({ name }: { name: string }) {
 function GraphCell({ row, width, head }: { row: GraphRow; width: number; head: boolean }) {
   const x = (lane: number) => lane * LANE_W + LANE_W / 2 + 2;
   const mid = ROW_H / 2;
+  // Lines overrun the row by a pixel each way so rows never show a seam when zoomed.
+  const T = -1;
+  const B = ROW_H + 1;
   return (
-    <svg width={width} height={ROW_H} className="shrink-0" aria-hidden="true">
-      {row.through.map((l) => <line key={`t${l}`} x1={x(l)} y1={0} x2={x(l)} y2={ROW_H} stroke={colorFor(l)} strokeWidth={2} />)}
-      {row.into.map((l) => <path key={`i${l}`} d={`M ${x(l)} 0 C ${x(l)} ${mid} ${x(row.lane)} ${mid} ${x(row.lane)} ${mid}`} fill="none" stroke={colorFor(l)} strokeWidth={2} />)}
-      <line x1={x(row.lane)} y1={0} x2={x(row.lane)} y2={mid} stroke={colorFor(row.lane)} strokeWidth={2} />
+    <svg width={width} height={ROW_H} className="shrink-0" style={{ overflow: "visible" }} aria-hidden="true">
+      {row.through.map((l) => <line key={`t${l}`} x1={x(l)} y1={T} x2={x(l)} y2={B} stroke={colorFor(l)} strokeWidth={2} />)}
+      {row.into.map((l) => <path key={`i${l}`} d={`M ${x(l)} ${T} C ${x(l)} ${mid} ${x(row.lane)} ${mid} ${x(row.lane)} ${mid}`} fill="none" stroke={colorFor(l)} strokeWidth={2} />)}
+      {row.top && <line x1={x(row.lane)} y1={T} x2={x(row.lane)} y2={mid} stroke={colorFor(row.lane)} strokeWidth={2} />}
       {row.down.map((d, k) => d.from === d.to
-        ? <line key={`d${k}`} x1={x(d.to)} y1={mid} x2={x(d.to)} y2={ROW_H} stroke={colorFor(d.to)} strokeWidth={2} />
-        : <path key={`d${k}`} d={`M ${x(d.from)} ${mid} C ${x(d.from)} ${ROW_H} ${x(d.to)} ${mid} ${x(d.to)} ${ROW_H}`} fill="none" stroke={colorFor(d.to)} strokeWidth={2} />)}
+        ? <line key={`d${k}`} x1={x(d.to)} y1={mid} x2={x(d.to)} y2={B} stroke={colorFor(d.to)} strokeWidth={2} />
+        : <path key={`d${k}`} d={`M ${x(d.from)} ${mid} C ${x(d.from)} ${ROW_H} ${x(d.to)} ${mid} ${x(d.to)} ${B}`} fill="none" stroke={colorFor(d.to)} strokeWidth={2} />)}
       <circle cx={x(row.lane)} cy={mid} r={head ? 5 : 4} fill={head ? "#FFFFFF" : colorFor(row.lane)} stroke={colorFor(row.lane)} strokeWidth={2} />
     </svg>
   );

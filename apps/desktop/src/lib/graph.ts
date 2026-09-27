@@ -11,6 +11,8 @@ export type GraphRow = {
   down: Link[];
   /// Lanes from the row above that end at this commit (merges into it).
   into: number[];
+  /// A line comes into this commit from the row above.
+  top: boolean;
   lanes: number;
 };
 
@@ -49,7 +51,7 @@ export function layoutGraph(entries: LogEntry[]): GraphRow[] {
       down.push({ from: lane, to: j });
     }
     while (active.length && active[active.length - 1] === null) active.pop();
-    rows.push({ lane, through, down, into, lanes: Math.max(active.length, lane + 1, ...through.map((t) => t + 1), ...down.map((d) => d.to + 1)) });
+    rows.push({ lane, through, down, into, top: waiting.length > 0, lanes: Math.max(active.length, lane + 1, ...through.map((t) => t + 1), ...down.map((d) => d.to + 1)) });
   }
   return rows;
 }
