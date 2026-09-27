@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ask } from "@tauri-apps/plugin-dialog";
 import { ago, api, type Detail as DetailData, type FileDiff, type FileStatus, type Hunk } from "../lib/api";
 import { Chip } from "../ui/Chip";
 import { DiffView } from "./DiffView";
 import { ConflictView } from "./ConflictView";
 import { SplitHandle, useSplit } from "../ui/Split";
 import { MergeDialog } from "../dialogs/MergeDialog";
+import { confirm } from "../ui/Confirm";
 
 const STATUS_LABEL: Record<string, string> = { M: "Modified", A: "Added", D: "Deleted", R: "Renamed", C: "Copied", T: "Type changed", U: "Conflict", "?": "Untracked (new, not tracked by git yet)" };
 type Props = { root: string; path: string; onBack: () => void; onChanged: () => void };
@@ -101,7 +101,10 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
   }
 
   async function discard(f: FileStatus) {
-    if (!(await ask(f.untracked ? `Delete untracked file ${f.path}?` : `Discard unstaged changes in ${f.path}? This cannot be undone.`, { title: "Discard changes", kind: "warning" }))) return;
+    const r = await confirm(f.untracked
+      ? { title: "Delete file", body: <>Delete the new file <span className="font-mono">{f.path}</span>? This can't be undone.</>, action: "Delete file", danger: true }
+      : { title: "Discard changes", body: <>Throw away the unstaged changes in <span className="font-mono">{f.path}</span>? This can't be undone.</>, action: "Discard changes", danger: true });
+    if (!r.ok) return;
     await run("discard", () => api.discardPaths(wt, f.untracked ? [] : [f.path], f.untracked ? [f.path] : []));
   }
 
@@ -162,7 +165,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
           </span>
           <span className="text-stone-600 dark:text-stone-300">{d.operation.conflicted.length > 0 ? `${d.operation.conflicted.length} ${d.operation.conflicted.length === 1 ? "file has" : "files have"} conflicts. Resolve each, then continue.` : "All conflicts resolved."}</span>
           <div className="grow" />
-          <button onClick={() => run("abort", async () => { if (await ask("Abort and put the branch back exactly as it was?", { title: "Abort", kind: "warning" })) await api.opAbort(wt); })} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-red-700 dark:border-stone-600 dark:bg-stone-700">Abort</button>
+          <button onClick={() => run("abort", async () => { if ((await confirm({ title: "Abort", body: "Stop and put the branch back exactly as it was before?", action: "Abort", danger: true })).ok) await api.opAbort(wt); })} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-red-700 dark:border-stone-600 dark:bg-stone-700">Abort</button>
           <button onClick={() => run("continue", () => api.opContinue(wt))} disabled={!!busy || d.operation.conflicted.length > 0} className="h-7 rounded-md bg-teal-700 px-3 font-medium text-white disabled:opacity-50">{busy === "continue" ? "Continuing…" : d.operation.conflicted.length > 0 ? `Continue (${d.operation.conflicted.length} unresolved)` : "Continue"}</button>
         </div>
       )}

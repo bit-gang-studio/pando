@@ -1,11 +1,11 @@
 import { useEffect, useState } from "react";
-import { ask } from "@tauri-apps/plugin-dialog";
 import { ago, api, changed, type BranchRow, type DetachedRow, type Overview as OverviewData, type RemoteBranch, type Summary, type Worktree } from "../lib/api";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { NewWindowIcon } from "../ui/icons";
 import { MergeDialog } from "../dialogs/MergeDialog";
 import { NewBranchDialog } from "../dialogs/NewBranchDialog";
+import { confirm } from "../ui/Confirm";
 
 type Props = { root: string; data: OverviewData | null; current?: string | null; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; onError: (msg: string) => void };
 
@@ -39,22 +39,22 @@ export function RepoSidebar({ root, data, current = null, onOpenRepo, onRefresh:
 
   async function removeWorktree(row: WtRow) {
     const n = changed(row.status);
-    const msg = n > 0
-      ? `${row.label} has ${n} uncommitted ${n === 1 ? "change" : "changes"}. Remove the worktree anyway? The branch is kept.`
-      : `Remove the worktree for ${row.label}? The branch is kept.`;
-    if (!(await ask(msg, { title: "Remove worktree", kind: "warning" }))) return;
+    const body = n > 0
+      ? <><span className="font-mono">{row.label}</span> has {n} uncommitted {n === 1 ? "change" : "changes"}. They'll be lost. The branch is kept.</>
+      : <>Remove the folder for <span className="font-mono">{row.label}</span>? The branch is kept.</>;
+    if (!(await confirm({ title: "Remove worktree", body, action: "Remove worktree", danger: true })).ok) return;
     await run("remove", () => api.worktreeRemove(root, row.worktree.path, n > 0));
   }
 
   async function deleteBranch(r: BranchRow) {
     const b = r.branch;
     const unpushed = !b.upstream || (b.ahead ?? 0) > 0;
-    const msg = unpushed
-      ? `${b.name} has commits that aren't on origin. Delete it anyway? A backup ref is kept.`
-      : `Delete ${b.name}? A backup ref is kept.`;
-    if (!(await ask(msg, { title: "Delete branch", kind: "warning" }))) return;
-    const alsoRemote = !!b.upstream && (await ask(`Also delete ${b.upstream}?`, { title: "Delete remote branch", kind: "warning" }));
-    await run("delete", () => api.branchDelete(root, b.name, alsoRemote));
+    const body = unpushed
+      ? <><span className="font-mono">{b.name}</span> has commits that aren't on origin. Pando keeps a backup so it can be recovered.</>
+      : <>Delete <span className="font-mono">{b.name}</span>? Pando keeps a backup so it can be recovered.</>;
+    const answer = await confirm({ title: "Delete branch", body, action: "Delete branch", danger: true, checkbox: b.upstream ? { label: `Also delete ${b.upstream}` } : undefined });
+    if (!answer.ok) return;
+    await run("delete", () => api.branchDelete(root, b.name, answer.checked));
   }
   const branchMenu = (e: React.MouseEvent, r: BranchRow) => {
     e.preventDefault();

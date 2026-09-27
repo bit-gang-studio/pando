@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
-import { ask, open } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { api, changed, repoName, type Overview, type UserConfig } from "../lib/api";
 import { navigate } from "../lib/routes";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { NewWindowIcon } from "../ui/icons";
+import { confirm } from "../ui/Confirm";
 
 type Props = { onError: (m: string) => void };
 
@@ -52,7 +53,8 @@ export function Repos({ onError }: Props) {
   }
 
   async function removeRepo(root: string) {
-    if (!(await ask(`Remove ${repoName(root)} from Pando? Nothing on disk changes.`, { title: "Remove repository" }))) return;
+    const r = await confirm({ title: "Remove repository", body: `Remove ${repoName(root)} from Pando? Nothing on disk changes.`, action: "Remove from Pando" });
+    if (!r.ok) return;
     setCfg(await api.reposRemove(root));
   }
 

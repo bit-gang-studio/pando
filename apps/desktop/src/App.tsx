@@ -6,6 +6,7 @@ import { installZoom } from "./lib/zoom";
 import { RepoScreen } from "./screens/RepoScreen";
 import { Repos } from "./screens/Repos";
 import { Header } from "./ui/Header";
+import { ConfirmHost } from "./ui/Confirm";
 
 export default function App() {
   const [route, setRoute] = useState<Route>(() => fromHash(window.location.hash));
@@ -32,6 +33,7 @@ export default function App() {
   return (
     <div className="flex h-screen flex-col text-[13px]">
       <Header route={route} />
+      <ConfirmHost />
       {fatal && (
         <div className="flex items-center gap-3 bg-red-100 px-4 py-2 text-xs text-red-900 dark:bg-red-900/40 dark:text-red-100">
           <span className="font-medium">Error:</span><span className="selectable truncate">{fatal}</span>
