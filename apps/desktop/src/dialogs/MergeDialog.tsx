@@ -27,7 +27,6 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
     try { return (localStorage.getItem(LAST_KEY) as Strategy) || "squash"; } catch { return "squash"; }
   });
   const [message, setMessage] = useState("");
-  const [pushBase, setPushBase] = useState(true);
   const [deleteBranch, setDeleteBranch] = useState(true);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState<MergeResult | null>(null);
@@ -35,7 +34,6 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
   useEffect(() => {
     api.mergePreflight(root, path, branch).then((p) => {
       setPf(p);
-      setPushBase(p.has_upstream || p.base.includes("/"));
       setMessage((m) => m || p.last_summary || headSummary || "");
     }).catch((e) => setError(String(e)));
   }, [root, path, branch, headSummary]);
@@ -60,7 +58,7 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
     try {
       const r = await api.mergeRun(root, path, {
         branch, base: pf.base, strategy, message: strategy === "rebase" ? null : message.trim(),
-        push_base: pushBase, delete_branch: deleteBranch,
+        push_base: false, delete_branch: deleteBranch,
       });
       setResult(r);
       if (r.landed) onMerged();
@@ -115,7 +113,6 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
               )}
 
               <div className="flex flex-col gap-2">
-                <label className="flex items-center gap-2"><input type="checkbox" checked={pushBase} onChange={(e) => setPushBase(e.target.checked)} /> Push {pf.base_local} to origin</label>
                 <label className="flex items-center gap-2"><input type="checkbox" checked={deleteBranch} onChange={(e) => setDeleteBranch(e.target.checked)} /> Delete <span className="font-mono text-body">{branch}</span> and its worktree</label>
               </div>
             </>

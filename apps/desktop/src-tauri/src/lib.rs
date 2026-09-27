@@ -71,6 +71,12 @@ async fn fetch_all(root: PathBuf) -> R<()> {
     blocking(move || branch::fetch_all(&repo(&root)?).map_err(err)).await
 }
 
+/// `git branch <name> [<base>]`, without a worktree.
+#[tauri::command]
+async fn branch_create(root: PathBuf, name: String, base: Option<String>) -> R<()> {
+    blocking(move || branch::create(&repo(&root)?, &name, base.as_deref()).map_err(err)).await
+}
+
 /// `git push -u origin <branch>`.
 #[tauri::command]
 async fn branch_push(root: PathBuf, name: String) -> R<()> {
@@ -253,6 +259,7 @@ pub fn run() {
             user_config_save,
             overview_load,
             fetch_all,
+            branch_create,
             branch_push,
             branch_pull,
             branch_delete,

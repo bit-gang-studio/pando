@@ -23,6 +23,7 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
   const [path, setPath] = useState("");
   const [pathEdited, setPathEdited] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [withWorktree, setWithWorktree] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Created | null>(null);
   const branchRef = useRef<HTMLInputElement>(null);
@@ -56,6 +57,12 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
     setBusy(true);
     setError(null);
     try {
+      if (mode === "new" && !withWorktree) {
+        await api.branchCreate(repo, branch.trim(), base || null);
+        onCreated();
+        onClose();
+        return;
+      }
       const r = await api.worktreeAdd(repo, {
         branch: branch.trim(),
         base: mode === "new" && base ? base : null,
@@ -118,21 +125,27 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
           </label>
           )}
 
+          {mode === "new" && (
+            <label className="flex items-center gap-2"><input type="checkbox" checked={withWorktree} onChange={(e) => setWithWorktree(e.target.checked)} /> Add a worktree for it</label>
+          )}
+
+          {(mode === "existing" || withWorktree) && (
           <label className="flex flex-col gap-1.5">
             <span className="text-body font-medium text-stone-600 dark:text-stone-300">Location</span>
             <input value={path} onChange={(e) => { setPath(e.target.value); setPathEdited(true); }} spellCheck={false} className="h-8 rounded-md border border-stone-300 bg-stone-50 px-2 font-mono text-body text-stone-600 dark:border-stone-600 dark:bg-stone-700 dark:text-stone-300" />
           </label>
+          )}
 
           {error && <div className="rounded-md border border-red-300 bg-red-50 p-2 text-body text-red-800 dark:bg-red-900/30 dark:text-red-200">{error}</div>}
         </div>
 
         <div className="flex items-center gap-2 border-t border-stone-300 bg-stone-50 px-5 py-3.5 dark:border-stone-700 dark:bg-stone-900/40">
-          <span className="text-stone-500">Runs git worktree add. Nothing is pushed.</span>
+          <span className="text-stone-500">{mode === "new" && !withWorktree ? "Runs git branch." : "Runs git worktree add."}</span>
           <div className="grow" />
           <button onClick={onClose} className="h-8 rounded-lg border border-stone-300 bg-white px-3 dark:border-stone-600 dark:bg-stone-700">{result ? "Close" : "Cancel"}<span className="ml-2 text-body text-stone-400">Esc</span></button>
           {!result && (
             <button onClick={submit} disabled={!canSubmit} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800 disabled:opacity-50">
-              {busy ? "Adding…" : mode === "new" ? "Create branch and worktree" : "Add worktree"}<span className="ml-2 text-body opacity-70">⌘↵</span>
+              {busy ? "Working…" : mode === "new" ? (withWorktree ? "Create branch and worktree" : "Create branch") : "Add worktree"}<span className="ml-2 text-body opacity-70">⌘↵</span>
             </button>
           )}
         </div>

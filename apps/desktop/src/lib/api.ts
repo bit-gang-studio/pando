@@ -96,6 +96,7 @@ export const api = {
 
   overview: (root: string) => invoke<Overview>("overview_load", { root }),
   fetchAll: (root: string) => invoke<void>("fetch_all", { root }),
+  branchCreate: (root: string, name: string, base: string | null) => invoke<void>("branch_create", { root, name, base }),
   branchPush: (root: string, name: string) => invoke<void>("branch_push", { root, name }),
   branchPull: (worktree: string) => invoke<void>("branch_pull", { worktree }),
   branchDelete: (root: string, name: string, remote: boolean) => invoke<void>("branch_delete", { root, name, remote }),

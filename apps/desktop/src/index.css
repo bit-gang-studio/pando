@@ -12,6 +12,7 @@
 }
 
 body {
+  accent-color: #0f766e; /* teal-700: checkboxes and radios match the app */
   margin: 0;
   font-size: var(--text-body);
   font-family: system-ui, sans-serif;
