@@ -194,3 +194,14 @@ test("counts and labels stay on one line next to long names", async ({ page }) =
     expect(box!.height, `${text} wrapped`).toBeLessThan(22);
   }
 });
+
+test("each commit shows its short hash, with the full one on hover", async ({ page }) => {
+  const l = log(3);
+  await open(page, { ...typical(), log_list: l });
+  const hash = page.getByText(l.entries[1].id.slice(0, 7), { exact: true });
+  await expect(hash).toBeVisible();
+  await expect(hash).toHaveAttribute("title", l.entries[1].id);
+  // It sits on the commit's own row, one line high.
+  const box = await hash.boundingBox();
+  expect(box!.height).toBeLessThan(22);
+});

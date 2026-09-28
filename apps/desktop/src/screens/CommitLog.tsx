@@ -93,6 +93,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
               {e.refs.map((r) => <RefChip key={r} name={r} dot={branchDots[r]} />)}
             </span>
             <span className="min-w-0 grow truncate">{e.summary}</span>
+            <span className="selectable shrink-0 font-mono text-label text-stone-400" title={e.id}>{e.id.slice(0, 7)}</span>
             <span className="shrink-0 text-body text-stone-500">{e.author}</span>
             <span className="w-14 shrink-0 text-right text-body text-stone-500">{ago(e.time)}</span>
             {onCommitMenu && <MoreButton onOpen={(ev) => onCommitMenu(ev, e)} label={`Actions for ${e.id.slice(0, 7)}`} />}

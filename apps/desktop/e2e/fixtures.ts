@@ -9,7 +9,8 @@ export const NOW = Math.floor(Date.now() / 1000);
 const repo = { root: ROOT, common_git_dir: `${ROOT}/.git`, default_branch: "main", bare: false };
 
 let n = 0;
-export const sha = () => (++n).toString(16).padStart(40, "a");
+/// Fake ids that differ in their first 7 characters, like real ones.
+export const sha = () => (((++n) * 2654435761) >>> 0).toString(16).padStart(8, "0") + n.toString(16).padStart(32, "0");
 
 export const clean: Summary = { staged: 0, unstaged: 0, untracked: 0, conflicts: 0 };
 export const dirty = (unstaged = 2): Summary => ({ ...clean, unstaged });
