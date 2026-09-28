@@ -350,9 +350,10 @@ pub fn parse_repos(json: &str) -> Vec<RemoteRepo> {
 /// The folder name a clone gets: "owner/repo", any https or ssh URL, with
 /// or without ".git" or a trailing slash, all give "repo".
 pub fn clone_folder_name(source: &str) -> Option<String> {
-    let s = source.trim().trim_end_matches('/');
+    let s = source.trim().trim_end_matches(['/', '\\']);
     let s = s.strip_suffix(".git").unwrap_or(s);
-    let last = s.rsplit(['/', ':']).next()?;
+    // Also split on \\ so a pasted Windows folder path works.
+    let last = s.rsplit(['/', ':', '\\']).next()?;
     let ok = !last.is_empty() && last != "." && last != ".." && !last.contains(['\\', '\0']);
     ok.then(|| last.to_string())
 }
@@ -434,6 +435,8 @@ mod clone_tests {
             ("", None),
             ("/", None),
             ("owner/..", None),
+            (r"C:\repos\shop.git", Some("shop")),
+            (r"C:\repos\shop\", Some("shop")),
         ] {
             assert_eq!(clone_folder_name(src).as_deref(), want, "{src:?}");
         }

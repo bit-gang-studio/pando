@@ -17,7 +17,7 @@ export function loadRemoteRepos(): Promise<RemoteRepo[] | null> {
 /// "owner/repo" or a git URL: something we can clone as typed.
 const looksClonable = (s: string) => /^[\w.-]+\/[\w.-]+$/.test(s) || /^(https?:\/\/|git@|ssh:\/\/|file:\/\/)/.test(s);
 /// Mirrors core's clone_folder_name for the preview.
-const folderName = (s: string) => s.trim().replace(/\/+$/, "").replace(/\.git$/, "").split(/[/:]/).pop() ?? "";
+const folderName = (s: string) => s.trim().replace(/[/\\]+$/, "").replace(/\.git$/, "").split(/[/:\\]/).pop() ?? "";
 
 /// Where most of your repos already live: the usual first choice.
 function commonParent(repos: string[]): string | null {
