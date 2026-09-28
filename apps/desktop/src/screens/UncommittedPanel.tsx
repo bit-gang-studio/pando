@@ -55,7 +55,7 @@ export function UncommittedPanel({ root, worktrees, refreshKey = 0 }: { root: st
   if (!details) return error ? <ErrorState title="Couldn't load uncommitted changes" error={error} onRetry={() => setAttempt((n) => n + 1)} /> : <Loading />;
 
   return (
-    <div ref={split.box} className="flex min-h-0 grow">
+    <div ref={split.box} className="flex min-h-0 min-w-0 grow">
       <aside tabIndex={0} onKeyDown={onListKey} style={{ width: split.size }} className="flex shrink-0 flex-col overflow-y-auto bg-white focus:outline-none dark:bg-stone-800">
         {error && <div className="selectable p-2 text-body text-red-700">{errorParts(error).message}</div>}
         {details.map((d) => (

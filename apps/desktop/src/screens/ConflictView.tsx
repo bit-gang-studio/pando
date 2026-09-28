@@ -35,7 +35,7 @@ export function ConflictView({ worktree, path, op, onChanged }: Props) {
   const hasMarkers = /^<<<<<<< /m.test(result);
 
   return (
-    <div className="flex min-h-0 grow flex-col">
+    <div className="flex min-h-0 min-w-0 grow flex-col">
       <div className="flex h-10 shrink-0 items-center gap-3 border-b border-stone-300 px-4 dark:border-stone-700">
         <span className="font-mono text-body font-medium">{path}</span>
         <span className="text-label text-stone-500">{stillConflicted ? "conflicted" : "resolved"}</span>

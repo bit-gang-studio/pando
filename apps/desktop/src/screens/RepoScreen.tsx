@@ -35,8 +35,11 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [brCommit, setBrCommit] = useState<string | null>(null); // selected commit while on a branch
   const [brFirst, setBrFirst] = useState<string | null>(null); // newest commit on that branch
-  useEffect(() => { setWtCommit(null); }, [worktree]);
-  useEffect(() => { setBrCommit(null); setBrFirst(null); }, [branch]);
+  // "All changes" vs base: shown first on a branch, offered on a worktree.
+  const [brCompare, setBrCompare] = useState(true);
+  const [wtCompare, setWtCompare] = useState(false);
+  useEffect(() => { setWtCommit(null); setWtCompare(false); }, [worktree]);
+  useEffect(() => { setBrCommit(null); setBrFirst(null); setBrCompare(true); }, [branch]);
   const onBranchLoaded = useCallback((id: string | null) => setBrFirst(id), []);
   // Arriving at the plain repo page (not a commit, not a worktree) starts fresh:
   // Uncommitted changes if there are any, else the newest commit.
@@ -146,6 +149,11 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
     ] });
   };
 
+  // What "All changes" compares against: the repo's base, unless this is the base.
+  const base = data?.base ?? null;
+  const head = branch ?? (worktree ? wtBranch : null);
+  const canCompare = !!base && !!head && head !== base && head !== `origin/${base}`;
+  const aheadOf = head ? data?.branches.find((b) => b.branch.name === head)?.ahead_of_base ?? null : null;
   const showUncommitted = !worktree && !branch && (uncommittedChoice ?? (!commit && dirtyPaths.length > 0));
   const selected = worktree ? wtCommit : commit ?? firstId;
 
@@ -172,11 +180,14 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
           scope={worktree ? wtBranch : branch ?? ""}
           dirtyWorktrees={branch ? 0 : worktree ? (wtDirty > 0 ? 1 : 0) : dirty}
           uncommittedLabel={worktree ? `${wtDirty} in this worktree` : undefined}
-          selected={branch ? brCommit ?? brFirst : worktree ? selected : showUncommitted ? null : selected}
+          selected={branch ? (canCompare && brCompare ? null : brCommit ?? brFirst) : worktree ? (wtCompare ? null : selected) : showUncommitted ? null : selected}
           uncommittedSelected={!worktree && showUncommitted}
-          onSelect={(id) => { setShowUncommitted(false); if (branch) setBrCommit(id); else if (worktree) setWtCommit(id); else navigate(id ? { kind: "commit", root, id } : { kind: "repo", root }); }}
+          compare={canCompare ? { base: base!, ahead: aheadOf } : undefined}
+          compareSelected={canCompare && (branch ? brCompare : wtCompare)}
+          onCompare={() => (branch ? setBrCompare(true) : (setWtCompare(true), setWtCommit(null)))}
+          onSelect={(id) => { setShowUncommitted(false); setBrCompare(false); setWtCompare(false); if (branch) setBrCommit(id); else if (worktree) setWtCommit(id); else navigate(id ? { kind: "commit", root, id } : { kind: "repo", root }); }}
           onLoaded={branch ? onBranchLoaded : worktree ? undefined : onLoaded}
-          onUncommitted={() => (worktree ? setWtCommit(null) : setShowUncommitted(true))}
+          onUncommitted={() => (worktree ? (setWtCommit(null), setWtCompare(false)) : setShowUncommitted(true))}
           onCommitMenu={commitMenu}
           branchDots={branchDots}
           prByBranch={prByBranch}
@@ -186,11 +197,14 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
         />
       </div>
       <SplitHandle axis="y" onMouseDown={split.start} handleRef={split.handle} />
-      <div className="flex min-h-0 grow">
+      <div className="flex min-h-0 min-w-0 grow">
         {branch ? (
-          brCommit ?? brFirst ? <CommitDetail root={root} id={(brCommit ?? brFirst)!} /> : <Loading />
+          canCompare && brCompare ? <CommitDetail key={`cmp-${head}`} root={root} compare={{ base: base!, head: head! }} />
+          : brCommit ?? brFirst ? <CommitDetail root={root} id={(brCommit ?? brFirst)!} /> : <Loading />
         ) : worktree ? (
-          wtCommit ? (
+          canCompare && wtCompare ? (
+            <CommitDetail key={`cmp-${head}`} root={root} compare={{ base: base!, head: head! }} onBack={() => setWtCompare(false)} />
+          ) : wtCommit ? (
             <CommitDetail root={root} id={wtCommit} onBack={() => setWtCommit(null)} />
           ) : (
             <Detail root={root} path={worktree} onBack={() => navigate({ kind: "repo", root })} onChanged={refresh} />

@@ -79,23 +79,12 @@ pub fn commit_diff(repo: &Repo, id: &str) -> Result<CommitDiff> {
             "--first-parent",
             "--format=",
             "--numstat",
+            "-z",
             "--no-renames",
             id,
         ],
     )?;
-    let files = stat
-        .lines()
-        .filter_map(|l| {
-            let mut p = l.split('\t');
-            let added = p.next()?.parse().unwrap_or(0);
-            let deleted = p.next()?.parse().unwrap_or(0);
-            Some(FileChange {
-                path: p.next()?.to_string(),
-                added,
-                deleted,
-            })
-        })
-        .collect();
+    let files = numstat(&stat);
     let message = git(&repo.common_git_dir, ["log", "-1", "--format=%B", id])?
         .trim_end()
         .to_string();
@@ -119,6 +108,83 @@ pub fn commit_file_diff(repo: &Repo, id: &str, path: &str) -> Result<crate::diff
             "--no-ext-diff",
             "-U3",
             id,
+            "--",
+            path,
+        ],
+    )?;
+    let mut d = crate::diff::parse_unified(&out);
+    d.path = path.to_string();
+    Ok(d)
+}
+
+/// `--numstat -z` output: "added\tdeleted\tpath\0" per file. `-z` keeps
+/// paths raw; without it git quotes any non-ASCII name.
+fn numstat(out: &str) -> Vec<FileChange> {
+    out.split('\0')
+        .filter_map(|rec| {
+            let mut p = rec.trim_start_matches('\n').splitn(3, '\t');
+            let added = p.next()?.parse().unwrap_or(0);
+            let deleted = p.next()?.parse().unwrap_or(0);
+            let path = p.next()?.to_string();
+            (!path.is_empty()).then_some(FileChange {
+                path,
+                added,
+                deleted,
+            })
+        })
+        .collect()
+}
+
+/// Everything a branch changes compared with its base, as one diff: what a
+/// pull request shows. Diffs from where the branch left the base (`base...head`),
+/// so changes made on the base since don't show up.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Compare {
+    pub base: String,
+    pub head: String,
+    /// Commits on head that aren't on base.
+    pub ahead: u32,
+    /// Commits on base that aren't on head.
+    pub behind: u32,
+    pub files: Vec<FileChange>,
+}
+
+pub fn compare(repo: &Repo, base: &str, head: &str) -> Result<Compare> {
+    let range = format!("{base}...{head}");
+    let counts = git(
+        &repo.common_git_dir,
+        ["rev-list", "--left-right", "--count", &range],
+    )?;
+    let mut c = counts.split_whitespace().map(|n| n.parse().unwrap_or(0));
+    let (behind, ahead) = (c.next().unwrap_or(0), c.next().unwrap_or(0));
+    let stat = git(
+        &repo.common_git_dir,
+        ["diff", "--numstat", "-z", "--no-renames", &range],
+    )?;
+    Ok(Compare {
+        base: base.to_string(),
+        head: head.to_string(),
+        ahead,
+        behind,
+        files: numstat(&stat),
+    })
+}
+
+/// One file's diff within `compare`.
+pub fn compare_file_diff(
+    repo: &Repo,
+    base: &str,
+    head: &str,
+    path: &str,
+) -> Result<crate::diff::FileDiff> {
+    let out = git(
+        &repo.common_git_dir,
+        [
+            "diff",
+            "--no-color",
+            "--no-ext-diff",
+            "-U3",
+            &format!("{base}...{head}"),
             "--",
             path,
         ],

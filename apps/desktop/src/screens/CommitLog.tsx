@@ -27,6 +27,10 @@ type Props = {
   detachedDots?: Record<string, string[]>;
   /// Commits some worktree has checked out (drawn as a hollow dot).
   heads?: Set<string>;
+  /// A top row with everything the branch changes vs its base.
+  compare?: { base: string; ahead: number | null };
+  compareSelected?: boolean;
+  onCompare?: () => void;
   /// Right-click on a commit.
   onCommitMenu?: (e: React.MouseEvent, entry: LogEntry) => void;
   /// Called with the newest commit id after each load.
@@ -36,7 +40,7 @@ type Props = {
 
 const PAGE = 200;
 
-export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, prByBranch = {}, detachedDots = {}, heads, onCommitMenu, onLoaded, refreshKey }: Props) {
+export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, prByBranch = {}, detachedDots = {}, heads, compare, compareSelected, onCompare, onCommitMenu, onLoaded, refreshKey }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -69,10 +73,17 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
       </div>
       <div tabIndex={0} onKeyDown={onListKey} className="min-h-0 grow overflow-auto bg-white focus:outline-none dark:bg-stone-800">
         {dirtyWorktrees > 0 && (
-          <button onClick={onUncommitted} className={`flex w-full items-center gap-3 px-4 py-1.5 text-left ${uncommittedSelected || (selected === null && uncommittedLabel) ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
+          <button onClick={onUncommitted} className={`flex w-full items-center gap-3 px-4 py-1.5 text-left ${uncommittedSelected || (selected === null && uncommittedLabel && !compareSelected) ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
             <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-stone-400" />
             <span className="font-medium">Uncommitted changes</span>
             <span className="text-body text-stone-500">{uncommittedLabel ?? `in ${dirtyWorktrees} ${dirtyWorktrees === 1 ? "worktree" : "worktrees"}`}</span>
+          </button>
+        )}
+        {compare && (
+          <button onClick={onCompare} className={`flex w-full items-center gap-3 px-4 py-1.5 text-left ${compareSelected ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
+            <span className="h-2.5 w-2.5 shrink-0 rounded-sm border-2 border-stone-400" />
+            <span className="font-medium">All changes</span>
+            <span className="text-body text-stone-500">vs <span className="font-mono">{compare.base}</span>{compare.ahead != null ? ` · ${compare.ahead} ${compare.ahead === 1 ? "commit" : "commits"}` : ""}</span>
           </button>
         )}
         {!loaded && error && <ErrorState title="Couldn't load commits" error={error} onRetry={() => load(0)} />}

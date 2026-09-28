@@ -69,7 +69,7 @@ export function DiffView({ diff, loading, mode, onMode, onHunk, readOnly }: Prop
 
   const hunkAction = readOnly ? undefined : onHunk;
   return (
-    <div className="flex min-h-0 grow flex-col">
+    <div className="flex min-h-0 min-w-0 grow flex-col">
       <div className="flex h-10 shrink-0 items-center gap-3 border-b border-stone-300 px-4 dark:border-stone-700">
         <span className="min-w-0 truncate font-mono text-body font-medium" title={diff.path}>{diff.path}</span>
         <span className="shrink-0 whitespace-nowrap font-mono text-label text-stone-500">+{diff.added} −{diff.deleted} · {diff.hunks.length} {diff.hunks.length === 1 ? "hunk" : "hunks"}</span>

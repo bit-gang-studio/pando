@@ -70,6 +70,7 @@ export type LogEntry = { id: string; parents: string[]; author: string; time: nu
 export type Log = { entries: LogEntry[]; truncated: boolean };
 export type FileChange = { path: string; added: number; deleted: number };
 export type CommitDiff = { commit: CommitInfo; message: string; files: FileChange[] };
+export type Compare = { base: string; head: string; ahead: number; behind: number; files: FileChange[] };
 
 export type Preflight = {
   branch: string; base: string; base_local: string; clean: boolean; ahead: number; behind: number;
@@ -139,6 +140,8 @@ export const api = {
 
   log: (root: string, branch: string | null, skip: number, limit: number) => invoke<Log>("log_list", { root, branch, skip, limit }),
   commitDiff: (root: string, id: string) => invoke<CommitDiff>("commit_diff", { root, id }),
+  compare: (root: string, base: string, head: string) => invoke<Compare>("compare", { root, base, head }),
+  compareFileDiff: (root: string, base: string, head: string, path: string) => invoke<FileDiff>("compare_file_diff", { root, base, head, path }),
   commitFileDiff: (root: string, id: string, path: string) => invoke<FileDiff>("commit_file_diff", { root, id, path }),
   detail: (root: string, path: string) => invoke<Detail>("detail_load", { root, path }),
   diffFile: (worktree: string, path: string, staged: boolean, untracked: boolean) => invoke<FileDiff>("diff_file", { worktree, path, staged, untracked }),

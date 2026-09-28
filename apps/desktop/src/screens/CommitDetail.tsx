@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
-import { ago, api, type CommitDiff, type FileDiff } from "../lib/api";
+import { ago, api, type CommitDiff, type Compare, type FileDiff } from "../lib/api";
 import { DiffView } from "./DiffView";
 import { SplitHandle, useSplit } from "../ui/Split";
 import { ErrorState, Loading } from "../ui/State";
 import { useArrowKeys } from "../lib/useArrowKeys";
 
-export function CommitDetail({ root, id, onBack }: { root: string; id: string; onBack?: () => void }) {
-  const [c, setC] = useState<CommitDiff | null>(null);
+/// One commit's changes, or with `compare` a whole branch against its base
+/// (what a pull request shows as "Files changed").
+export function CommitDetail({ root, id = "", compare, onBack }: { root: string; id?: string; compare?: { base: string; head: string }; onBack?: () => void }) {
+  const [c, setC] = useState<CommitDiff | Compare | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(false);
@@ -18,17 +20,18 @@ export function CommitDetail({ root, id, onBack }: { root: string; id: string; o
   useEffect(() => {
     let live = true;
     setC(null); setSel(null); setDiff(null); setError(null);
-    api.commitDiff(root, id).then((x) => { if (live) { setC(x); setSel(x.files[0]?.path ?? null); } }).catch((e) => { if (live) setError(String(e)); });
+    const load = compare ? api.compare(root, compare.base, compare.head) : api.commitDiff(root, id);
+    load.then((x) => { if (live) { setC(x); setSel(x.files[0]?.path ?? null); } }).catch((e) => { if (live) setError(String(e)); });
     return () => { live = false; };
-  }, [root, id, attempt]);
+  }, [root, id, compare?.base, compare?.head, attempt]);
 
   useEffect(() => {
     if (!sel) { setDiff(null); return; }
     let live = true;
     setLoading(true);
-    api.commitFileDiff(root, id, sel).then((d) => { if (live) setDiff(d); }).catch((e) => { if (live) setError(String(e)); }).finally(() => { if (live) setLoading(false); });
+    (compare ? api.compareFileDiff(root, compare.base, compare.head, sel) : api.commitFileDiff(root, id, sel)).then((d) => { if (live) setDiff(d); }).catch((e) => { if (live) setError(String(e)); }).finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [root, id, sel]);
+  }, [root, id, compare?.base, compare?.head, sel]);
 
   useEffect(() => {
     if (!onBack) return;
@@ -39,20 +42,30 @@ export function CommitDetail({ root, id, onBack }: { root: string; id: string; o
 
   const files = c?.files ?? [];
   const onListKey = useArrowKeys(files, files.findIndex((f) => f.path === sel), (f) => setSel(f.path));
-  if (error) return <ErrorState title="Couldn't load this commit" error={error} onRetry={() => setAttempt((n) => n + 1)} />;
+  if (error) return <ErrorState title={compare ? "Couldn't compare these branches" : "Couldn't load this commit"} error={error} onRetry={() => setAttempt((n) => n + 1)} />;
   if (!c) return <Loading />;
 
   return (
-    <div className="flex min-h-0 grow flex-col">
+    <div className="flex min-h-0 min-w-0 grow flex-col">
       <div className="flex h-9 shrink-0 items-center gap-3 border-b border-stone-200 bg-white px-4 text-body dark:border-stone-700 dark:bg-stone-800">
         {onBack && <button onClick={onBack} className="text-stone-500 hover:text-stone-800 dark:hover:text-stone-200">‹ Back to list</button>}
-        <span className="selectable font-mono" title={c.commit.id}>{c.commit.id.slice(0, 7)}</span>
-        <span className="min-w-0 truncate text-stone-500">{c.commit.author} · {ago(c.commit.time)}</span>
+        {"commit" in c ? (
+          <>
+            <span className="selectable font-mono" title={c.commit.id}>{c.commit.id.slice(0, 7)}</span>
+            <span className="min-w-0 truncate text-stone-500">{c.commit.author} · {ago(c.commit.time)}</span>
+          </>
+        ) : (
+          <>
+            <span className="min-w-0 truncate">All changes on <span className="font-mono">{c.head}</span> vs <span className="font-mono">{c.base}</span></span>
+            <span className="shrink-0 whitespace-nowrap text-stone-500">{c.ahead} {c.ahead === 1 ? "commit" : "commits"}{c.behind ? ` · ${c.base} is ${c.behind} ahead` : ""}</span>
+          </>
+        )}
         <span className="shrink-0 whitespace-nowrap text-stone-500">{c.files.length} {c.files.length === 1 ? "file" : "files"}</span>
       </div>
-      <div ref={split.box} className="flex min-h-0 grow">
+      <div ref={split.box} className="flex min-h-0 min-w-0 grow">
         <aside tabIndex={0} onKeyDown={onListKey} style={{ width: split.size }} className="flex shrink-0 flex-col overflow-y-auto bg-white focus:outline-none dark:bg-stone-800">
-          <pre className="whitespace-pre-wrap border-b border-stone-200 p-3 font-sans text-body dark:border-stone-700">{c.message}</pre>
+          {"message" in c && <pre className="whitespace-pre-wrap border-b border-stone-200 p-3 font-sans text-body dark:border-stone-700">{c.message}</pre>}
+          {c.files.length === 0 && <div className="p-3 text-stone-500">No changes.</div>}
           {c.files.map((f) => (
             <button key={f.path} data-selected={sel === f.path} tabIndex={-1} onClick={() => setSel(f.path)} className={`flex items-center gap-2 px-3 py-1.5 text-left ${sel === f.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
               <span className="grow truncate font-mono text-body" title={f.path}>{f.path}</span>

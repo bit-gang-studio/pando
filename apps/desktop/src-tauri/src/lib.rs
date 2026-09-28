@@ -303,6 +303,17 @@ async fn commit_diff(root: PathBuf, id: String) -> R<CommitDiff> {
 }
 
 #[tauri::command]
+async fn compare(root: PathBuf, base: String, head: String) -> R<history::Compare> {
+    blocking(move || history::compare(&repo(&root)?, &base, &head).map_err(err)).await
+}
+
+#[tauri::command]
+async fn compare_file_diff(root: PathBuf, base: String, head: String, path: String) -> R<FileDiff> {
+    blocking(move || history::compare_file_diff(&repo(&root)?, &base, &head, &path).map_err(err))
+        .await
+}
+
+#[tauri::command]
 async fn commit_file_diff(root: PathBuf, id: String, path: String) -> R<FileDiff> {
     blocking(move || history::commit_file_diff(&repo(&root)?, &id, &path).map_err(err)).await
 }
@@ -499,6 +510,8 @@ pub fn run() {
             log_list,
             commit_diff,
             commit_file_diff,
+            compare,
+            compare_file_diff,
             detail_load,
             diff_file,
             stage_paths,
