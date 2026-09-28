@@ -11,11 +11,15 @@ import { ErrorState, Loading } from "../ui/State";
 import { toastError, withToast } from "../ui/Toast";
 import { errorParts } from "../lib/errors";
 import { reveal, REVEAL_LABEL } from "../lib/reveal";
+import { CloneDialog, loadRemoteRepos } from "../dialogs/CloneDialog";
 
 export function Repos() {
   const [cfg, setCfg] = useState<UserConfig | null>(null);
   const [summaries, setSummaries] = useState<Record<string, Overview>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [cloning, setCloning] = useState(false);
+  // Start fetching your GitHub repos now, so Clone repository opens fast.
+  useEffect(() => { const t = setTimeout(() => { loadRemoteRepos(); }, 1500); return () => clearTimeout(t); }, []);
   const [listError, setListError] = useState<string | null>(null);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
 
@@ -77,17 +81,22 @@ export function Repos() {
   return (
     <main className="flex min-w-0 grow flex-col gap-3 overflow-auto p-6">
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
+      {cloning && <CloneDialog repos={cfg.repos} onClose={() => setCloning(false)} onCloned={(c) => { setCfg(c); refresh(); }} />}
       <div className="flex items-baseline gap-3">
         <h1 className="text-title font-semibold">Repositories</h1>
         <span className="text-body text-stone-500">{cfg ? cfg.repos.length : "…"}</span>
         <div className="grow" />
+        <button onClick={() => setCloning(true)} className="h-7 rounded-md border border-stone-300 bg-white px-3 text-body hover:bg-stone-100 dark:border-stone-600 dark:bg-stone-700">Clone repository</button>
         <button onClick={addRepo} className="h-7 rounded-md bg-teal-700 px-3 text-body font-medium text-white hover:bg-teal-800">Add repository</button>
       </div>
       {cfg && cfg.repos.length === 0 && (
         <div className="rounded-lg border border-dashed border-stone-400 p-10 text-center">
           <div className="mb-1 font-medium">No repositories yet</div>
           <div className="mb-4 text-stone-500">Add one to see its branches and worktrees.</div>
-          <button onClick={addRepo} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800">Add repository</button>
+          <div className="flex justify-center gap-2">
+            <button onClick={() => setCloning(true)} className="h-8 rounded-lg border border-stone-300 bg-white px-3 dark:border-stone-600 dark:bg-stone-700">Clone repository</button>
+            <button onClick={addRepo} className="h-8 rounded-lg bg-teal-700 px-3.5 font-medium text-white hover:bg-teal-800">Add repository</button>
+          </div>
         </div>
       )}
       {cfg && cfg.repos.length > 0 && (

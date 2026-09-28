@@ -270,3 +270,181 @@ mod tests {
         assert_eq!(prs[1].checks, Checks::None);
     }
 }
+
+/// A repo you can clone: yours, or one of your organisations'.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RemoteRepo {
+    /// "owner/name"
+    pub name: String,
+    pub description: String,
+    pub private: bool,
+    pub url: String,
+    pub updated_at: String,
+}
+
+/// Your repos and your organisations' repos, newest activity first.
+/// `None` without gh or when signed out; paste a URL instead.
+pub fn repos() -> Result<Option<Vec<RemoteRepo>>> {
+    let Some(bin) = gh_path() else {
+        return Ok(None);
+    };
+    let here = std::env::temp_dir();
+    let (code, orgs, _) = gh(&bin, &here, ["api", "user/orgs", "--jq", ".[].login"])?;
+    if code != 0 {
+        return Ok(None);
+    }
+    let owners: Vec<String> = std::iter::once(String::new())
+        .chain(
+            orgs.lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty())
+                .map(str::to_string),
+        )
+        .collect();
+    let mut all = Vec::new();
+    for owner in owners {
+        let mut args = vec!["repo", "list"];
+        if !owner.is_empty() {
+            args.push(&owner);
+        }
+        args.extend([
+            "--limit",
+            "1000",
+            "--json",
+            "nameWithOwner,description,isPrivate,updatedAt,url",
+        ]);
+        let (code, out, _) = gh(&bin, &here, &args)?;
+        if code == 0 {
+            all.extend(parse_repos(&out));
+        }
+    }
+    all.sort_by(|a, b| b.updated_at.cmp(&a.updated_at));
+    all.dedup_by(|a, b| a.name == b.name);
+    Ok(Some(all))
+}
+
+pub fn parse_repos(json: &str) -> Vec<RemoteRepo> {
+    let Ok(serde_json::Value::Array(items)) = serde_json::from_str::<serde_json::Value>(json)
+    else {
+        return vec![];
+    };
+    let s = |v: &serde_json::Value, k: &str| {
+        v.get(k).and_then(|x| x.as_str()).unwrap_or("").to_string()
+    };
+    items
+        .iter()
+        .filter(|v| v.get("nameWithOwner").and_then(|x| x.as_str()).is_some())
+        .map(|v| RemoteRepo {
+            name: s(v, "nameWithOwner"),
+            description: s(v, "description"),
+            private: v
+                .get("isPrivate")
+                .and_then(|x| x.as_bool())
+                .unwrap_or(false),
+            url: s(v, "url"),
+            updated_at: s(v, "updatedAt"),
+        })
+        .collect()
+}
+
+/// The folder name a clone gets: "owner/repo", any https or ssh URL, with
+/// or without ".git" or a trailing slash, all give "repo".
+pub fn clone_folder_name(source: &str) -> Option<String> {
+    let s = source.trim().trim_end_matches('/');
+    let s = s.strip_suffix(".git").unwrap_or(s);
+    let last = s.rsplit(['/', ':']).next()?;
+    let ok = !last.is_empty() && last != "." && last != ".." && !last.contains(['\\', '\0']);
+    ok.then(|| last.to_string())
+}
+
+/// Clone `source` ("owner/repo" or any git URL) into `<parent>/<repo>`.
+/// Uses gh for "owner/repo" so your GitHub login is used; git otherwise.
+/// Refuses if the folder already exists. Returns the new repo's folder.
+pub fn clone(source: &str, parent: &std::path::Path) -> Result<std::path::PathBuf> {
+    let name = clone_folder_name(source)
+        .ok_or_else(|| crate::Error::Msg(format!("Can't tell the repo name from \"{source}\"")))?;
+    let dest = parent.join(&name);
+    if dest.exists() {
+        return Err(crate::Error::Msg(format!(
+            "{} already exists. Pick another location.",
+            dest.display()
+        )));
+    }
+    if !parent.is_dir() {
+        return Err(crate::Error::Msg(format!(
+            "{} isn't a folder.",
+            parent.display()
+        )));
+    }
+    let dest_s = dest.to_string_lossy().into_owned();
+    let is_short =
+        !source.contains("://") && !source.contains('@') && source.matches('/').count() == 1;
+    let result = match (is_short, gh_path()) {
+        (true, Some(bin)) => {
+            let (code, _, err) = gh(
+                &bin,
+                parent,
+                ["repo", "clone", source.trim(), &dest_s, "--", "-q"],
+            )?;
+            if code == 0 {
+                Ok(())
+            } else {
+                Err(crate::Error::Git {
+                    cmd: format!("gh repo clone {source}"),
+                    stderr: err.trim().to_string(),
+                })
+            }
+        }
+        (true, None) => git(
+            parent,
+            [
+                "clone",
+                "-q",
+                &format!("https://github.com/{}.git", source.trim()),
+                &dest_s,
+            ],
+        )
+        .map(|_| ()),
+        _ => git(parent, ["clone", "-q", source.trim(), &dest_s]).map(|_| ()),
+    };
+    if result.is_err() && dest.exists() {
+        // A half-finished clone is useless; don't leave it behind.
+        let _ = std::fs::remove_dir_all(&dest);
+    }
+    result.map(|_| dest)
+}
+
+#[cfg(test)]
+mod clone_tests {
+    use super::*;
+
+    #[test]
+    fn folder_names_from_every_kind_of_source() {
+        for (src, want) in [
+            ("bit-gang-studio/pando", Some("pando")),
+            ("https://github.com/bit-gang-studio/pando", Some("pando")),
+            (
+                "https://github.com/bit-gang-studio/pando.git",
+                Some("pando"),
+            ),
+            ("https://github.com/bit-gang-studio/pando/", Some("pando")),
+            ("git@github.com:bit-gang-studio/pando.git", Some("pando")),
+            ("ssh://git@host:22/team/my.repo.git", Some("my.repo")),
+            ("  owner/name  ", Some("name")),
+            ("", None),
+            ("/", None),
+            ("owner/..", None),
+        ] {
+            assert_eq!(clone_folder_name(src).as_deref(), want, "{src:?}");
+        }
+    }
+
+    #[test]
+    fn repo_list_parsing_skips_junk() {
+        assert!(parse_repos("nope").is_empty());
+        let r =
+            parse_repos(r#"[{"nameWithOwner":"a/b","isPrivate":true},{"description":"no name"}]"#);
+        assert_eq!(r.len(), 1);
+        assert!(r[0].private);
+    }
+}

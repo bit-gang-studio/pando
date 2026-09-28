@@ -83,6 +83,7 @@ export type MergePlan = {
 };
 export type Stash = { index: number; message: string; branch: string | null; time: number };
 export type Applied = "done" | "paused";
+export type RemoteRepo = { name: string; description: string; private: boolean; url: string; updated_at: string };
 export type Checks = "passing" | "failing" | "pending" | "none";
 export type PullRequest = { number: number; title: string; author: string; draft: boolean; head: string; from_fork: boolean; url: string; checks: Checks; review: string; updated_at: string };
 /// `ok` with the list, or why there's none (then the app shows nothing).
@@ -124,6 +125,8 @@ export const api = {
   tagCreate: (root: string, name: string, target: string, message: string | null, push: boolean) => invoke<void>("tag_create", { root, name, target, message, push }),
   tagDelete: (root: string, name: string) => invoke<void>("tag_delete", { root, name }),
   tagPush: (root: string, name: string) => invoke<void>("tag_push", { root, name }),
+  remoteRepos: () => invoke<RemoteRepo[] | null>("remote_repos"),
+  repoClone: (source: string, parent: string) => invoke<UserConfig>("repo_clone", { source, parent }),
   prsList: (root: string) => invoke<PullRequests>("prs_list", { root }),
   prAddWorktree: (root: string, pr: PullRequest) => invoke<Created>("pr_add_worktree", { root, pr }),
   backupsList: (root: string) => invoke<Backup[]>("backups_list", { root }),

@@ -371,9 +371,14 @@ fn a_conflicting_merge_with_the_base_not_checked_out_changes_nothing() {
 fn a_conflicting_merge_of_a_branch_without_a_worktree_cleans_up() {
     let (r, wt) = conflicting_branches();
     git(&r.root, &["worktree", "remove", wt.to_str().unwrap()]);
+    // A name no other test in this file merges at the same time, so the
+    // stray-folder check below only sees this test's temp folders.
+    git(&r.root, &["branch", "-m", "feat/x", "feat/only-this-test"]);
     let main = r.tip("main");
     for strategy in [Strategy::Squash, Strategy::Rebase, Strategy::MergeCommit] {
-        let res = merge::run(&r.core(), None, &plan(strategy)).unwrap();
+        let mut p = plan(strategy);
+        p.branch = "feat/only-this-test".into();
+        let res = merge::run(&r.core(), None, &p).unwrap();
         assert!(!res.merged, "{strategy:?}");
         assert_eq!(r.tip("main"), main, "{strategy:?}");
         assert_eq!(
@@ -389,7 +394,7 @@ fn a_conflicting_merge_of_a_branch_without_a_worktree_cleans_up() {
             e.file_name()
                 .to_string_lossy()
                 .starts_with(&format!("pando-merge-{}-", std::process::id()))
-                && e.file_name().to_string_lossy().ends_with("-feat-x")
+                && e.file_name().to_string_lossy().ends_with("-feat-only-this-test")
         })
         .collect();
     assert!(stray.is_empty(), "temp folders left: {stray:?}");

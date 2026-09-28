@@ -207,6 +207,24 @@ async fn tag_push(root: PathBuf, name: String) -> R<()> {
     blocking(move || tag::push(&repo(&root)?, &name).map_err(err)).await
 }
 
+// ---- clone -------------------------------------------------------------------------
+
+/// Your GitHub repos and your organisations' (via gh). None without gh.
+#[tauri::command]
+async fn remote_repos() -> R<Option<Vec<github::RemoteRepo>>> {
+    blocking(|| github::repos().map_err(err)).await
+}
+
+/// Clone into `<parent>/<name>` and add it to the list.
+#[tauri::command]
+async fn repo_clone(source: String, parent: PathBuf) -> R<UserConfig> {
+    blocking(move || {
+        let dest = github::clone(&source, &parent).map_err(err)?;
+        user_config::add_repo(&dest).map_err(err)
+    })
+    .await
+}
+
 // ---- pull requests -------------------------------------------------------------
 
 #[tauri::command]
@@ -494,6 +512,8 @@ pub fn run() {
             tag_create,
             tag_delete,
             tag_push,
+            remote_repos,
+            repo_clone,
             prs_list,
             pr_add_worktree,
             backups_list,
