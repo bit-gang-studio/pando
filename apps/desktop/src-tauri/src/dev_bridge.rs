@@ -86,6 +86,7 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
         "tag_push" => out(super::tag_push(arg(&a, "root")?, arg(&a, "name")?).await),
         "remote_repos" => Ok(Value::Null),
         "repo_clone" => out(super::repo_clone(arg(&a, "source")?, arg(&a, "parent")?).await),
+        "overlaps" => out(super::overlaps(arg(&a, "root")?).await),
         "prs_list" => Ok(serde_json::json!({"state":"no_gh"})),
         "pr_add_worktree" => out(super::pr_add_worktree(arg(&a, "root")?, arg(&a, "pr")?).await),
         "backups_list" => out(super::backups_list(arg(&a, "root")?).await),

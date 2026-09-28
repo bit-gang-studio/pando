@@ -18,6 +18,7 @@ pub mod index;
 pub mod log;
 pub mod merge;
 pub mod operation;
+pub mod overlap;
 pub mod overview;
 pub mod repo;
 pub mod stash;

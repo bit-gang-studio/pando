@@ -89,6 +89,7 @@ export type Checks = "passing" | "failing" | "pending" | "none";
 export type PullRequest = { number: number; title: string; author: string; draft: boolean; head: string; from_fork: boolean; url: string; checks: Checks; review: string; updated_at: string };
 /// `ok` with the list, or why there's none (then the app shows nothing).
 export type PullRequests = { state: "ok"; prs: PullRequest[] } | { state: "no_gh" } | { state: "signed_out" } | { state: "not_git_hub" };
+export type Overlap = { a: string; b: string; files: string[] };
 export type Removed = { path: string; branch: string | null; head: string | null; snapshot: string | null };
 export type BackupKind = "branch" | "discard" | "remove_worktree" | "restore" | "stash";
 export type Backup = { refname: string; kind: BackupKind; branch: string | null; id: string; time: number; files: string[]; branch_exists: boolean };
@@ -129,6 +130,7 @@ export const api = {
   tagPush: (root: string, name: string) => invoke<void>("tag_push", { root, name }),
   remoteRepos: () => invoke<RemoteRepo[] | null>("remote_repos"),
   repoClone: (source: string, parent: string) => invoke<UserConfig>("repo_clone", { source, parent }),
+  overlaps: (root: string) => invoke<Overlap[]>("overlaps", { root }),
   prsList: (root: string) => invoke<PullRequests>("prs_list", { root }),
   prAddWorktree: (root: string, pr: PullRequest) => invoke<Created>("pr_add_worktree", { root, pr }),
   backupsList: (root: string) => invoke<Backup[]>("backups_list", { root }),

@@ -36,6 +36,10 @@ c later.js "later" "Main moves on"
 g worktree add -q -b feat/dirty ../shop-feat-dirty
 ( cd ../shop-feat-dirty && echo "precious" > wip.txt && echo "edited" >> README.md )
 
+# feat/collide: also edits login.js, so it overlaps feat/login.
+g worktree add -q -b feat/collide ../shop-feat-collide
+( cd ../shop-feat-collide && c login.js "a different login" "Rewrite login" )
+
 g branch spike/old
 echo "stashed idea" >> README.md && g stash push -q -m "half done"
 

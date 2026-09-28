@@ -14,15 +14,16 @@ import { NewBranchDialog } from "../dialogs/NewBranchDialog";
 import { confirm } from "../ui/Confirm";
 import { toastError, withToast } from "../ui/Toast";
 import { dot, worktreeOptions } from "../lib/worktrees";
+import type { Overlap } from "../lib/api";
 
-type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; prs?: PullRequest[] | null; prByBranch?: Record<string, PullRequest> };
+type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; prs?: PullRequest[] | null; prByBranch?: Record<string, PullRequest>; overlaps?: Overlap[] };
 
 const small = "h-6 rounded border border-stone-300 bg-white px-1.5 text-label hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 const iconBtn = "inline-flex h-6 items-center rounded px-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100";
 
 type WtRow = { key: string; label: string; worktree: Worktree; status: Summary | null; branch: BranchRow | null; isMain: boolean; ahead: number | null; stale: boolean; time: number | null };
 
-export function RepoSidebar({ root, data, current = null, currentBranch = null, onOpenBranch, onOpenRepo, onRefresh: refresh, onOpenWorktree, prs = null, prByBranch = {} }: Props) {
+export function RepoSidebar({ root, data, current = null, currentBranch = null, onOpenBranch, onOpenRepo, onRefresh: refresh, onOpenWorktree, prs = null, prByBranch = {}, overlaps = [] }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ branch?: string; remote?: string } | null>(null);
   const [merging, setMerging] = useState<BranchRow | null>(null);
@@ -237,6 +238,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   ]);
 
   const rows: WtRow[] = [];
+  const labelFor = (path: string) => rows.find((w) => w.worktree.path === path)?.label ?? path.split(/[/\\]/).pop() ?? path;
   for (const d of data?.detached ?? []) if (d.is_main_worktree) rows.push(detachedRow(d));
   for (const b of data?.branches ?? []) if (b.worktree) rows.push({ key: b.branch.name, label: b.branch.name, worktree: b.worktree, status: b.status, branch: b, isMain: b.is_main_worktree, ahead: b.ahead_of_base, stale: b.stale, time: b.branch.last_commit?.time ?? null });
   for (const d of data?.detached ?? []) if (!d.is_main_worktree) rows.push(detachedRow(d));
@@ -288,7 +290,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
           <div key={r.key} onClick={(e) => openRow(e, r.worktree.path)} onContextMenu={(e) => rowMenu(e, r)} title={r.worktree.path} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${current === r.worktree.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
             <span title={dotTip} className={`h-2 w-2 shrink-0 rounded-full ${dotCls}`} />
             <div className="min-w-0 grow">
-              <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body font-medium">{r.label}</span>{prByBranch[r.label] && <PrBadge pr={prByBranch[r.label]} />}</div>
+              <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body font-medium">{r.label}</span>{prByBranch[r.label] && <PrBadge pr={prByBranch[r.label]} />}<OverlapMark path={r.worktree.path} overlaps={overlaps} labelFor={labelFor} /></div>
               <div className="truncate text-label text-stone-500">
                 {r.isMain ? "main worktree" : null}
                 {r.isMain && (n > 0 || r.ahead) ? " · " : ""}
@@ -419,4 +421,21 @@ function SyncCounts({ b }: { b?: import("../lib/api").Branch }) {
   if (!up && !down) return null;
   const tip = [up && `${up} to push`, down && `${down} to pull`].filter(Boolean).join(", ") + ` (${b.upstream})`;
   return <span title={tip}>{" · "}{up ? `↑${up}` : ""}{up && down ? " " : ""}{down ? `↓${down}` : ""}</span>;
+}
+
+/// ⚠ when another worktree changes the same files; hover lists them.
+function OverlapMark({ path, overlaps, labelFor }: { path: string; overlaps: Overlap[]; labelFor: (p: string) => string }) {
+  const mine = overlaps.filter((o) => o.a === path || o.b === path);
+  if (mine.length === 0) return null;
+  const lines = mine.map((o) => {
+    const other = labelFor(o.a === path ? o.b : o.a);
+    const shown = o.files.slice(0, 5).join(", ") + (o.files.length > 5 ? ` and ${o.files.length - 5} more` : "");
+    return `Also changed in ${other}: ${shown}`;
+  });
+  const count = new Set(mine.flatMap((o) => o.files)).size;
+  return (
+    <span title={lines.join("\n")} aria-label={`${count} ${count === 1 ? "file" : "files"} also changed in another worktree`} className="shrink-0 cursor-help text-label text-amber-700">
+      ⚠ {count}
+    </span>
+  );
 }

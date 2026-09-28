@@ -8,7 +8,7 @@ pub mod dev_bridge;
 
 use pando_core::{
     backup, branch, commit, conflict, detail, diff, github, history, index, log, merge, operation,
-    overview, stash, sync, tag, user_config, watch, worktree, Applied, Backup, CommitDiff,
+    overlap, overview, stash, sync, tag, user_config, watch, worktree, Applied, Backup, CommitDiff,
     ConflictFile, CreateWorktree, Created, Detail, FileDiff, Hunk, Log, MergePlan, MergeResult,
     Operation, Overview, Preflight, Repo, Side, Stash, SyncResult, UserConfig,
 };
@@ -244,6 +244,19 @@ async fn repo_clone(source: String, parent: PathBuf) -> R<UserConfig> {
     blocking(move || {
         let dest = github::clone(&source, &parent).map_err(err)?;
         user_config::add_repo(&dest).map_err(err)
+    })
+    .await
+}
+
+// ---- overlaps ------------------------------------------------------------------
+
+/// Worktrees changing the same files, against the repo's base.
+#[tauri::command]
+async fn overlaps(root: PathBuf) -> R<Vec<overlap::Overlap>> {
+    blocking(move || {
+        let r = repo(&root)?;
+        let base = merge::default_base(&r).map_err(err)?;
+        overlap::find(&r, &base).map_err(err)
     })
     .await
 }
@@ -547,6 +560,7 @@ pub fn run() {
             tag_push,
             remote_repos,
             repo_clone,
+            overlaps,
             prs_list,
             pr_add_worktree,
             backups_list,

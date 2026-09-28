@@ -17,6 +17,7 @@ import { errorParts } from "../lib/errors";
 import { useRepoRefresh, watchRepo } from "../lib/watch";
 import { dot, worktreeOptions } from "../lib/worktrees";
 import { usePullRequests } from "../lib/prs";
+import type { Overlap } from "../lib/api";
 
 type Props = { root: string; commit: string | null; worktree?: string | null; branch?: string | null };
 
@@ -56,6 +57,14 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
 
   useRepoRefresh(root, refresh);
   const { prs, byBranch: prByBranch, reload: reloadPrs } = usePullRequests(root);
+  // Overlaps: a moment after each full refresh, so a burst of changes checks once.
+  const [overlaps, setOverlaps] = useState<Overlap[]>([]);
+  const statusLoaded = !!data?.status_loaded;
+  useEffect(() => {
+    if (!statusLoaded) return;
+    const t = setTimeout(() => { api.overlaps(root).then((o) => setOverlaps(o ?? [])).catch(() => setOverlaps([])); }, 1500);
+    return () => clearTimeout(t);
+  }, [root, tick, statusLoaded]);
   // Fetch quietly on open and every 5 minutes while the window is in use, so
   // ahead/behind stays current. Failures (offline, needs a login) stay silent;
   // the Fetch button shows them.
@@ -164,7 +173,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
     <div ref={side.box} className="flex min-h-0 min-w-0 grow">
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
       <div style={{ width: side.size }} className="flex shrink-0 flex-col">
-        <RepoSidebar root={root} data={data} current={worktree} currentBranch={branch} onOpenBranch={(name) => navigate({ kind: "branch", root, name })} onOpenRepo={() => navigate({ kind: "repo", root })} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} prs={prs} prByBranch={prByBranch} />
+        <RepoSidebar root={root} data={data} current={worktree} currentBranch={branch} onOpenBranch={(name) => navigate({ kind: "branch", root, name })} onOpenRepo={() => navigate({ kind: "repo", root })} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} prs={prs} prByBranch={prByBranch} overlaps={overlaps} />
       </div>
       <SplitHandle axis="x" onMouseDown={side.start} handleRef={side.handle} />
     <div ref={split.box} className="flex min-h-0 min-w-0 grow flex-col">

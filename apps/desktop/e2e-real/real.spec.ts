@@ -183,3 +183,16 @@ test("New branch with Open in Terminal makes a real worktree and asks for that f
   expect(git(p, "branch --show-current")).toBe("feat/agent-task");
   await expect.poll(async () => JSON.stringify(await bridge("__opened"))).toContain(p);
 });
+
+test("two worktrees editing login.js both show ⚠, and it clears when one is removed", async ({ page }) => {
+  await repoPage(page);
+  const login = rowOf(page, "feat/login"), collide = rowOf(page, "feat/collide");
+  await expect(login.getByText(/⚠/)).toBeVisible({ timeout: 15_000 });
+  await expect(login.getByText(/⚠/)).toHaveAttribute("title", /Also changed in feat\/collide: .*login\.js/);
+  await expect(collide.getByText(/⚠/)).toHaveAttribute("title", /Also changed in feat\/login: .*login\.js/);
+  await expect(rowOf(page, "feat/behind").getByText(/⚠/)).toHaveCount(0);
+  await collide.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Remove worktree…" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Remove worktree" }).click();
+  await expect(login.getByText(/⚠/)).toHaveCount(0, { timeout: 15_000 });
+});
