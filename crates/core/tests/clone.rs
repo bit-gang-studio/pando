@@ -11,7 +11,8 @@ fn clones_into_parent_slash_name() {
     let url = r.origin.to_string_lossy().into_owned();
     let dest = github::clone(&url, &parent).unwrap();
     assert_eq!(dest, parent.join("origin"));
-    assert_eq!(read(&dest, "README.md"), "hello\n");
+    // Windows git may check out with CRLF; the content is what matters.
+    assert_eq!(read(&dest, "README.md").trim_end(), "hello");
 }
 
 #[test]
