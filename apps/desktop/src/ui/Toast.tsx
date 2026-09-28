@@ -2,7 +2,9 @@ import { useEffect, useState } from "react";
 import { errorParts } from "../lib/errors";
 import { Spinner } from "./State";
 
-type Item = { id: number; kind: "busy" | "ok" | "error"; text: string; detail?: string };
+/// An undo for a finished action: runs, then refreshes the screen.
+export type Undo = { run: () => Promise<unknown>; after?: () => unknown };
+type Item = { id: number; kind: "busy" | "ok" | "error"; text: string; detail?: string; undo?: Undo };
 let items: Item[] = [];
 let listener: ((i: Item[]) => void) | null = null;
 let next = 1;
@@ -11,7 +13,8 @@ const drop = (id: number) => { items = items.filter((i) => i.id !== id); emit();
 const put = (it: Item) => {
   items = items.some((i) => i.id === it.id) ? items.map((i) => (i.id === it.id ? it : i)) : [...items, it];
   emit();
-  if (it.kind === "ok") setTimeout(() => drop(it.id), 2500);
+  // Leave time to press Undo.
+  if (it.kind === "ok") setTimeout(() => drop(it.id), it.undo ? 8000 : 2500);
 };
 
 /// Show an error until dismissed. Same message twice shows once.
@@ -21,15 +24,27 @@ export function toastError(e: unknown) {
   put({ id: next++, kind: "error", text: message, detail: detail !== message ? detail : undefined });
 }
 
+/// "Done" with an optional Undo, for actions that report their own progress.
+export function toastDone(text: string, undo?: Undo) {
+  put({ id: next++, kind: "ok", text, undo });
+}
+
+async function runUndo(id: number, u: Undo) {
+  drop(id);
+  await withToast("Undoing…", "Undone", u.run);
+  await u.after?.();
+}
+
 /// Run an action with feedback: "Pushing…" while it runs, then "Pushed" or the error.
-export async function withToast<T>(doing: string, done: string, fn: () => Promise<T>): Promise<T | undefined> {
+/// `undo` turns the result into an Undo button on the "done" toast.
+export async function withToast<T>(doing: string, done: string, fn: () => Promise<T>, undo?: (result: T) => Undo | null): Promise<T | undefined> {
   const id = next++;
   // Only show "doing" if it takes a moment.
   const t = setTimeout(() => put({ id, kind: "busy", text: doing }), 250);
   try {
     const r = await fn();
     clearTimeout(t);
-    put({ id, kind: "ok", text: done });
+    put({ id, kind: "ok", text: done, undo: undo?.(r) ?? undefined });
     return r;
   } catch (e) {
     clearTimeout(t);
@@ -53,6 +68,7 @@ export function ToastHost() {
             {i.kind === "busy" ? <span className="mt-1"><Spinner /></span> : i.kind === "ok" ? <span className="text-teal-700">✓</span> : <span className="font-semibold">✕</span>}
             <span className="selectable min-w-0 grow break-words">{i.text}</span>
             {i.kind === "error" && i.detail && <button onClick={() => setOpen(open === i.id ? null : i.id)} className="shrink-0 text-label underline">{open === i.id ? "Hide" : "Details"}</button>}
+            {i.undo && <button onClick={() => runUndo(i.id, i.undo!)} className="shrink-0 font-medium text-teal-700 hover:underline">Undo</button>}
             {i.kind !== "busy" && <button onClick={() => drop(i.id)} aria-label="Dismiss" className="shrink-0 px-1 opacity-60 hover:opacity-100">×</button>}
           </div>
           {open === i.id && i.detail && <pre className="selectable max-h-48 overflow-auto whitespace-pre-wrap rounded bg-white/60 p-2 font-mono text-label dark:bg-black/30">{i.detail}</pre>}

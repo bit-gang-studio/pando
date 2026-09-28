@@ -24,8 +24,10 @@ Read `docs/architecture.md` first. The plan and status are the Crunchy board (pr
 
 ## Commands
 
-`just setup`, `just dev`, `just cli <args>`, `just test`, `just lint`, `just build`.
+`just setup`, `just dev`, `just cli <args>`, `just test`, `just test-real` (before releases), `just lint`, `just build`.
 
 ## Gotchas
 
 - Worktree listing uses `git worktree list --porcelain -z`, not gix. gix does not report lock or prunable state.
+- New desktop command: add it to `src-tauri/src/dev_bridge.rs` too, or `just test-real` can't call it.
+- Never open GUI apps on Chris's Mac to test. Use `just test`, `just test-real`, or ask.

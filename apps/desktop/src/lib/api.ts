@@ -37,6 +37,7 @@ export type BranchRow = {
   status: Summary | null;
   ahead_of_base: number | null;
   stale: boolean;
+  merged: boolean;
 };
 export type DetachedRow = { worktree: Worktree; is_main_worktree: boolean; status: Summary | null };
 export type Overview = { repo: Repo; base: string | null; branches: BranchRow[]; detached: DetachedRow[]; remote_only: RemoteBranch[]; status_loaded: boolean };
@@ -88,6 +89,7 @@ export type Checks = "passing" | "failing" | "pending" | "none";
 export type PullRequest = { number: number; title: string; author: string; draft: boolean; head: string; from_fork: boolean; url: string; checks: Checks; review: string; updated_at: string };
 /// `ok` with the list, or why there's none (then the app shows nothing).
 export type PullRequests = { state: "ok"; prs: PullRequest[] } | { state: "no_gh" } | { state: "signed_out" } | { state: "not_git_hub" };
+export type Removed = { path: string; branch: string | null; head: string | null; snapshot: string | null };
 export type BackupKind = "branch" | "discard" | "remove_worktree" | "restore" | "stash";
 export type Backup = { refname: string; kind: BackupKind; branch: string | null; id: string; time: number; files: string[]; branch_exists: boolean };
 
@@ -136,10 +138,14 @@ export const api = {
   stashList: (root: string) => invoke<Stash[]>("stash_list", { root }),
   stashSave: (worktree: string, message: string | null) => invoke<boolean>("stash_save", { worktree, message }),
   stashApply: (worktree: string, index: number, pop: boolean) => invoke<void>("stash_apply", { worktree, index, pop }),
-  stashDrop: (root: string, index: number) => invoke<void>("stash_drop", { root, index }),
+  stashDrop: (root: string, index: number) => invoke<string>("stash_drop", { root, index }),
+  stashRestore: (root: string, kept: string, message: string) => invoke<void>("stash_restore", { root, kept, message }),
   worktreePathPreview: (root: string, branch: string) => invoke<string>("worktree_path_preview", { root, branch }),
   worktreeAdd: (root: string, req: CreateWorktree) => invoke<Created>("worktree_add", { root, req }),
-  worktreeRemove: (root: string, path: string, force: boolean) => invoke<void>("worktree_remove", { root, path, force }),
+  worktreeRemove: (root: string, path: string, force: boolean) => invoke<Removed>("worktree_remove", { root, path, force }),
+  worktreeUndoRemove: (root: string, removed: Removed) => invoke<void>("worktree_undo_remove", { root, removed }),
+  terminalName: () => invoke<string | null>("terminal_name"),
+  openTerminal: (path: string) => invoke<void>("open_terminal", { path }),
 
   log: (root: string, branch: string | null, skip: number, limit: number) => invoke<Log>("log_list", { root, branch, skip, limit }),
   commitDiff: (root: string, id: string) => invoke<CommitDiff>("commit_diff", { root, id }),
@@ -152,7 +158,7 @@ export const api = {
   unstagePaths: (worktree: string, paths: string[]) => invoke<void>("unstage_paths", { worktree, paths }),
   stageAll: (worktree: string) => invoke<void>("stage_all", { worktree }),
   unstageAll: (worktree: string) => invoke<void>("unstage_all", { worktree }),
-  discardPaths: (worktree: string, paths: string[], untracked: string[]) => invoke<void>("discard_paths", { worktree, paths, untracked }),
+  discardPaths: (worktree: string, paths: string[], untracked: string[]) => invoke<string | null>("discard_paths", { worktree, paths, untracked }),
   applyHunk: (worktree: string, path: string, hunk: Hunk, reverse: boolean) => invoke<void>("apply_hunk", { worktree, path, hunk, reverse }),
   commitCreate: (worktree: string, message: string, amend: boolean) => invoke<string>("commit_create", { worktree, message, amend }),
   syncRebase: (root: string, worktree: string, branch: string, base: string) => invoke<SyncResult>("sync_rebase", { root, worktree, branch, base }),

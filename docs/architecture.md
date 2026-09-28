@@ -35,6 +35,12 @@ On macOS, Documents, Desktop, Downloads and iCloud are protected and the first r
 - Worktree page: same sidebar and graph (scoped to the branch), `detail::load` for staging, `diff::file` for diffs, `operation` and `conflict` for paused rebases.
 - Every screen has a hash route, so any screen opens in a new window.
 
+## Tests
+
+- `crates/*/tests`: real git in temp repos, written to break things.
+- `apps/desktop/e2e`: the frontend in Chromium with Tauri mocked.
+- `apps/desktop/e2e-real`: the frontend in Chromium, the real desktop commands through `examples/bridge.rs` (debug builds only), real git on a throwaway repo. Terminal, file watching and gh are stubbed.
+
 ## Core model
 
 ```

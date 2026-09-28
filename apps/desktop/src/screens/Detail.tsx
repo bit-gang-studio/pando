@@ -6,6 +6,7 @@ import { ConflictView } from "./ConflictView";
 import { SplitHandle, useSplit } from "../ui/Split";
 import { MergeDialog } from "../dialogs/MergeDialog";
 import { confirm } from "../ui/Confirm";
+import { toastDone } from "../ui/Toast";
 import { ErrorState, Loading } from "../ui/State";
 import { errorParts } from "../lib/errors";
 import { useRepoRefresh } from "../lib/watch";
@@ -107,10 +108,13 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
 
   async function discard(f: FileStatus) {
     const r = await confirm(f.untracked
-      ? { title: "Delete file", body: <>Delete the new file <span className="font-mono">{f.path}</span>? This can't be undone.</>, action: "Delete file", danger: true }
-      : { title: "Discard changes", body: <>Throw away the unstaged changes in <span className="font-mono">{f.path}</span>? This can't be undone.</>, action: "Discard changes", danger: true });
+      ? { title: "Delete file", body: <>Delete the new file <span className="font-mono">{f.path}</span>? You can undo this.</>, action: "Delete file", danger: true }
+      : { title: "Discard changes", body: <>Throw away the unstaged changes in <span className="font-mono">{f.path}</span>? You can undo this.</>, action: "Discard changes", danger: true });
     if (!r.ok) return;
-    await run("discard", () => api.discardPaths(wt, f.untracked ? [] : [f.path], f.untracked ? [f.path] : []));
+    let snap: string | null = null;
+    const ok = await run("discard", async () => { snap = await api.discardPaths(wt, f.untracked ? [] : [f.path], f.untracked ? [f.path] : []); });
+    const saved = snap as string | null;
+    if (ok && saved) toastDone(f.untracked ? `Deleted ${f.path}` : `Discarded changes in ${f.path}`, { run: () => api.backupRestoreFiles(root, saved, wt), after: refresh });
   }
 
   async function hunk(h: Hunk, reverse: boolean) {
@@ -153,10 +157,19 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
       <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-stone-300 bg-white px-4 dark:border-stone-700 dark:bg-stone-800">
         <span className="font-mono text-body font-medium">{d.worktree.branch ?? "(detached)"}</span>
         {isMain && <Chip>main worktree</Chip>}
-        {b && b.ahead != null && <Chip tone={(b.behind ?? 0) > 0 ? "amber" : "grey"}>↑{b.ahead} ↓{b.behind}</Chip>}
         {d.files.length > 0 ? <Chip tone="amber">{d.files.length} changed</Chip> : <Chip>clean</Chip>}
         {conflicts > 0 && <Chip tone="red">{conflicts} conflicts</Chip>}
         <div className="grow" />
+        {b && !d.operation && (() => {
+          // One button, the next thing to do: pull first if the remote moved, else push.
+          const up = b.ahead ?? 0, down = b.behind ?? 0;
+          const pull = async () => { if (await run("pull", () => api.branchPull(wt))) toastDone(`Pulled ${b.name}`); };
+          const push = async () => { if (await run("push", () => api.branchPush(root, b.name))) toastDone(`Pushed ${b.name}`); };
+          if (!b.upstream) return <button onClick={push} disabled={!!busy} className={btn} title="Push this branch to origin and track it">{busy === "push" ? "Pushing…" : "Push to origin"}</button>;
+          if (down > 0) return <button onClick={pull} disabled={!!busy} className={btn} title={up ? `${down} to pull, then ${up} to push (${b.upstream})` : `${down} to pull (${b.upstream})`}>{busy === "pull" ? "Pulling…" : `Pull ↓${down}`}</button>;
+          if (up > 0) return <button onClick={push} disabled={!!busy} className={btn} title={`${up} to push (${b.upstream})`}>{busy === "push" ? "Pushing…" : `Push ↑${up}`}</button>;
+          return <span className="text-label text-stone-500" title={b.upstream}>Up to date</span>;
+        })()}
         {!isMain && d.base_branch && !d.operation && <button onClick={syncNow} disabled={!!busy} className={btn}>{busy === "sync" ? "Syncing…" : `Sync with ${d.base_branch}`}</button>}
         {!isMain && <button onClick={() => setMerging(true)} disabled={!d.worktree.branch || !!d.operation} className="h-8 rounded-lg bg-teal-700 px-3.5 text-body font-medium text-white hover:bg-teal-800 disabled:opacity-40">Merge <span className="text-body opacity-70">⌘L</span></button>}
       </div>

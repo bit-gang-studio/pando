@@ -1,5 +1,11 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
+mod terminal;
+
+#[cfg(debug_assertions)]
+#[doc(hidden)]
+pub mod dev_bridge;
+
 use pando_core::{
     backup, branch, commit, conflict, detail, diff, github, history, index, log, merge, operation,
     overview, stash, sync, tag, user_config, watch, worktree, Applied, Backup, CommitDiff,
@@ -125,8 +131,25 @@ async fn worktree_add(root: PathBuf, req: CreateWorktree) -> R<Created> {
 }
 
 #[tauri::command]
-async fn worktree_remove(root: PathBuf, path: PathBuf, force: bool) -> R<()> {
+async fn worktree_remove(root: PathBuf, path: PathBuf, force: bool) -> R<worktree::Removed> {
     blocking(move || worktree::remove(&repo(&root)?, &path, force).map_err(err)).await
+}
+
+/// The terminal "Open in …" will use, or None if there isn't one.
+#[tauri::command]
+fn terminal_name() -> Option<String> {
+    terminal::name()
+}
+
+#[tauri::command]
+fn open_terminal(path: PathBuf) -> R<()> {
+    terminal::open(&path)
+}
+
+/// Undo Remove worktree: add it back in the same folder, with any saved changes.
+#[tauri::command]
+async fn worktree_undo_remove(root: PathBuf, removed: worktree::Removed) -> R<()> {
+    blocking(move || worktree::undo_remove(&repo(&root)?, &removed).map_err(err)).await
 }
 
 // ---- worktree actions --------------------------------------------------------
@@ -303,8 +326,14 @@ async fn stash_apply(worktree: PathBuf, index: u32, pop: bool) -> R<()> {
     .await
 }
 
+/// Undo Drop stash: back into the stash list.
 #[tauri::command]
-async fn stash_drop(root: PathBuf, index: u32) -> R<()> {
+async fn stash_restore(root: PathBuf, kept: String, message: String) -> R<()> {
+    blocking(move || stash::restore(&repo(&root)?, &kept, &message).map_err(err)).await
+}
+
+#[tauri::command]
+async fn stash_drop(root: PathBuf, index: u32) -> R<String> {
     blocking(move || stash::drop(&repo(&root)?, index).map_err(err)).await
 }
 
@@ -369,7 +398,11 @@ async fn unstage_all(worktree: PathBuf) -> R<()> {
 }
 
 #[tauri::command]
-async fn discard_paths(worktree: PathBuf, paths: Vec<String>, untracked: Vec<String>) -> R<()> {
+async fn discard_paths(
+    worktree: PathBuf,
+    paths: Vec<String>,
+    untracked: Vec<String>,
+) -> R<Option<String>> {
     blocking(move || index::discard(&worktree, &paths, &untracked).map_err(err)).await
 }
 
@@ -524,9 +557,13 @@ pub fn run() {
             stash_save,
             stash_apply,
             stash_drop,
+            stash_restore,
             worktree_path_preview,
             worktree_add,
             worktree_remove,
+            worktree_undo_remove,
+            terminal_name,
+            open_terminal,
             log_list,
             commit_diff,
             commit_file_diff,

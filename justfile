@@ -19,6 +19,10 @@ test:
     pnpm --filter @pando/desktop exec tsc --noEmit
     pnpm --filter @pando/desktop exec playwright test
 
+# Real git in the browser: throwaway repo, real commands via the dev bridge. Slower; run before releases.
+test-real:
+    pnpm --filter @pando/desktop exec playwright test -c e2e-real
+
 lint:
     cargo fmt --all --check
     cargo clippy --workspace --all-targets -- -D warnings

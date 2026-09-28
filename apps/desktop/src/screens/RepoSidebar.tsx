@@ -4,7 +4,7 @@ import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { MoreButton } from "../ui/MoreButton";
 import { navigate } from "../lib/routes";
-import { reveal, REVEAL_LABEL } from "../lib/reveal";
+import { openTerminal, reveal, REVEAL_LABEL, useTerminalName } from "../lib/reveal";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { prBranch } from "../lib/prs";
 import { ChecksMark, PrBadge } from "../ui/PrBadge";
@@ -39,6 +39,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const [stashes, setStashes] = useState<Stash[]>([]);
 
   useEffect(() => { api.stashList(root).then(setStashes).catch(() => setStashes([])); }, [root, data]);
+  const term = useTerminalName();
   const [backups, setBackups] = useState<Backup[]>([]);
   useEffect(() => { api.backupsList(root).then((b) => setBackups(b ?? [])).catch(() => setBackups([])); }, [root, data]);
 
@@ -51,19 +52,23 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   }, []);
 
   /// Run a git action with feedback: "Pushing…" while it runs, then "Pushed" or the error.
-  async function run(doing: string, done: string, fn: () => Promise<unknown>) {
+  async function run<T>(doing: string, done: string, fn: () => Promise<T>, undo?: (r: T) => (() => Promise<unknown>) | null) {
     setBusy(doing);
-    try { await withToast(doing, done, fn); await refresh(); }
+    try {
+      await withToast(doing, done, fn, undo && ((r) => { const u = undo(r); return u ? { run: u, after: refresh } : null; }));
+      await refresh();
+    }
     finally { setBusy(null); }
   }
 
   async function removeWorktree(row: WtRow) {
-    const n = changed(row.status);
+    // Right after the page opens, change counts may not be in yet: ask for this one.
+    const n = row.status ? changed(row.status) : await api.detail(root, row.worktree.path).then((d) => d.files.length).catch(() => 0);
     const body = n > 0
-      ? <><span className="font-mono">{row.label}</span> has {n} uncommitted {n === 1 ? "change" : "changes"}. They'll be lost. The branch is kept.</>
+      ? <><span className="font-mono">{row.label}</span> has {n} uncommitted {n === 1 ? "change" : "changes"}. They're saved first, so you can undo this. The branch is kept.</>
       : <>Remove the folder for <span className="font-mono">{row.label}</span>? The branch is kept.</>;
     if (!(await confirm({ title: "Remove worktree", body, action: "Remove worktree", danger: true })).ok) return;
-    await run("Removing worktree…", `Removed worktree ${row.label}`, () => api.worktreeRemove(root, row.worktree.path, n > 0));
+    await run("Removing worktree…", `Removed worktree ${row.label}`, () => api.worktreeRemove(root, row.worktree.path, n > 0), (removed) => () => api.worktreeUndoRemove(root, removed));
   }
 
   async function deleteBranch(r: BranchRow) {
@@ -74,7 +79,8 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       : <>Delete <span className="font-mono">{b.name}</span>? Pando keeps a backup so it can be recovered.</>;
     const answer = await confirm({ title: "Delete branch", body, action: "Delete branch", danger: true, checkbox: b.upstream ? { label: `Also delete ${b.upstream}` } : undefined });
     if (!answer.ok) return;
-    await run(`Deleting ${b.name}…`, `Deleted ${b.name}`, () => api.branchDelete(root, b.name, answer.checked));
+    // Undo brings the local branch back; a deleted remote branch stays deleted.
+    await run(`Deleting ${b.name}…`, `Deleted ${b.name}`, () => api.branchDelete(root, b.name, answer.checked), () => () => api.backupRestoreBranch(root, `refs/pando/backup/${b.name}`));
   }
   const openWin = (path: string) => openInNewWindow({ kind: "worktree", root, path }).catch(toastError);
   const openRow = (e: React.MouseEvent, path: string) => (wantsNewWindow(e) ? openWin(path) : onOpenWorktree(path));
@@ -98,7 +104,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   }
   async function rename(old: string) {
     const a = await confirm({ title: "Rename branch", body: <>Rename <span className="font-mono">{old}</span>. A backup of the old name is kept.</>, action: "Rename", input: { label: "New name", value: old, mono: true } });
-    if (a.ok && a.value !== old) await run("Renaming…", `Renamed to ${a.value}`, () => api.branchRename(root, old, a.value));
+    if (a.ok && a.value !== old) await run("Renaming…", `Renamed to ${a.value}`, () => api.branchRename(root, old, a.value), () => () => api.branchRename(root, a.value, old));
   }
   async function setUpstream(name: string, current: string | null) {
     const a = await confirm({ title: "Set upstream", body: <>The remote branch <span className="font-mono">{name}</span> pulls from and pushes to.</>, action: "Set upstream", input: { label: "Upstream", value: current ?? `origin/${name}`, mono: true } });
@@ -119,7 +125,9 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     if (a.ok) await run(pop ? "Popping stash…" : "Applying stash…", pop ? "Popped stash" : "Applied stash", () => api.stashApply(a.choice, st.index, pop));
   }
   async function dropStash(st: Stash) {
-    if ((await confirm({ title: "Drop stash", body: <>Throw away <span className="italic">{st.message}</span>? This can't be undone.</>, action: "Drop stash", danger: true })).ok) await run("Dropping stash…", "Dropped stash", () => api.stashDrop(root, st.index));
+    if ((await confirm({ title: "Drop stash", body: <>Drop <span className="italic">{st.message}</span>? You can undo this.</>, action: "Drop stash", danger: true })).ok) {
+      await run("Dropping stash…", "Dropped stash", () => api.stashDrop(root, st.index), (kept) => () => api.stashRestore(root, kept, st.message));
+    }
   }
   async function deleteRemote(r: RemoteBranch) {
     if ((await confirm({ title: "Delete remote branch", body: <>Delete <span className="font-mono">{r.name}</span> on the remote? Anyone else using it loses it too.</>, action: "Delete on origin", danger: true })).ok) await run(`Deleting ${r.name}…`, `Deleted ${r.name}`, () => api.branchDeleteRemote(root, r.short));
@@ -131,6 +139,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       { label: "Open in new window", onClick: () => openWin(row.worktree.path) },
       { label: "Copy path", onClick: () => navigator.clipboard.writeText(row.worktree.path) },
       { label: REVEAL_LABEL, onClick: () => reveal(row.worktree.path).catch(toastError) },
+      ...(term ? [{ label: `Open in ${term}`, onClick: () => openTerminal(row.worktree.path) }] : []),
       sep,
     ];
     if (b?.upstream) items.push({ label: "Pull", onClick: () => run(`Pulling ${b.name}…`, `Pulled ${b.name}`, () => api.branchPull(row.worktree.path)) });
@@ -284,13 +293,16 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
                 {r.isMain ? "main worktree" : null}
                 {r.isMain && (n > 0 || r.ahead) ? " · " : ""}
                 {pending ? "checking…" : r.worktree.prunable ? "folder missing" : conflicts ? `${conflicts} conflicts` : n > 0 ? `${n} changed` : r.isMain ? "" : "clean"}
-                {!r.isMain && r.ahead ? ` · ${r.ahead} ahead` : ""}
+                {!r.isMain && r.branch?.merged ? <> · <span className="text-teal-700" title={`Everything on this branch is in ${data?.base ?? "the base"}`}>merged</span></> : !r.isMain && r.ahead ? ` · ${r.ahead} ahead` : ""}
+                <SyncCounts b={r.branch?.branch} />
                 {r.stale ? " · stale" : ""}
                 {r.time ? ` · ${ago(r.time)}` : ""}
               </div>
             </div>
             <div className="hidden shrink-0 items-center gap-1 group-hover:flex" onClick={(e) => e.stopPropagation()}>
-              {!r.isMain && r.branch && <button onClick={() => setMerging(r.branch)} disabled={!!busy} className={`${small} border-teal-700 text-teal-700`}>Merge</button>}
+              {!r.isMain && r.branch && (r.branch.merged
+                ? <button onClick={() => removeWorktree(r)} disabled={!!busy} className={small}>Remove worktree</button>
+                : <button onClick={() => setMerging(r.branch)} disabled={!!busy} className={`${small} border-teal-700 text-teal-700`}>Merge</button>)}
               <button onClick={() => openWin(r.worktree.path)} title="Open in new window" aria-label={`Open ${r.label} in new window`} className={iconBtn}><NewWindowIcon /></button>
             </div>
             <MoreButton onOpen={(e) => rowMenu(e, r)} label={`Actions for ${r.label}`} />
@@ -303,7 +315,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
         <div key={r.branch.name} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.branch.name }) : onOpenBranch(r.branch.name))} onContextMenu={(e) => branchMenu(e, r)} title={r.branch.last_commit?.summary} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${currentBranch === r.branch.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
           <div className="min-w-0 grow">
             <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body">{r.branch.name}</span>{prByBranch[r.branch.name] && <PrBadge pr={prByBranch[r.branch.name]} />}</div>
-            <div className="truncate text-label text-stone-500">{r.ahead_of_base ? `${r.ahead_of_base} ahead` : "0 ahead"}{r.branch.last_commit ? ` · ${ago(r.branch.last_commit.time)}` : ""}</div>
+            <div className="truncate text-label text-stone-500">{r.ahead_of_base ? `${r.ahead_of_base} ahead` : "0 ahead"}<SyncCounts b={r.branch} />{r.branch.last_commit ? ` · ${ago(r.branch.last_commit.time)}` : ""}</div>
           </div>
           <button onClick={(e) => { e.stopPropagation(); setCreating({ branch: r.branch.name }); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
           <MoreButton onOpen={(e) => branchMenu(e, r)} label={`Actions for ${r.branch.name}`} />
@@ -398,4 +410,13 @@ const BACKUP_TITLE: Record<string, string> = {
 
 function detachedRow(d: DetachedRow): WtRow {
   return { key: d.worktree.path, label: `detached at ${d.worktree.head?.slice(0, 7) ?? "?"}`, worktree: d.worktree, status: d.status, branch: null, isMain: d.is_main_worktree, ahead: null, stale: false, time: null };
+}
+
+/// " · ↑2 ↓1": commits to push and to pull, against the branch's upstream.
+function SyncCounts({ b }: { b?: import("../lib/api").Branch }) {
+  if (!b?.upstream) return null;
+  const up = b.ahead ?? 0, down = b.behind ?? 0;
+  if (!up && !down) return null;
+  const tip = [up && `${up} to push`, down && `${down} to pull`].filter(Boolean).join(", ") + ` (${b.upstream})`;
+  return <span title={tip}>{" · "}{up ? `↑${up}` : ""}{up && down ? " " : ""}{down ? `↓${down}` : ""}</span>;
 }

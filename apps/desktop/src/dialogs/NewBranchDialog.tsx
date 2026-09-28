@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Created } from "../lib/api";
 import { ErrorLine } from "../ui/State";
+import { openTerminal, useTerminalName } from "../lib/reveal";
 
 type Props = {
   root: string;
@@ -16,6 +17,8 @@ type Props = {
 type Mode = "new" | "existing";
 const PREFIXES = ["feat/", "fix/", "chore/", "spike/"];
 
+const THEN_TERMINAL = "pando.newBranch.openTerminal";
+
 export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote = null, onClose, onCreated }: Props) {
   const repo = root;
   const mode: Mode = initialBranch ? "existing" : "new";
@@ -25,6 +28,9 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
   const [pathEdited, setPathEdited] = useState(false);
   const [busy, setBusy] = useState(false);
   const [withWorktree, setWithWorktree] = useState(true);
+  // Remembered on this machine: people who want it want it every time.
+  const [thenTerminal, setThenTerminal] = useState(() => { try { return localStorage.getItem(THEN_TERMINAL) === "1"; } catch { return false; } });
+  const term = useTerminalName();
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Created | null>(null);
   const branchRef = useRef<HTMLInputElement>(null);
@@ -71,6 +77,7 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
         existing_branch: mode === "existing",
       });
       setResult(r);
+      if (thenTerminal) openTerminal(r.worktree.path);
       onCreated();
       onClose();
     } catch (e) {
@@ -128,6 +135,13 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
 
           {mode === "new" && (
             <label className="flex items-center gap-2"><input type="checkbox" checked={withWorktree} onChange={(e) => setWithWorktree(e.target.checked)} /> Add a worktree for it</label>
+          )}
+
+          {term && (mode === "existing" || withWorktree) && (
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={thenTerminal} onChange={(e) => { setThenTerminal(e.target.checked); try { localStorage.setItem(THEN_TERMINAL, e.target.checked ? "1" : "0"); } catch { /* ignore */ } }} />
+              Open in {term} when it's ready
+            </label>
           )}
 
           {(mode === "existing" || withWorktree) && (

@@ -10,7 +10,7 @@ import { MoreButton } from "../ui/MoreButton";
 import { ErrorState, Loading } from "../ui/State";
 import { toastError, withToast } from "../ui/Toast";
 import { errorParts } from "../lib/errors";
-import { reveal, REVEAL_LABEL } from "../lib/reveal";
+import { openTerminal, reveal, REVEAL_LABEL, useTerminalName } from "../lib/reveal";
 import { CloneDialog, loadRemoteRepos } from "../dialogs/CloneDialog";
 
 export function Repos() {
@@ -18,6 +18,7 @@ export function Repos() {
   const [summaries, setSummaries] = useState<Record<string, Overview>>({});
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [cloning, setCloning] = useState(false);
+  const term = useTerminalName();
   // Start fetching your GitHub repos now, so Clone repository opens fast.
   useEffect(() => { const t = setTimeout(() => { loadRemoteRepos(); }, 1500); return () => clearTimeout(t); }, []);
   const [listError, setListError] = useState<string | null>(null);
@@ -70,6 +71,7 @@ export function Repos() {
       { label: "Open in new window", onClick: () => openInNewWindow({ kind: "repo", root }).catch(toastError) },
       { label: "Copy path", onClick: () => navigator.clipboard.writeText(root) },
       { label: REVEAL_LABEL, onClick: () => reveal(root).catch(toastError) },
+      ...(term ? [{ label: `Open in ${term}`, onClick: () => openTerminal(root) }] : []),
       { divider: true },
       { label: "Remove from Pando", onClick: () => removeRepo(root), danger: true },
     ] });

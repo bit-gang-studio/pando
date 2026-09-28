@@ -156,19 +156,30 @@ pub fn add(repo: &Repo, req: &AddWorktree) -> Result<Worktree> {
 }
 
 /// Remove a worktree. Writes a backup ref for its branch first.
-pub fn remove(repo: &Repo, path: &Path, force: bool) -> Result<()> {
+/// What a removal took away, so Undo can put it back.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Removed {
+    pub path: PathBuf,
+    pub branch: Option<String>,
+    /// The commit it had checked out (for a detached worktree).
+    pub head: Option<String>,
+    /// Uncommitted changes saved before a forced removal.
+    pub snapshot: Option<String>,
+}
+
+pub fn remove(repo: &Repo, path: &Path, force: bool) -> Result<Removed> {
     let want = canon(path);
-    if let Some(branch) = list(repo)?
-        .iter()
-        .find(|w| w.path == want)
-        .and_then(|w| w.branch.clone())
-    {
-        backup::write(repo, &branch)?;
+    let w = list(repo)?.into_iter().find(|w| w.path == want);
+    let branch = w.as_ref().and_then(|w| w.branch.clone());
+    if let Some(b) = &branch {
+        backup::write(repo, b)?;
     }
     // Forcing throws away uncommitted changes; save them first.
-    if force && path.is_dir() {
-        backup::snapshot(repo, path, "remove-worktree", &[])?;
-    }
+    let snapshot = if force && path.is_dir() {
+        backup::snapshot(repo, path, "remove-worktree", &[])?
+    } else {
+        None
+    };
     let mut args = vec!["worktree", "remove"];
     if force {
         args.push("--force");
@@ -176,6 +187,32 @@ pub fn remove(repo: &Repo, path: &Path, force: bool) -> Result<()> {
     let p = path.to_string_lossy().into_owned();
     args.push(&p);
     git(&repo.root, &args)?;
+    Ok(Removed {
+        path: want,
+        branch,
+        head: w.and_then(|w| w.head),
+        snapshot,
+    })
+}
+
+/// Undo `remove`: add the worktree back in the same folder, on the same
+/// branch (or commit), with any saved uncommitted changes.
+pub fn undo_remove(repo: &Repo, r: &Removed) -> Result<()> {
+    if r.path.exists() {
+        return Err(crate::Error::Msg(format!(
+            "{} exists again, so it can't be put back.",
+            r.path.display()
+        )));
+    }
+    let p = r.path.to_string_lossy().into_owned();
+    match (&r.branch, &r.head) {
+        (Some(b), _) => git(&repo.root, ["worktree", "add", "-q", &p, b])?,
+        (None, Some(h)) => git(&repo.root, ["worktree", "add", "-q", "--detach", &p, h])?,
+        (None, None) => return Err(crate::Error::Msg("Nothing to put back".into())),
+    };
+    if let Some(snap) = &r.snapshot {
+        backup::restore_files(repo, snap, &r.path)?;
+    }
     Ok(())
 }
 

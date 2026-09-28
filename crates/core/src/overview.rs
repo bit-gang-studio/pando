@@ -21,6 +21,10 @@ pub struct BranchRow {
     pub status: Option<Summary>,
     /// Commits not on the base branch.
     pub ahead_of_base: Option<u32>,
+    /// Everything on this branch is already in the base (merged, squashed or
+    /// rebased in), so its worktree can go. Only worked out on a full load.
+    #[serde(default)]
+    pub merged: bool,
     /// Has a worktree, is clean, and its last commit is older than `STALE_DAYS`.
     pub stale: bool,
 }
@@ -114,6 +118,12 @@ fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
             .as_ref()
             .map(|w| w.kind == WorktreeKind::Main)
             .unwrap_or(false);
+        // Only worth asking for worktrees: they're what "merged" helps you clean up.
+        let merged = with_status
+            && wt.is_some()
+            && !is_main
+            && base_id
+                .is_some_and(|bid| already_in_base(repo, &bid.to_string(), &b.tip, ahead_of_base));
         let stale = wt.is_some()
             && !is_main
             && st.map(|s| s.is_clean()).unwrap_or(false)
@@ -123,6 +133,7 @@ fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
             worktree: wt,
             status: st,
             ahead_of_base,
+            merged,
             stale,
             branch: b,
         });
@@ -147,4 +158,29 @@ fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
         remote_only,
         status_loaded: with_status,
     })
+}
+
+/// True if merging `tip` into `base` would change nothing: plain merges,
+/// squash merges and rebase merges all count. A branch sitting exactly on
+/// the base (nothing done yet) doesn't.
+fn already_in_base(repo: &Repo, base: &str, tip: &str, ahead: Option<u32>) -> bool {
+    if tip == base {
+        return false;
+    }
+    if ahead == Some(0) {
+        return true;
+    }
+    let Some(base_tree) = crate::cmd::git_opt(
+        &repo.common_git_dir,
+        ["rev-parse", &format!("{base}^{{tree}}")],
+    ) else {
+        return false;
+    };
+    match crate::cmd::git_raw(
+        &repo.common_git_dir,
+        ["merge-tree", "--write-tree", base, tip],
+    ) {
+        Ok((0, out, _)) => out.lines().next().map(str::trim) == Some(base_tree.as_str()),
+        _ => false,
+    }
 }

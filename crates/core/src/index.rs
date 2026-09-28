@@ -39,11 +39,14 @@ pub fn unstage_all(worktree: &Path) -> Result<()> {
 /// Throw away unstaged changes. Untracked files are deleted.
 /// Throw away unstaged changes in `paths` and delete the new files in `untracked`.
 /// Their contents are saved first under `refs/pando/snapshots/discard/`.
-pub fn discard(worktree: &Path, paths: &[String], untracked: &[String]) -> Result<()> {
+/// Returns the snapshot ref holding what was thrown away, for Undo.
+pub fn discard(worktree: &Path, paths: &[String], untracked: &[String]) -> Result<Option<String>> {
     let all: Vec<String> = paths.iter().chain(untracked).cloned().collect();
-    if !all.is_empty() {
-        crate::backup::snapshot(&Repo::discover(worktree)?, worktree, "discard", &all)?;
-    }
+    let snap = if all.is_empty() {
+        None
+    } else {
+        crate::backup::snapshot(&Repo::discover(worktree)?, worktree, "discard", &all)?
+    };
     if !paths.is_empty() {
         let mut args = vec!["restore", "--worktree", "--"];
         args.extend(paths.iter().map(String::as_str));
@@ -54,7 +57,7 @@ pub fn discard(worktree: &Path, paths: &[String], untracked: &[String]) -> Resul
         args.extend(untracked.iter().map(String::as_str));
         git(worktree, &args)?;
     }
-    Ok(())
+    Ok(snap)
 }
 
 /// Stage (`reverse = false`) or unstage (`reverse = true`) one hunk.
