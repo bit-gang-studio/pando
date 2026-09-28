@@ -82,6 +82,10 @@ export type MergePlan = {
 };
 export type Stash = { index: number; message: string; branch: string | null; time: number };
 export type Applied = "done" | "paused";
+export type Checks = "passing" | "failing" | "pending" | "none";
+export type PullRequest = { number: number; title: string; author: string; draft: boolean; head: string; from_fork: boolean; url: string; checks: Checks; review: string; updated_at: string };
+/// `ok` with the list, or why there's none (then the app shows nothing).
+export type PullRequests = { state: "ok"; prs: PullRequest[] } | { state: "no_gh" } | { state: "signed_out" } | { state: "not_git_hub" };
 export type BackupKind = "branch" | "discard" | "remove_worktree" | "restore" | "stash";
 export type Backup = { refname: string; kind: BackupKind; branch: string | null; id: string; time: number; files: string[]; branch_exists: boolean };
 
@@ -119,6 +123,8 @@ export const api = {
   tagCreate: (root: string, name: string, target: string, message: string | null, push: boolean) => invoke<void>("tag_create", { root, name, target, message, push }),
   tagDelete: (root: string, name: string) => invoke<void>("tag_delete", { root, name }),
   tagPush: (root: string, name: string) => invoke<void>("tag_push", { root, name }),
+  prsList: (root: string) => invoke<PullRequests>("prs_list", { root }),
+  prAddWorktree: (root: string, pr: PullRequest) => invoke<Created>("pr_add_worktree", { root, pr }),
   backupsList: (root: string) => invoke<Backup[]>("backups_list", { root }),
   backupRestoreBranch: (root: string, refname: string) => invoke<void>("backup_restore_branch", { root, refname }),
   backupRestoreFiles: (root: string, refname: string, worktree: string) => invoke<void>("backup_restore_files", { root, refname, worktree }),

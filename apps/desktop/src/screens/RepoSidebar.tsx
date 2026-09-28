@@ -1,10 +1,13 @@
 import { useEffect, useState } from "react";
-import { ago, api, changed, type BranchRow, type DetachedRow, type Overview as OverviewData, type Backup, type RemoteBranch, type Stash, type Summary, type Worktree } from "../lib/api";
+import { ago, api, changed, type BranchRow, type DetachedRow, type Overview as OverviewData, type Backup, type PullRequest, type RemoteBranch, type Stash, type Summary, type Worktree } from "../lib/api";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { MoreButton } from "../ui/MoreButton";
 import { navigate } from "../lib/routes";
 import { reveal, REVEAL_LABEL } from "../lib/reveal";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { prBranch } from "../lib/prs";
+import { ChecksMark, PrBadge } from "../ui/PrBadge";
 import { NewWindowIcon } from "../ui/icons";
 import { MergeDialog } from "../dialogs/MergeDialog";
 import { NewBranchDialog } from "../dialogs/NewBranchDialog";
@@ -12,14 +15,14 @@ import { confirm } from "../ui/Confirm";
 import { toastError, withToast } from "../ui/Toast";
 import { dot, worktreeOptions } from "../lib/worktrees";
 
-type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void };
+type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; prs?: PullRequest[] | null; prByBranch?: Record<string, PullRequest> };
 
 const small = "h-6 rounded border border-stone-300 bg-white px-1.5 text-label hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 const iconBtn = "inline-flex h-6 items-center rounded px-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100";
 
 type WtRow = { key: string; label: string; worktree: Worktree; status: Summary | null; branch: BranchRow | null; isMain: boolean; ahead: number | null; stale: boolean; time: number | null };
 
-export function RepoSidebar({ root, data, current = null, currentBranch = null, onOpenBranch, onOpenRepo, onRefresh: refresh, onOpenWorktree }: Props) {
+export function RepoSidebar({ root, data, current = null, currentBranch = null, onOpenBranch, onOpenRepo, onRefresh: refresh, onOpenWorktree, prs = null, prByBranch = {} }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ branch?: string; remote?: string } | null>(null);
   const [merging, setMerging] = useState<BranchRow | null>(null);
@@ -199,6 +202,24 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     } },
   ]);
 
+  // ---- pull requests -------------------------------------------------------------
+  async function addPrWorktree(pr: PullRequest) {
+    setBusy("pr");
+    try {
+      const made = await withToast(`Adding a worktree for #${pr.number}…`, `Added a worktree for #${pr.number}`, () => api.prAddWorktree(root, pr));
+      await refresh();
+      if (made) onOpenWorktree(made.worktree.path);
+    } finally { setBusy(null); }
+  }
+  const prMenu = (e: React.MouseEvent, pr: PullRequest, wtPath?: string) => show(e, [
+    ...(wtPath
+      ? [{ label: "Open in new window", onClick: () => openWin(wtPath) }]
+      : [{ label: "Add worktree", onClick: () => addPrWorktree(pr) }]),
+    sep,
+    { label: "Open on GitHub", onClick: () => openUrl(pr.url).catch(toastError) },
+    { label: "Copy link", onClick: () => navigator.clipboard.writeText(pr.url) },
+  ]);
+
   const stashMenu = (e: React.MouseEvent, st: Stash) => show(e, [
     { label: "Apply…", onClick: () => applyStash(st, false) },
     { label: "Pop…", onClick: () => applyStash(st, true) },
@@ -258,7 +279,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
           <div key={r.key} onClick={(e) => openRow(e, r.worktree.path)} onContextMenu={(e) => rowMenu(e, r)} title={r.worktree.path} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${current === r.worktree.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
             <span title={dotTip} className={`h-2 w-2 shrink-0 rounded-full ${dotCls}`} />
             <div className="min-w-0 grow">
-              <div className="truncate font-mono text-body font-medium">{r.label}</div>
+              <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body font-medium">{r.label}</span>{prByBranch[r.label] && <PrBadge pr={prByBranch[r.label]} />}</div>
               <div className="truncate text-label text-stone-500">
                 {r.isMain ? "main worktree" : null}
                 {r.isMain && (n > 0 || r.ahead) ? " · " : ""}
@@ -281,7 +302,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       {open.branches && without.map((r) => (
         <div key={r.branch.name} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.branch.name }) : onOpenBranch(r.branch.name))} onContextMenu={(e) => branchMenu(e, r)} title={r.branch.last_commit?.summary} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${currentBranch === r.branch.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
           <div className="min-w-0 grow">
-            <div className="truncate font-mono text-body">{r.branch.name}</div>
+            <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body">{r.branch.name}</span>{prByBranch[r.branch.name] && <PrBadge pr={prByBranch[r.branch.name]} />}</div>
             <div className="truncate text-label text-stone-500">{r.ahead_of_base ? `${r.ahead_of_base} ahead` : "0 ahead"}{r.branch.last_commit ? ` · ${ago(r.branch.last_commit.time)}` : ""}</div>
           </div>
           <button onClick={(e) => { e.stopPropagation(); setCreating({ branch: r.branch.name }); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
@@ -289,6 +310,31 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
         </div>
       ))}
       {open.branches && data && without.length === 0 && <div className="px-3 py-1 text-label text-stone-500">Every local branch has a worktree.</div>}
+
+      {prs && head("prs", "PULL REQUESTS", String(prs.length))}
+      {prs && open.prs && prs.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No open pull requests.</div>}
+      {prs && open.prs && prs.map((pr) => {
+        const wtRow = rows.find((w) => w.branch?.branch.name === prBranch(pr));
+        const see = (e: React.MouseEvent) => {
+          if (wtRow) openRow(e, wtRow.worktree.path);
+          else if (!pr.from_fork) onOpenBranch(`origin/${pr.head}`);
+          else openUrl(pr.url).catch(toastError);
+        };
+        return (
+          <div key={pr.number} onClick={see} onContextMenu={(e) => prMenu(e, pr, wtRow?.worktree.path)} title={`${pr.title}\n${pr.url}`} className="group flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+            {wtRow ? <span title="Has a worktree" className={`h-2 w-2 shrink-0 rounded-full ${dot({ status: wtRow.status, missing: !!wtRow.worktree.prunable, isMain: wtRow.isMain, loaded: !!data?.status_loaded }).cls}`} /> : null}
+            <div className="min-w-0 grow">
+              <div className="flex items-center gap-1.5"><span className="shrink-0 font-mono text-label text-stone-500">#{pr.number}</span><span className="truncate">{pr.title}</span></div>
+              <div className="flex items-center gap-1 truncate text-label text-stone-500">
+                <ChecksMark checks={pr.checks} />
+                <span className="truncate">{pr.author}{pr.draft ? " · draft" : ""}{REVIEW[pr.review] ? ` · ${REVIEW[pr.review]}` : ""}{pr.from_fork ? " · from a fork" : ""}</span>
+              </div>
+            </div>
+            {!wtRow && <button onClick={(e) => { e.stopPropagation(); addPrWorktree(pr); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>}
+            <MoreButton onOpen={(e) => prMenu(e, pr, wtRow?.worktree.path)} label={`Actions for #${pr.number}`} />
+          </div>
+        );
+      })}
 
       {stashes.length > 0 && head("stashes", "STASHES", String(stashes.length))}
       {open.stashes && stashes.map((st) => (
@@ -341,7 +387,8 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
 }
 
 const OPEN_KEY = "pando.sidebar.open";
-const DEFAULT_OPEN: Record<string, boolean> = { worktrees: true, branches: true, stashes: true, remote: false, backups: false };
+const DEFAULT_OPEN: Record<string, boolean> = { worktrees: true, branches: true, prs: true, stashes: true, remote: false, backups: false };
+const REVIEW: Record<string, string> = { APPROVED: "approved", CHANGES_REQUESTED: "changes requested", REVIEW_REQUIRED: "review required" };
 const BACKUP_TITLE: Record<string, string> = {
   discard: "Discarded changes",
   remove_worktree: "Changes in a removed worktree",

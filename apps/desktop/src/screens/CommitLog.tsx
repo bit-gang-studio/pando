@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { ago, api, type LogEntry } from "../lib/api";
+import { ago, api, type LogEntry, type PullRequest } from "../lib/api";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { colorFor, LANE_W, layoutGraph, ROW_H, type GraphRow } from "../lib/graph";
 import { useMemo } from "react";
@@ -7,6 +7,7 @@ import { MoreButton } from "../ui/MoreButton";
 import { ErrorState, Loading } from "../ui/State";
 import { errorParts } from "../lib/errors";
 import { useArrowKeys } from "../lib/useArrowKeys";
+import { PrBadge } from "../ui/PrBadge";
 
 type Props = {
   root: string;
@@ -20,6 +21,8 @@ type Props = {
   onUncommitted: () => void;
   /// Branch name -> dot colour class, for branches checked out in a worktree.
   branchDots?: Record<string, string>;
+  /// Branch name -> its open pull request.
+  prByBranch?: Record<string, PullRequest>;
   /// Commit id -> dot colour classes, for detached worktrees sitting on it.
   detachedDots?: Record<string, string[]>;
   /// Commits some worktree has checked out (drawn as a hollow dot).
@@ -33,7 +36,7 @@ type Props = {
 
 const PAGE = 200;
 
-export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, detachedDots = {}, heads, onCommitMenu, onLoaded, refreshKey }: Props) {
+export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, prByBranch = {}, detachedDots = {}, heads, onCommitMenu, onLoaded, refreshKey }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -91,6 +94,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
                 <span key={`det-${k}`} title="A worktree has this commit checked out, with no branch" className="flex items-center gap-1 rounded bg-stone-100 px-1.5 py-px font-mono text-label text-stone-700 dark:bg-stone-700 dark:text-stone-200"><span className={`h-1.5 w-1.5 rounded-full ${dot}`} />detached</span>
               ))}
               {e.refs.map((r) => <RefChip key={r} name={r} dot={branchDots[r]} />)}
+              {[...new Set(e.refs.map((r) => prByBranch[r]).filter(Boolean))].map((pr) => <PrBadge key={pr.number} pr={pr} />)}
             </span>
             <span className="min-w-0 grow truncate">{e.summary}</span>
             <span className="selectable shrink-0 font-mono text-label text-stone-400" title={e.id}>{e.id.slice(0, 7)}</span>

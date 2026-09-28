@@ -135,3 +135,42 @@ where
         })
     }
 }
+
+/// GitHub's `gh` CLI, if installed. Apps opened from the Finder don't get the
+/// shell's PATH, so look in the usual install folders too.
+pub(crate) fn gh_path() -> Option<std::path::PathBuf> {
+    let from_path = std::env::var_os("PATH")
+        .map(|p| std::env::split_paths(&p).collect::<Vec<_>>())
+        .unwrap_or_default();
+    let extra = [
+        "/opt/homebrew/bin",
+        "/usr/local/bin",
+        "/home/linuxbrew/.linuxbrew/bin",
+        "/usr/bin",
+    ];
+    let exe = if cfg!(windows) { "gh.exe" } else { "gh" };
+    from_path
+        .into_iter()
+        .chain(extra.iter().map(std::path::PathBuf::from))
+        .map(|d| d.join(exe))
+        .find(|p| p.is_file())
+}
+
+/// Run `gh` in `cwd`. Returns (exit code, stdout, stderr).
+pub(crate) fn gh<I, S>(gh: &Path, cwd: &Path, args: I) -> Result<(i32, String, String)>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
+    let out = Command::new(gh)
+        .current_dir(cwd)
+        .env("GH_PROMPT_DISABLED", "1")
+        .env("NO_COLOR", "1")
+        .args(args)
+        .output()?;
+    Ok((
+        out.status.code().unwrap_or(-1),
+        String::from_utf8_lossy(&out.stdout).into_owned(),
+        String::from_utf8_lossy(&out.stderr).into_owned(),
+    ))
+}

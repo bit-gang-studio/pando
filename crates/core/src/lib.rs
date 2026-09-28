@@ -12,6 +12,7 @@ pub mod detail;
 pub mod diff;
 pub mod error;
 pub mod git;
+pub mod github;
 pub mod history;
 pub mod index;
 pub mod log;

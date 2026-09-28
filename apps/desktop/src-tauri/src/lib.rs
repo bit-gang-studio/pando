@@ -1,7 +1,7 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
 use pando_core::{
-    backup, branch, commit, conflict, detail, diff, history, index, log, merge, operation,
+    backup, branch, commit, conflict, detail, diff, github, history, index, log, merge, operation,
     overview, stash, sync, tag, user_config, watch, worktree, Applied, Backup, CommitDiff,
     ConflictFile, CreateWorktree, Created, Detail, FileDiff, Hunk, Log, MergePlan, MergeResult,
     Operation, Overview, Preflight, Repo, Side, Stash, SyncResult, UserConfig,
@@ -205,6 +205,18 @@ async fn tag_delete(root: PathBuf, name: String) -> R<()> {
 #[tauri::command]
 async fn tag_push(root: PathBuf, name: String) -> R<()> {
     blocking(move || tag::push(&repo(&root)?, &name).map_err(err)).await
+}
+
+// ---- pull requests -------------------------------------------------------------
+
+#[tauri::command]
+async fn prs_list(root: PathBuf) -> R<github::PullRequests> {
+    blocking(move || github::list(&repo(&root)?).map_err(err)).await
+}
+
+#[tauri::command]
+async fn pr_add_worktree(root: PathBuf, pr: github::PullRequest) -> R<Created> {
+    blocking(move || github::add_worktree(&repo(&root)?, &pr).map_err(err)).await
 }
 
 // ---- backups -------------------------------------------------------------------
@@ -471,6 +483,8 @@ pub fn run() {
             tag_create,
             tag_delete,
             tag_push,
+            prs_list,
+            pr_add_worktree,
             backups_list,
             backup_restore_branch,
             backup_restore_files,

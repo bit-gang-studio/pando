@@ -16,6 +16,7 @@ import { withToast } from "../ui/Toast";
 import { errorParts } from "../lib/errors";
 import { useRepoRefresh, watchRepo } from "../lib/watch";
 import { dot, worktreeOptions } from "../lib/worktrees";
+import { usePullRequests } from "../lib/prs";
 
 type Props = { root: string; commit: string | null; worktree?: string | null; branch?: string | null };
 
@@ -51,15 +52,16 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   }, [root]);
 
   useRepoRefresh(root, refresh);
+  const { prs, byBranch: prByBranch, reload: reloadPrs } = usePullRequests(root);
   // Fetch quietly on open and every 5 minutes while the window is in use, so
   // ahead/behind stays current. Failures (offline, needs a login) stay silent;
   // the Fetch button shows them.
   useEffect(() => {
-    const quiet = () => { if (document.hasFocus()) api.fetchAll(root).then(refresh).catch(() => {}); };
+    const quiet = () => { if (document.hasFocus()) api.fetchAll(root).then(refresh).catch(() => {}); reloadPrs(); };
     const first = setTimeout(quiet, 3000);
     const t = setInterval(quiet, 5 * 60 * 1000);
     return () => { clearTimeout(first); clearInterval(t); };
-  }, [root, refresh]);
+  }, [root, refresh, reloadPrs]);
   // Watch every worktree folder; re-watch when the set changes.
   const wtKey = [...(data?.branches.flatMap((b) => (b.worktree ? [b.worktree.path] : [])) ?? []), ...(data?.detached.map((d) => d.worktree.path) ?? [])].join("\0");
   useEffect(() => { if (data) watchRepo(root, wtKey.split("\0").filter(Boolean)); }, [root, wtKey, !!data]);
@@ -154,7 +156,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
     <div ref={side.box} className="flex min-h-0 min-w-0 grow">
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
       <div style={{ width: side.size }} className="flex shrink-0 flex-col">
-        <RepoSidebar root={root} data={data} current={worktree} currentBranch={branch} onOpenBranch={(name) => navigate({ kind: "branch", root, name })} onOpenRepo={() => navigate({ kind: "repo", root })} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} />
+        <RepoSidebar root={root} data={data} current={worktree} currentBranch={branch} onOpenBranch={(name) => navigate({ kind: "branch", root, name })} onOpenRepo={() => navigate({ kind: "repo", root })} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} prs={prs} prByBranch={prByBranch} />
       </div>
       <SplitHandle axis="x" onMouseDown={side.start} handleRef={side.handle} />
     <div ref={split.box} className="flex min-h-0 min-w-0 grow flex-col">
@@ -177,6 +179,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
           onUncommitted={() => (worktree ? setWtCommit(null) : setShowUncommitted(true))}
           onCommitMenu={commitMenu}
           branchDots={branchDots}
+          prByBranch={prByBranch}
           detachedDots={detachedDots}
           heads={heads}
           refreshKey={tick}
