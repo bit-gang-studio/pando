@@ -394,7 +394,9 @@ fn a_conflicting_merge_of_a_branch_without_a_worktree_cleans_up() {
             e.file_name()
                 .to_string_lossy()
                 .starts_with(&format!("pando-merge-{}-", std::process::id()))
-                && e.file_name().to_string_lossy().ends_with("-feat-only-this-test")
+                && e.file_name()
+                    .to_string_lossy()
+                    .ends_with("-feat-only-this-test")
         })
         .collect();
     assert!(stray.is_empty(), "temp folders left: {stray:?}");
