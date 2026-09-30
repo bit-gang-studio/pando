@@ -49,6 +49,12 @@ pub struct Overview {
     pub remote_only: Vec<RemoteBranch>,
     /// False when loaded without `git status` (see `load_quick`); every `status` is then None.
     pub status_loaded: bool,
+    /// What "ahead" and "All changes" compare against: origin/main if it exists, else main.
+    #[serde(default)]
+    pub compare_base: Option<String>,
+    /// When the repo last fetched (unix seconds), from FETCH_HEAD.
+    #[serde(default)]
+    pub fetched_at: Option<i64>,
 }
 
 pub fn load(repo: &Repo) -> Result<Overview> {
@@ -63,8 +69,13 @@ pub fn load_quick(repo: &Repo) -> Result<Overview> {
 
 fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
     let base = merge::default_base(repo).ok();
+    let compare_base = merge::compare_base(repo);
     let g = repo.open_gix()?;
-    let base_id = base
+    let base_id = compare_base
+        .as_deref()
+        .and_then(|b| g.rev_parse_single(b).ok())
+        .map(|id| id.detach());
+    let local_base_id = base
         .as_deref()
         .and_then(|b| g.rev_parse_single(b).ok())
         .map(|id| id.detach());
@@ -119,11 +130,22 @@ fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
             .map(|w| w.kind == WorktreeKind::Main)
             .unwrap_or(false);
         // Only worth asking for worktrees: they're what "merged" helps you clean up.
+        // Merged into either counts: pushed (origin/main) or merged locally (main).
+        let tip_id = gix::ObjectId::from_hex(b.tip.as_bytes()).ok();
+        let in_local = || {
+            local_base_id
+                .filter(|l| Some(*l) != base_id)
+                .is_some_and(|lid| {
+                    let ahead = tip_id.and_then(|t| branch::count_only_in(&g, t, lid).ok());
+                    already_in_base(repo, &lid.to_string(), &b.tip, ahead)
+                })
+        };
         let merged = with_status
             && wt.is_some()
             && !is_main
-            && base_id
-                .is_some_and(|bid| already_in_base(repo, &bid.to_string(), &b.tip, ahead_of_base));
+            && (base_id
+                .is_some_and(|bid| already_in_base(repo, &bid.to_string(), &b.tip, ahead_of_base))
+                || in_local());
         let stale = wt.is_some()
             && !is_main
             && st.map(|s| s.is_clean()).unwrap_or(false)
@@ -157,6 +179,8 @@ fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
         detached,
         remote_only,
         status_loaded: with_status,
+        compare_base,
+        fetched_at: fetched_at(repo),
     })
 }
 
@@ -183,4 +207,15 @@ fn already_in_base(repo: &Repo, base: &str, tip: &str, ahead: Option<u32>) -> bo
         Ok((0, out, _)) => out.lines().next().map(str::trim) == Some(base_tree.as_str()),
         _ => false,
     }
+}
+
+/// FETCH_HEAD is rewritten on every fetch, so its age is the last fetch.
+fn fetched_at(repo: &Repo) -> Option<i64> {
+    let m = std::fs::metadata(repo.common_git_dir.join("FETCH_HEAD"))
+        .ok()?
+        .modified()
+        .ok()?;
+    m.duration_since(std::time::UNIX_EPOCH)
+        .ok()
+        .map(|d| d.as_secs() as i64)
 }

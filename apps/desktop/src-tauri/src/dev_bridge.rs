@@ -1,12 +1,16 @@
 //! Debug builds only: the app's real commands, callable by name, for the
 //! browser test bridge (examples/bridge.rs). Generated from lib.rs.
-//! Terminal, file watching and gh are stubbed: nothing opens on screen and
-//! nothing talks to GitHub.
+//! The file watcher is real (on the paths the test asks for). Terminal and gh
+//! are stubbed: nothing opens on screen and nothing talks to GitHub.
 
 use serde_json::Value;
 use std::sync::Mutex;
 
 static OPENED: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static EVENTS: Mutex<Vec<String>> = Mutex::new(Vec::new());
+static WATCHERS: std::sync::LazyLock<
+    Mutex<std::collections::HashMap<String, pando_core::watch::RepoWatcher>>,
+> = std::sync::LazyLock::new(Default::default);
 
 fn arg<T: serde::de::DeserializeOwned>(a: &Value, k: &str) -> Result<T, String> {
     serde_json::from_value(a.get(k).cloned().unwrap_or(Value::Null))
@@ -156,6 +160,14 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
             arg(&a, "untracked")?,
         )
         .await),
+        "apply_lines" => out(super::apply_lines(
+            arg(&a, "worktree")?,
+            arg(&a, "path")?,
+            arg(&a, "hunk")?,
+            arg(&a, "lines")?,
+            arg(&a, "reverse")?,
+        )
+        .await),
         "apply_hunk" => out(super::apply_hunk(
             arg(&a, "worktree")?,
             arg(&a, "path")?,
@@ -203,7 +215,24 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
         }
         "op_continue" => out(super::op_continue(arg(&a, "worktree")?).await),
         "op_abort" => out(super::op_abort(arg(&a, "worktree")?).await),
-        "watch_repo" => Ok(Value::Null),
+        // The real watcher, on the paths the test page asks for (the throwaway
+        // repo). Changes queue up here; the page picks them up via "__events".
+        "watch_repo" => {
+            let root: std::path::PathBuf = arg(&a, "root")?;
+            let worktrees: Vec<std::path::PathBuf> = arg(&a, "worktrees")?;
+            let repo = pando_core::Repo::discover(&root).map_err(|e| e.to_string())?;
+            let key = root.to_string_lossy().into_owned();
+            let emit = key.clone();
+            let w = pando_core::watch::watch(&repo, &worktrees, move || {
+                EVENTS.lock().unwrap().push(emit.clone())
+            })
+            .map_err(|e| e.to_string())?;
+            WATCHERS.lock().unwrap().insert(key, w);
+            Ok(Value::Null)
+        }
+        "__events" => {
+            Ok(serde_json::to_value(std::mem::take(&mut *EVENTS.lock().unwrap())).unwrap())
+        }
         "__opened" => Ok(serde_json::to_value(OPENED.lock().unwrap().clone()).unwrap()),
         other => Err(format!("bridge: unknown command {other}")),
     }

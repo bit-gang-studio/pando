@@ -10,11 +10,13 @@ import { ConfirmHost } from "./ui/Confirm";
 import { ToastHost, toastError } from "./ui/Toast";
 import { UpdateNotice } from "./ui/UpdateNotice";
 import { AccessGate } from "./ui/AccessGate";
+import { installTheme } from "./lib/theme";
 
 export default function App() {
   const [route, setRoute] = useState<Route>(() => fromHash(window.location.hash));
 
   useEffect(() => installZoom(), []);
+  useEffect(() => installTheme(), []);
 
   useEffect(() => {
     const onNewWindowKey = (e: KeyboardEvent) => {

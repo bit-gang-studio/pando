@@ -77,3 +77,30 @@ pub fn apply_hunk(worktree: &Path, path: &str, hunk: &Hunk, reverse: bool) -> Re
         })
     }
 }
+
+/// Stage (`reverse = false`) or unstage (`reverse = true`) only the chosen
+/// lines of one hunk. `lines` are indexes into `hunk.lines`.
+pub fn apply_lines(
+    worktree: &Path,
+    path: &str,
+    hunk: &Hunk,
+    lines: &[usize],
+    reverse: bool,
+) -> Result<()> {
+    if !hunk
+        .lines
+        .iter()
+        .enumerate()
+        .any(|(i, l)| lines.contains(&i) && l.kind != crate::diff::LineKind::Context)
+    {
+        return Err(crate::Error::Msg(
+            "Pick at least one added or removed line".into(),
+        ));
+    }
+    apply_hunk(
+        worktree,
+        path,
+        &crate::diff::partial_hunk(hunk, lines, reverse),
+        reverse,
+    )
+}

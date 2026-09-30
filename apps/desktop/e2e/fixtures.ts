@@ -44,7 +44,7 @@ export function overview(parts: Partial<Overview> = {}): Overview {
   return {
     repo, base: "main",
     branches: [row("main", { worktree: wt(ROOT, "main") })],
-    detached: [], remote_only: [], status_loaded: true,
+    detached: [], remote_only: [], status_loaded: true, compare_base: "main", fetched_at: NOW - 240,
     ...parts,
   };
 }

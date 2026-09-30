@@ -5,7 +5,7 @@ import type { PullRequest } from "../src/lib/api";
 
 const sidebar = (page: Page) => page.locator("aside").first();
 const pr = (over: Partial<PullRequest>): PullRequest => ({
-  number: 1, title: "A change", author: "ana", draft: false, head: "feat/x", from_fork: false,
+  number: 1, title: "A change", author: "ana", draft: false, head: "feat/x", base: "main", from_fork: false,
   url: "https://github.com/o/r/pull/1", checks: "passing", review: "", updated_at: "2026-09-27T00:00:00Z", ...over,
 });
 const list = (prs: PullRequest[]) => ({ state: "ok", prs });

@@ -117,7 +117,7 @@ test("arrow keys in the staging list pick the next file's diff", async ({ page }
   await page.keyboard.press("ArrowDown");
   await expect.poll(async () => (await callsTo(page, "diff_file")).at(-1)?.path).toBe("c.ts");
   // Typing in the commit box must not move the list.
-  await page.getByPlaceholder("Summary, then details").fill("x");
+  await page.getByLabel("Summary", { exact: true }).fill("x");
   await page.keyboard.press("ArrowUp");
   expect((await callsTo(page, "diff_file")).at(-1)?.path).toBe("c.ts");
 });

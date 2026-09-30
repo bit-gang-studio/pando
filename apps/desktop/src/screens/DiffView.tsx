@@ -9,6 +9,8 @@ type Props = {
   mode: "unified" | "split";
   onMode: (m: "unified" | "split") => void;
   onHunk: (hunk: Hunk, reverse: boolean) => void;
+  /// Stage (or unstage) only the picked lines of a hunk; indexes into hunk.lines.
+  onLines?: (hunk: Hunk, lines: number[], reverse: boolean) => void;
   readOnly?: boolean;
 };
 
@@ -18,14 +20,19 @@ const HIGHLIGHT_MAX = 5000;
 const LINE_H = 20;
 const BAR_H = 30;
 
-type Row = { hunk: Hunk; hi: number; line: DiffLine; toks: Tok[] };
+type Row = { hunk: Hunk; hi: number; li: number; line: DiffLine; toks: Tok[] };
 type Side = { line: DiffLine; toks: Tok[] };
 type Pair = { left?: Side; right?: Side; hunk: Hunk; hi: number };
 /// One thing drawn in the list: a hunk header or a line (or a pair of lines in split mode).
-type Item<T> = { kind: "bar"; hunk: Hunk } | { kind: "row"; row: T };
+type Item<T> = { kind: "bar"; hunk: Hunk; hi: number } | { kind: "row"; row: T };
+/// Picked lines, as "hunkIndex:lineIndex".
+type Picks = Set<string>;
 
-export function DiffView({ diff, loading, mode, onMode, onHunk, readOnly }: Props) {
+export function DiffView({ diff, loading, mode, onMode, onHunk, onLines, readOnly }: Props) {
   const [tokens, setTokens] = useState<{ old: Tok[][]; new: Tok[][] } | null>(null);
+  const [picks, setPicks] = useState<Picks>(new Set());
+  const anchor = useRef<{ hi: number; li: number } | null>(null);
+  useEffect(() => { setPicks(new Set()); anchor.current = null; }, [diff]);
 
   const sides = useMemo(() => {
     if (!diff) return null;
@@ -52,11 +59,11 @@ export function DiffView({ diff, loading, mode, onMode, onHunk, readOnly }: Prop
     let oi = 0, ni = 0;
     const out: Row[] = [];
     for (const [hi, h] of diff.hunks.entries()) {
-      for (const l of h.lines) {
+      for (const [li, l] of h.lines.entries()) {
         const toks = (l.kind === "del" ? tokens?.old[oi] : tokens?.new[ni]) ?? [{ content: l.text }];
         if (l.kind !== "add") oi++;
         if (l.kind !== "del") ni++;
-        out.push({ hunk: h, hi, line: l, toks });
+        out.push({ hunk: h, hi, li, line: l, toks });
       }
     }
     return out;
@@ -68,6 +75,26 @@ export function DiffView({ diff, loading, mode, onMode, onHunk, readOnly }: Prop
   if (diff.hunks.length === 0) return <Empty>No changes.</Empty>;
 
   const hunkAction = readOnly ? undefined : onHunk;
+  // Line picking: unified view, a file git already tracks, and somewhere to send it.
+  const canPick = !readOnly && !!onLines && !diff.new_file && mode === "unified";
+  const pick = (r: Row, shift: boolean) => {
+    if (r.line.kind === "context") return;
+    setPicks((prev) => {
+      const next = new Set(prev);
+      const a = anchor.current;
+      if (shift && a && a.hi === r.hi) {
+        const [lo, hi] = a.li < r.li ? [a.li, r.li] : [r.li, a.li];
+        for (let i = lo; i <= hi; i++) if (r.hunk.lines[i].kind !== "context") next.add(`${r.hi}:${i}`);
+      } else {
+        const k = `${r.hi}:${r.li}`;
+        if (next.has(k)) next.delete(k); else next.add(k);
+        anchor.current = { hi: r.hi, li: r.li };
+      }
+      return next;
+    });
+  };
+  const pickedIn = (hi: number) => [...picks].filter((k) => k.startsWith(`${hi}:`)).map((k) => Number(k.split(":")[1])).sort((a, b) => a - b);
+  const bar = { pickedIn, clear: (hi: number) => setPicks((p) => new Set([...p].filter((k) => !k.startsWith(`${hi}:`)))), stage: (h: Hunk, hi: number) => onLines?.(h, pickedIn(hi), diff.staged) };
   return (
     <div className="flex min-h-0 min-w-0 grow flex-col">
       <div className="flex h-10 shrink-0 items-center gap-3 border-b border-stone-300 px-4 dark:border-stone-700">
@@ -81,7 +108,7 @@ export function DiffView({ diff, loading, mode, onMode, onHunk, readOnly }: Prop
         </div>
       </div>
       {mode === "unified"
-        ? <Windowed key={diff.path} items={withBars(rows)} render={(r) => <UnifiedRow r={r} />} diff={diff} onHunk={hunkAction} />
+        ? <Windowed key={diff.path} items={withBars(rows)} render={(r) => <UnifiedRow r={r} picked={picks.has(`${r.hi}:${r.li}`)} onPick={canPick ? pick : undefined} />} diff={diff} onHunk={hunkAction} lines={canPick ? bar : undefined} />
         : <Windowed key={diff.path} items={withBars(pairUp(rows))} render={(p) => <SplitRow p={p} />} diff={diff} onHunk={hunkAction} />}
     </div>
   );
@@ -92,14 +119,16 @@ function withBars<T extends { hi: number; hunk: Hunk }>(rows: T[]): Item<T>[] {
   const out: Item<T>[] = [];
   let last = -1;
   for (const r of rows) {
-    if (r.hi !== last) { out.push({ kind: "bar", hunk: r.hunk }); last = r.hi; }
+    if (r.hi !== last) { out.push({ kind: "bar", hunk: r.hunk, hi: r.hi }); last = r.hi; }
     out.push({ kind: "row", row: r });
   }
   return out;
 }
 
 /// Draw only the items in view. Everything above and below is empty space of the right height.
-function Windowed<T>({ items, render, diff, onHunk }: { items: Item<T>[]; render: (row: T) => React.ReactNode; diff: FileDiff; onHunk?: (h: Hunk, r: boolean) => void }) {
+type LineActions = { pickedIn: (hi: number) => number[]; clear: (hi: number) => void; stage: (h: Hunk, hi: number) => void };
+
+function Windowed<T>({ items, render, diff, onHunk, lines }: { items: Item<T>[]; render: (row: T) => React.ReactNode; diff: FileDiff; onHunk?: (h: Hunk, r: boolean) => void; lines?: LineActions }) {
   const ref = useRef<HTMLDivElement>(null);
   const [view, setView] = useState({ top: 0, height: 800 });
   const offsets = useMemo(() => {
@@ -130,7 +159,7 @@ function Windowed<T>({ items, render, diff, onHunk }: { items: Item<T>[]; render
     <div ref={ref} onScroll={(e) => setView({ top: e.currentTarget.scrollTop, height: e.currentTarget.clientHeight })} className="selectable min-h-0 grow overflow-auto font-mono text-body leading-5">
       <div style={{ paddingTop: offsets[start], paddingBottom: offsets[items.length] - offsets[end] }}>
         {items.slice(start, end).map((it, k) => (
-          <div key={start + k}>{it.kind === "bar" ? <HunkBar hunk={it.hunk} diff={diff} onHunk={onHunk} /> : render(it.row)}</div>
+          <div key={start + k}>{it.kind === "bar" ? <HunkBar hunk={it.hunk} hi={it.hi} diff={diff} onHunk={onHunk} lines={lines} /> : render(it.row)}</div>
         ))}
       </div>
     </div>
@@ -141,12 +170,23 @@ function Empty({ children }: { children: React.ReactNode }) {
   return <div className="flex grow items-center justify-center text-body text-stone-500">{children}</div>;
 }
 
-function HunkBar({ hunk, diff, onHunk }: { hunk: Hunk; diff: FileDiff; onHunk?: (h: Hunk, r: boolean) => void }) {
+function HunkBar({ hunk, hi, diff, onHunk, lines }: { hunk: Hunk; hi: number; diff: FileDiff; onHunk?: (h: Hunk, r: boolean) => void; lines?: LineActions }) {
+  const n = lines?.pickedIn(hi).length ?? 0;
+  const small = "h-5.5 rounded border border-stone-300 bg-white px-2 font-sans text-label dark:border-stone-600 dark:bg-stone-700";
   return (
     <div style={{ height: BAR_H }} className="box-border flex items-center gap-3 overflow-hidden border-y border-stone-200 bg-stone-100 px-4 text-stone-500 dark:border-stone-700 dark:bg-stone-800">
       <span className="truncate">{hunk.header}</span>
       <div className="grow" />
-      {!diff.new_file && onHunk && (
+      {lines && n === 0 && <span className="shrink-0 font-sans text-label text-stone-400">Click line numbers to pick lines</span>}
+      {lines && n > 0 && (
+        <>
+          <button onClick={() => lines.clear(hi)} className="h-5.5 shrink-0 px-1 font-sans text-label text-stone-500 hover:text-stone-800 dark:hover:text-stone-200">Clear</button>
+          <button onClick={() => lines.stage(hunk, hi)} className={`${small} border-teal-700 text-teal-700`}>
+            {diff.staged ? "Unstage" : "Stage"} {n} {n === 1 ? "line" : "lines"}
+          </button>
+        </>
+      )}
+      {!diff.new_file && onHunk && n === 0 && (
         <button onClick={() => onHunk(hunk, diff.staged)} className="h-5.5 rounded border border-stone-300 bg-white px-2 font-sans text-label dark:border-stone-600 dark:bg-stone-700">
           {diff.staged ? "Unstage hunk" : "Stage hunk"}
         </button>
@@ -162,11 +202,16 @@ function Code({ toks }: { toks: Tok[] }) {
 const bg = { add: "bg-teal-50 dark:bg-teal-900/30", del: "bg-red-50 dark:bg-red-900/30", context: "" } as const;
 const num = "select-none pr-2 text-right text-stone-400";
 
-function UnifiedRow({ r }: { r: Row }) {
+function UnifiedRow({ r, picked = false, onPick }: { r: Row; picked?: boolean; onPick?: (r: Row, shift: boolean) => void }) {
+  const pickable = !!onPick && r.line.kind !== "context";
+  // Both number cells pick the line; only the first is announced as the checkbox.
+  const click = pickable ? { onMouseDown: (e: React.MouseEvent) => { e.preventDefault(); onPick!(r, e.shiftKey); }, title: "Click to pick this line; shift-click for a range" } : {};
+  const cls = pickable ? `${num} cursor-pointer hover:bg-teal-100 dark:hover:bg-teal-900/50` : num;
+  const sign = r.line.kind === "add" ? "added" : "removed";
   return (
-    <div style={{ height: LINE_H }} className={`grid grid-cols-[48px_48px_16px_1fr] ${bg[r.line.kind]}`}>
-      <span className={num}>{r.line.old_no ?? ""}</span>
-      <span className={num}>{r.line.new_no ?? ""}</span>
+    <div style={{ height: LINE_H }} className={`grid grid-cols-[48px_48px_16px_1fr] ${bg[r.line.kind]} ${picked ? "shadow-[inset_4px_0_0_#0f766e] brightness-95 dark:brightness-125" : ""}`}>
+      <span {...click} className={cls} {...(pickable ? { role: "checkbox", "aria-checked": picked, "aria-label": `Pick ${sign} line: ${r.line.text.trim().slice(0, 60)}` } : {})}>{r.line.old_no ?? ""}</span>
+      <span {...click} className={cls} aria-hidden={pickable || undefined}>{r.line.new_no ?? ""}</span>
       <span className="select-none text-center text-stone-400">{r.line.kind === "add" ? "+" : r.line.kind === "del" ? "−" : ""}</span>
       <span className="pr-4"><Code toks={r.toks} />{r.line.no_newline && <span className="ml-2 text-label text-stone-400">⏎ missing</span>}</span>
     </div>

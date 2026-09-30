@@ -23,6 +23,7 @@
           "url": "x-apple.systempreferences:*"
         }
       ]
-    }
+    },
+    "core:window:allow-set-theme"
   ]
 }

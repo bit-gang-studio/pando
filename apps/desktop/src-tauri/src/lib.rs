@@ -255,7 +255,7 @@ async fn repo_clone(source: String, parent: PathBuf) -> R<UserConfig> {
 async fn overlaps(root: PathBuf) -> R<Vec<overlap::Overlap>> {
     blocking(move || {
         let r = repo(&root)?;
-        let base = merge::default_base(&r).map_err(err)?;
+        let base = merge::compare_base(&r).ok_or("no default branch found")?;
         overlap::find(&r, &base).map_err(err)
     })
     .await
@@ -417,6 +417,18 @@ async fn discard_paths(
     untracked: Vec<String>,
 ) -> R<Option<String>> {
     blocking(move || index::discard(&worktree, &paths, &untracked).map_err(err)).await
+}
+
+#[tauri::command]
+async fn apply_lines(
+    worktree: PathBuf,
+    path: String,
+    hunk: Hunk,
+    lines: Vec<usize>,
+    reverse: bool,
+) -> R<()> {
+    blocking(move || index::apply_lines(&worktree, &path, &hunk, &lines, reverse).map_err(err))
+        .await
 }
 
 #[tauri::command]
@@ -591,6 +603,7 @@ pub fn run() {
             unstage_all,
             discard_paths,
             apply_hunk,
+            apply_lines,
             commit_create,
             sync_rebase,
             merge_preflight,

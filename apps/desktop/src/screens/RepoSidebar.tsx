@@ -266,9 +266,14 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
         <MergeDialog root={root} path={merging.worktree?.path ?? null} branch={merging.branch.name} headSummary={merging.branch.last_commit?.summary ?? null} onClose={() => setMerging(null)} onMerged={refresh} />
       )}
 
-      <div className="flex items-center gap-1.5 border-b border-stone-200 px-3 py-2 dark:border-stone-700">
-        <button onClick={() => setCreating({})} className="h-7 grow rounded-md bg-teal-700 px-2.5 text-body font-medium text-white hover:bg-teal-800">New branch<span className="ml-1.5 opacity-70">⌘N</span></button>
-        <button onClick={() => run("Fetching…", "Fetched", () => api.fetchAll(root))} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-body hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700">{busy === "Fetching…" ? "Fetching…" : "Fetch"}</button>
+      <div className="flex flex-col gap-1 border-b border-stone-200 px-3 pb-1.5 pt-2 dark:border-stone-700">
+        <div className="flex items-center gap-1.5">
+          <button onClick={() => setCreating({})} className="h-7 grow rounded-md bg-teal-700 px-2.5 text-body font-medium text-white hover:bg-teal-800">New branch<span className="ml-1.5 opacity-70">⌘N</span></button>
+          <button onClick={() => run("Fetching…", "Fetched", () => api.fetchAll(root))} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-body hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700">{busy === "Fetching…" ? "Fetching…" : "Fetch"}</button>
+        </div>
+        <span className="self-end text-label text-stone-500" title={data?.fetched_at ? new Date(data.fetched_at * 1000).toLocaleString() : undefined}>
+          {busy === "Fetching…" ? "Fetching…" : data?.fetched_at ? `Fetched ${ago(data.fetched_at)}` : data ? "Not fetched yet" : ""}
+        </span>
       </div>
 
       <button onClick={onOpenRepo} className={`my-1 flex items-center gap-2 px-3 py-1.5 text-left ${current === null && currentBranch === null ? "bg-teal-50 font-medium dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>

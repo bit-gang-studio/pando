@@ -40,7 +40,7 @@ export type BranchRow = {
   merged: boolean;
 };
 export type DetachedRow = { worktree: Worktree; is_main_worktree: boolean; status: Summary | null };
-export type Overview = { repo: Repo; base: string | null; branches: BranchRow[]; detached: DetachedRow[]; remote_only: RemoteBranch[]; status_loaded: boolean };
+export type Overview = { repo: Repo; base: string | null; branches: BranchRow[]; detached: DetachedRow[]; remote_only: RemoteBranch[]; status_loaded: boolean; compare_base: string | null; fetched_at: number | null };
 
 export type CreateWorktree = { branch: string; base: string | null; path: string | null; existing_branch: boolean };
 export type Created = { worktree: Worktree };
@@ -71,7 +71,7 @@ export type LogEntry = { id: string; parents: string[]; author: string; time: nu
 export type Log = { entries: LogEntry[]; truncated: boolean };
 export type FileChange = { path: string; added: number; deleted: number };
 export type CommitDiff = { commit: CommitInfo; message: string; files: FileChange[] };
-export type Compare = { base: string; head: string; ahead: number; behind: number; files: FileChange[] };
+export type Compare = { base: string; head: string; ahead: number; behind: number; merge_base: string | null; added: number; deleted: number; files: FileChange[] };
 
 export type Preflight = {
   branch: string; base: string; base_local: string; clean: boolean; ahead: number; behind: number;
@@ -86,7 +86,7 @@ export type Stash = { index: number; message: string; branch: string | null; tim
 export type Applied = "done" | "paused";
 export type RemoteRepo = { name: string; description: string; private: boolean; url: string; updated_at: string };
 export type Checks = "passing" | "failing" | "pending" | "none";
-export type PullRequest = { number: number; title: string; author: string; draft: boolean; head: string; from_fork: boolean; url: string; checks: Checks; review: string; updated_at: string };
+export type PullRequest = { number: number; title: string; author: string; draft: boolean; head: string; base: string; from_fork: boolean; url: string; checks: Checks; review: string; updated_at: string };
 /// `ok` with the list, or why there's none (then the app shows nothing).
 export type PullRequests = { state: "ok"; prs: PullRequest[] } | { state: "no_gh" } | { state: "signed_out" } | { state: "not_git_hub" };
 export type Overlap = { a: string; b: string; files: string[] };
@@ -161,6 +161,7 @@ export const api = {
   stageAll: (worktree: string) => invoke<void>("stage_all", { worktree }),
   unstageAll: (worktree: string) => invoke<void>("unstage_all", { worktree }),
   discardPaths: (worktree: string, paths: string[], untracked: string[]) => invoke<string | null>("discard_paths", { worktree, paths, untracked }),
+  applyLines: (worktree: string, path: string, hunk: Hunk, lines: number[], reverse: boolean) => invoke<void>("apply_lines", { worktree, path, hunk, lines, reverse }),
   applyHunk: (worktree: string, path: string, hunk: Hunk, reverse: boolean) => invoke<void>("apply_hunk", { worktree, path, hunk, reverse }),
   commitCreate: (worktree: string, message: string, amend: boolean) => invoke<string>("commit_create", { worktree, message, amend }),
   syncRebase: (root: string, worktree: string, branch: string, base: string) => invoke<SyncResult>("sync_rebase", { root, worktree, branch, base }),

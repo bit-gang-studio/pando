@@ -10,6 +10,7 @@ fn pr(number: u64, head: &str, from_fork: bool) -> PullRequest {
         author: "a".into(),
         draft: false,
         head: head.into(),
+        base: "main".into(),
         from_fork,
         url: String::new(),
         checks: Checks::None,

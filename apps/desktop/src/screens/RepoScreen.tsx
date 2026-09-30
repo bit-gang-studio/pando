@@ -34,6 +34,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   const side = useSplit("pando.split.sidebar.px", 300, "x", 260, 700);
   const onLoaded = useCallback((id: string | null) => setFirstId(id), []);
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [baseFor, setBaseFor] = useState<Record<string, string>>({}); // picked compare base, per branch
   const [brCommit, setBrCommit] = useState<string | null>(null); // selected commit while on a branch
   const [brFirst, setBrFirst] = useState<string | null>(null); // newest commit on that branch
   // "All changes" vs base: shown first on a branch, offered on a worktree.
@@ -159,10 +160,27 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   };
 
   // What "All changes" compares against: the repo's base, unless this is the base.
-  const base = data?.base ?? null;
+  // Compare against: your pick, else the PR's base, else origin/main (fresher than a local main).
   const head = branch ?? (worktree ? wtBranch : null);
-  const canCompare = !!base && !!head && head !== base && head !== `origin/${base}`;
-  const aheadOf = head ? data?.branches.find((b) => b.branch.name === head)?.ahead_of_base ?? null : null;
+  const pr = head ? prByBranch[head] : undefined;
+  const prBase = pr?.base && pr.base !== data?.base ? `origin/${pr.base}` : null;
+  const base = (head && baseFor[head]) || prBase || data?.compare_base || data?.base || null;
+  const local = (b: string) => b.replace(/^origin\//, "");
+  const canCompare = !!base && !!head && local(head) !== local(base);
+  const [cmp, setCmp] = useState<{ key: string; mergeBase: string | null; ahead: number } | null>(null);
+  const cmpKey = canCompare ? `${base}...${head}` : "";
+  useEffect(() => {
+    if (!canCompare) { setCmp(null); return; }
+    let live = true;
+    api.compare(root, base!, head!).then((c) => { if (live) setCmp({ key: cmpKey, mergeBase: c.merge_base, ahead: c.ahead }); }).catch(() => { if (live) setCmp(null); });
+    return () => { live = false; };
+  }, [root, cmpKey, tick]);
+  const cmpNow = cmp?.key === cmpKey ? cmp : null;
+  const pickBase = (e: React.MouseEvent) => {
+    if (!head) return;
+    const names = [data?.compare_base, data?.base, ...(data?.branches.map((b) => b.branch.name) ?? [])].filter((n): n is string => !!n && local(n) !== local(head));
+    setMenu({ x: e.clientX, y: e.clientY, items: [...new Set(names)].map((n) => ({ label: n === base ? `${n} ✓` : n, onClick: () => setBaseFor((m) => ({ ...m, [head]: n })) })) });
+  };
   const showUncommitted = !worktree && !branch && (uncommittedChoice ?? (!commit && dirtyPaths.length > 0));
   const selected = worktree ? wtCommit : commit ?? firstId;
 
@@ -191,7 +209,8 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
           uncommittedLabel={worktree ? `${wtDirty} in this worktree` : undefined}
           selected={branch ? (canCompare && brCompare ? null : brCommit ?? brFirst) : worktree ? (wtCompare ? null : selected) : showUncommitted ? null : selected}
           uncommittedSelected={!worktree && showUncommitted}
-          compare={canCompare ? { base: base!, ahead: aheadOf } : undefined}
+          compare={canCompare ? { base: local(base!), ahead: cmpNow?.ahead ?? null } : undefined}
+          range={canCompare && cmpNow ? { own: `${base}..${head}`, rest: cmpNow.mergeBase, restLabel: `Earlier history on ${local(base!)}` } : undefined}
           compareSelected={canCompare && (branch ? brCompare : wtCompare)}
           onCompare={() => (branch ? setBrCompare(true) : (setWtCompare(true), setWtCommit(null)))}
           onSelect={(id) => { setShowUncommitted(false); setBrCompare(false); setWtCompare(false); if (branch) setBrCommit(id); else if (worktree) setWtCommit(id); else navigate(id ? { kind: "commit", root, id } : { kind: "repo", root }); }}
@@ -208,11 +227,11 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
       <SplitHandle axis="y" onMouseDown={split.start} handleRef={split.handle} />
       <div className="flex min-h-0 min-w-0 grow">
         {branch ? (
-          canCompare && brCompare ? <CommitDetail key={`cmp-${head}`} root={root} compare={{ base: base!, head: head! }} />
+          canCompare && brCompare ? <CommitDetail key={`cmp-${head}`} root={root} compare={{ base: base!, head: head! }} onPickBase={pickBase} />
           : brCommit ?? brFirst ? <CommitDetail root={root} id={(brCommit ?? brFirst)!} /> : <Loading />
         ) : worktree ? (
           canCompare && wtCompare ? (
-            <CommitDetail key={`cmp-${head}`} root={root} compare={{ base: base!, head: head! }} onBack={() => setWtCompare(false)} />
+            <CommitDetail key={`cmp-${head}`} root={root} compare={{ base: base!, head: head! }} onPickBase={pickBase} onBack={() => setWtCompare(false)} />
           ) : wtCommit ? (
             <CommitDetail root={root} id={wtCommit} onBack={() => setWtCommit(null)} />
           ) : (

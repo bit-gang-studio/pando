@@ -83,6 +83,24 @@ pub fn default_base(repo: &Repo) -> Result<String> {
         .ok_or_else(|| crate::Error::Msg("no default branch found".into()))
 }
 
+/// What to compare branches against: `origin/<default>` when it exists, since
+/// a local default branch can be behind; else the local default branch.
+pub fn compare_base(repo: &Repo) -> Option<String> {
+    let b = repo.default_branch.clone()?;
+    let remote = format!("origin/{b}");
+    let has_remote = crate::cmd::git_opt(
+        &repo.common_git_dir,
+        [
+            "rev-parse",
+            "--verify",
+            "-q",
+            &format!("refs/remotes/{remote}"),
+        ],
+    )
+    .is_some();
+    Some(if has_remote { remote } else { b })
+}
+
 /// `wt` is the branch's worktree, or `None` for a branch without one.
 pub fn preflight(repo: &Repo, wt: Option<&Path>, branch: &str, base: &str) -> Result<Preflight> {
     let g = repo.open_gix()?;

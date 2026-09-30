@@ -15,7 +15,7 @@ async function open(page: Page, extra: Record<string, unknown> = {}) {
 test("a failed commit keeps the message you typed", async ({ page }) => {
   const d = detail(WT, "feat/login", [file("a.ts", { staged: "M", unstaged: null })]);
   await open(page, { detail_load: d, commit_create: { $error: "git commit failed: error: gpg failed to sign the data" } });
-  const box = page.getByPlaceholder("Summary, then details");
+  const box = page.getByLabel("Summary", { exact: true });
   await box.fill("Fix the login redirect");
   await page.getByRole("button", { name: /Commit/ }).click();
   await expect(page.getByText("Gpg failed to sign the data")).toBeVisible();
@@ -25,8 +25,8 @@ test("a failed commit keeps the message you typed", async ({ page }) => {
 test("a good commit clears the message and sends it trimmed", async ({ page }) => {
   const d = detail(WT, "feat/login", [file("a.ts", { staged: "M", unstaged: null })]);
   await open(page, { detail_load: d, commit_create: null });
-  const box = page.getByPlaceholder("Summary, then details");
-  await box.fill("  Fix it  \n");
+  const box = page.getByLabel("Summary", { exact: true });
+  await box.fill("  Fix it  ");
   await page.keyboard.press("ControlOrMeta+Enter");
   await expect.poll(() => callsTo(page, "commit_create")).toEqual([{ worktree: WT, message: "Fix it", amend: false }]);
   await expect(box).toHaveValue("");
@@ -36,7 +36,7 @@ test("commit is off with nothing staged or no message", async ({ page }) => {
   await open(page, { detail_load: detail(WT, "feat/login", [file("a.ts")]) });
   const commit = page.getByRole("button", { name: /Commit/ });
   await expect(commit).toBeDisabled();
-  await page.getByPlaceholder("Summary, then details").fill("message but nothing staged");
+  await page.getByLabel("Summary", { exact: true }).fill("message but nothing staged");
   await expect(commit).toBeDisabled();
   await page.keyboard.press("ControlOrMeta+Enter");
   expect(await callsTo(page, "commit_create")).toHaveLength(0);
@@ -104,4 +104,22 @@ test("staging a file sends that path", async ({ page }) => {
   await open(page, { detail_load: detail(WT, "feat/login", [file("dir/with space.ts")]), stage_paths: null, diff_file: fileDiff("dir/with space.ts", 3) });
   await page.getByRole("checkbox").first().click();
   await expect.poll(() => callsTo(page, "stage_paths")).toEqual([{ worktree: WT, paths: ["dir/with space.ts"] }]);
+});
+
+test("summary and description become one message, and the button names the branch", async ({ page }) => {
+  const d = detail(WT, "feat/login", [file("a.ts", { staged: "M", unstaged: null })]);
+  await open(page, { detail_load: d, commit_create: null });
+  await expect(page.getByRole("button", { name: /Commit 1 file to feat\/login/ })).toBeVisible();
+  await page.getByLabel("Summary", { exact: true }).fill("Fix the redirect");
+  await page.getByLabel("Description").fill("  Login sent people to /home.\nNow it keeps ?next=.  ");
+  await page.getByRole("button", { name: /Commit 1 file/ }).click();
+  await expect.poll(async () => (await callsTo(page, "commit_create"))[0]?.message).toBe("Fix the redirect\n\nLogin sent people to /home.\nNow it keeps ?next=.");
+  await expect(page.getByLabel("Description")).toHaveValue("");
+});
+
+test("a description without a summary can't commit", async ({ page }) => {
+  const d = detail(WT, "feat/login", [file("a.ts", { staged: "M", unstaged: null })]);
+  await open(page, { detail_load: d });
+  await page.getByLabel("Description").fill("details only");
+  await expect(page.getByRole("button", { name: /Commit 1 file/ })).toBeDisabled();
 });

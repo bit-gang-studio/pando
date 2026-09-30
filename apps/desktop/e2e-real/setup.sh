@@ -18,7 +18,8 @@ g tag v1
 
 # feat/login: pushed, then one more local commit (↑1), plus an uncommitted edit.
 g worktree add -q -b feat/login ../shop-feat-login
-( cd ../shop-feat-login && c login.js "login v1" "Add login" && g push -q -u origin feat/login && c login.js "login v2" "Improve login" && echo "draft notes" > notes.txt && echo "unsaved" >> app.js )
+( cd ../shop-feat-login && c login.js "login v1" "Add login" && g push -q -u origin feat/login && c login.js "login v2" "Improve login" && echo "draft notes" > notes.txt && echo "unsaved" >> app.js \
+  && printf 'one\ntwo\nthree\n' > lines.txt && g add lines.txt && g commit -q -m "Add lines" && printf 'one\nkeep this\ntwo\nnot this\nthree\n' > lines.txt )
 
 # feat/behind: pushed; a teammate pushes on top, so after fetch it's ↓1.
 g worktree add -q -b feat/behind ../shop-feat-behind

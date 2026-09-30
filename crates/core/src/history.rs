@@ -146,6 +146,10 @@ pub struct Compare {
     pub ahead: u32,
     /// Commits on base that aren't on head.
     pub behind: u32,
+    /// Where the branch left the base. Everything before it is shared history.
+    pub merge_base: Option<String>,
+    pub added: u32,
+    pub deleted: u32,
     pub files: Vec<FileChange>,
 }
 
@@ -161,12 +165,17 @@ pub fn compare(repo: &Repo, base: &str, head: &str) -> Result<Compare> {
         &repo.common_git_dir,
         ["diff", "--numstat", "-z", "--no-renames", &range],
     )?;
+    let files = numstat(&stat);
+    let merge_base = crate::cmd::git_opt(&repo.common_git_dir, ["merge-base", base, head]);
     Ok(Compare {
         base: base.to_string(),
         head: head.to_string(),
         ahead,
         behind,
-        files: numstat(&stat),
+        merge_base,
+        added: files.iter().map(|f| f.added).sum(),
+        deleted: files.iter().map(|f| f.deleted).sum(),
+        files,
     })
 }
 

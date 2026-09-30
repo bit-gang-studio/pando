@@ -203,6 +203,43 @@ fn parse_hunk_header(rest: &str) -> (u32, u32, u32, u32) {
 }
 
 /// Rebuild a patch for one hunk that `git apply` accepts.
+/// Keep only the chosen lines of a hunk (indexes into `hunk.lines`), for
+/// staging or unstaging part of it. Staging: an unchosen added line is left
+/// out and an unchosen removed line stays as it is. Unstaging (`reverse`, the
+/// patch is applied backwards to the index) is the mirror image.
+pub fn partial_hunk(hunk: &Hunk, chosen: &[usize], reverse: bool) -> Hunk {
+    let mut lines = Vec::new();
+    for (i, l) in hunk.lines.iter().enumerate() {
+        let picked = chosen.contains(&i);
+        let (drop, as_context) = match (l.kind, picked, reverse) {
+            (LineKind::Context, _, _) | (_, true, _) => (false, false),
+            (LineKind::Add, false, false) | (LineKind::Del, false, true) => (true, false),
+            (LineKind::Del, false, false) | (LineKind::Add, false, true) => (false, true),
+        };
+        if drop {
+            continue;
+        }
+        let mut l = l.clone();
+        if as_context {
+            l.kind = LineKind::Context;
+        }
+        lines.push(l);
+    }
+    let old_count = lines.iter().filter(|l| l.kind != LineKind::Add).count() as u32;
+    let new_count = lines.iter().filter(|l| l.kind != LineKind::Del).count() as u32;
+    Hunk {
+        header: format!(
+            "@@ -{},{old_count} +{},{new_count} @@",
+            hunk.old_start, hunk.new_start
+        ),
+        old_start: hunk.old_start,
+        old_count,
+        new_start: hunk.new_start,
+        new_count,
+        lines,
+    }
+}
+
 pub fn hunk_patch(path: &str, hunk: &Hunk) -> String {
     let mut s = format!(
         "diff --git a/{path} b/{path}\n--- a/{path}\n+++ b/{path}\n{}\n",

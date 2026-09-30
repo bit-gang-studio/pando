@@ -8,6 +8,7 @@ import { ErrorState, Loading } from "../ui/State";
 import { errorParts } from "../lib/errors";
 import { useArrowKeys } from "../lib/useArrowKeys";
 import { PrBadge } from "../ui/PrBadge";
+import { Fragment } from "react";
 
 type Props = {
   root: string;
@@ -29,6 +30,9 @@ type Props = {
   heads?: Set<string>;
   /// A top row with everything the branch changes vs its base.
   compare?: { base: string; ahead: number | null };
+  /// List the branch's own commits (`own`, e.g. "origin/main..feat/x") first,
+  /// then the shared history from `rest` (where it left the base), dimmed.
+  range?: { own: string; rest: string | null; restLabel: string };
   compareSelected?: boolean;
   onCompare?: () => void;
   /// Right-click on a commit.
@@ -40,15 +44,31 @@ type Props = {
 
 const PAGE = 200;
 
-export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, prByBranch = {}, detachedDots = {}, heads, compare, compareSelected, onCompare, onCommitMenu, onLoaded, refreshKey }: Props) {
+export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, prByBranch = {}, detachedDots = {}, heads, compare, compareSelected, onCompare, range, onCommitMenu, onLoaded, refreshKey }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  const [ownCount, setOwnCount] = useState<number | null>(null);
+  const own = range?.own ?? null, rest = range?.rest ?? null;
 
   const load = useCallback(async (skip: number) => {
     try {
-      const l = await api.log(root, scope || null, skip, PAGE);
+      let l;
+      if (own) {
+        // The branch's own commits (all of them), then shared history, paged.
+        if (skip === 0) {
+          const mine = await api.log(root, own, 0, 2000);
+          const earlier = rest ? await api.log(root, rest, 0, PAGE) : { entries: [], truncated: false };
+          setOwnCount(mine.entries.length);
+          l = { entries: [...mine.entries, ...earlier.entries], truncated: earlier.truncated };
+        } else {
+          l = rest ? await api.log(root, rest, skip - (ownCount ?? 0), PAGE) : { entries: [], truncated: false };
+        }
+      } else {
+        setOwnCount(null);
+        l = await api.log(root, scope || null, skip, PAGE);
+      }
       setEntries((prev) => (skip === 0 ? l.entries : [...prev, ...l.entries]));
       setTruncated(l.truncated);
       setError(null);
@@ -57,7 +77,8 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
     } catch (e) {
       setError(String(e));
     }
-  }, [root, scope, onLoaded]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [root, scope, own, rest, onLoaded]);
 
   useEffect(() => { load(0); }, [load, refreshKey]);
 
@@ -69,7 +90,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
   return (
     <div className="flex min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-4 py-1.5 dark:border-stone-700 dark:bg-stone-800">
-        <span className="min-w-0 truncate text-body text-stone-500">{scope ? <span className="font-mono">{scope}</span> : "All branches"} · {entries.length}{truncated ? "+" : ""} commits</span>
+        <span className="min-w-0 truncate text-body text-stone-500">{scope ? <span className="font-mono">{scope}</span> : "All branches"} · {ownCount != null ? `${ownCount} ${ownCount === 1 ? "commit" : "commits"} on this branch` : `${entries.length}${truncated ? "+" : ""} commits`}</span>
       </div>
       <div tabIndex={0} onKeyDown={onListKey} className="min-h-0 grow overflow-auto bg-white focus:outline-none dark:bg-stone-800">
         {dirtyWorktrees > 0 && (
@@ -83,7 +104,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
           <button onClick={onCompare} className={`flex w-full items-center gap-3 px-4 py-1.5 text-left ${compareSelected ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
             <span className="h-2.5 w-2.5 shrink-0 rounded-sm border-2 border-stone-400" />
             <span className="font-medium">All changes</span>
-            <span className="text-body text-stone-500">vs <span className="font-mono">{compare.base}</span>{compare.ahead != null ? ` · ${compare.ahead} ${compare.ahead === 1 ? "commit" : "commits"}` : ""}</span>
+            <span className="text-body text-stone-500">since <span className="font-mono">{compare.base}</span>{compare.ahead != null ? ` · ${compare.ahead} ${compare.ahead === 1 ? "commit" : "commits"}` : ""}</span>
           </button>
         )}
         {!loaded && error && <ErrorState title="Couldn't load commits" error={error} onRetry={() => load(0)} />}
@@ -91,8 +112,11 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
         {loaded && error && <div className="flex items-center gap-2 px-4 py-1.5 text-body text-red-700"><span className="selectable min-w-0 grow truncate">{errorParts(error).message}</span><button onClick={() => load(0)} className="underline">Retry</button></div>}
         {loaded && entries.length === 0 && dirtyWorktrees === 0 && <div className="p-4 text-body text-stone-500">No commits yet.</div>}
         {entries.map((e, i) => (
+          <Fragment key={e.id}>
+          {ownCount != null && i === ownCount && (
+            <div className="flex items-center gap-2 border-y border-stone-200 bg-stone-50 px-4 py-1 text-label text-stone-500 dark:border-stone-700 dark:bg-stone-900/40">{range?.restLabel}</div>
+          )}
           <div
-            key={e.id}
             data-selected={selected === e.id}
             style={{ height: ROW_H }}
             onClick={(ev) => (wantsNewWindow(ev) ? openInNewWindow({ kind: "commit", root, id: e.id }) : onSelect(selected === e.id ? null : e.id))}
@@ -100,6 +124,9 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
             className={`flex cursor-pointer items-center gap-3 pl-2 pr-4 ${selected === e.id ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}
           >
             <GraphCell row={graph[i]} width={graphW} head={heads ? heads.has(e.id) : e.is_head} />
+            {/* Earlier history is dimmed, but not the graph: see-through lane lines that
+                overlap row to row would draw as dots at every row boundary. */}
+            <div data-dim={ownCount != null && i >= ownCount && selected !== e.id} className={`flex min-w-0 grow items-center gap-3 ${ownCount != null && i >= ownCount && selected !== e.id ? "opacity-60" : ""}`}>
             <span className="flex shrink-0 gap-1">
               {(detachedDots[e.id] ?? []).map((dot, k) => (
                 <span key={`det-${k}`} title="A worktree has this commit checked out, with no branch" className="flex items-center gap-1 rounded bg-stone-100 px-1.5 py-px font-mono text-label text-stone-700 dark:bg-stone-700 dark:text-stone-200"><span className={`h-1.5 w-1.5 rounded-full ${dot}`} />detached</span>
@@ -112,7 +139,9 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
             <span className="shrink-0 text-body text-stone-500">{e.author}</span>
             <span className="w-14 shrink-0 text-right text-body text-stone-500">{ago(e.time)}</span>
             {onCommitMenu && <MoreButton onOpen={(ev) => onCommitMenu(ev, e)} label={`Actions for ${e.id.slice(0, 7)}`} />}
+            </div>
           </div>
+          </Fragment>
         ))}
         {truncated && (
           <button onClick={() => load(entries.length)} className="m-2 rounded-md border border-stone-300 bg-white px-3 py-1 text-body dark:border-stone-600 dark:bg-stone-700">Load {PAGE} more</button>

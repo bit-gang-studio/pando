@@ -25,12 +25,13 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
   const [mode, setMode] = useState<"unified" | "split">("unified");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(""); // the summary line
+  const [description, setDescription] = useState("");
   const [amend, setAmend] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const msgRef = useRef<HTMLTextAreaElement>(null);
+  const msgRef = useRef<HTMLInputElement>(null);
   const [merging, setMerging] = useState(false);
   const split = useSplit("pando.split.worktree", 300, "x", 200, 700);
 
@@ -66,7 +67,8 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && document.activeElement !== msgRef.current) onBack();
+      const typing = document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
+      if (e.key === "Escape" && !typing) onBack();
       if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !merging) { e.preventDefault(); doCommit(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "l" && d && d.worktree.kind === "linked" && d.worktree.branch) { e.preventDefault(); setMerging(true); }
     };
@@ -101,8 +103,11 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
   async function doCommit() {
     if (!canCommit) return;
     // Keep what they typed if the commit fails (hook, signing, lock).
-    if (!(await run("commit", () => api.commitCreate(wt, message.trim(), amend)))) return;
+    // Git's shape: summary, a blank line, then the description.
+    const full = description.trim() ? `${message.trim()}\n\n${description.trim()}` : message.trim();
+    if (!(await run("commit", () => api.commitCreate(wt, full, amend)))) return;
     setMessage("");
+    setDescription("");
     setAmend(false);
   }
 
@@ -120,6 +125,11 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
   async function hunk(h: Hunk, reverse: boolean) {
     if (!diff) return;
     await run("hunk", () => api.applyHunk(wt, diff.path, h, reverse));
+  }
+
+  async function lines(h: Hunk, picked: number[], reverse: boolean) {
+    if (!diff) return;
+    await run("lines", () => api.applyLines(wt, diff.path, h, picked, reverse));
   }
 
   async function syncNow() {
@@ -245,12 +255,14 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
 
           <div className="flex shrink-0 flex-col gap-2 border-t border-stone-300 bg-stone-50 p-3 dark:border-stone-700 dark:bg-stone-900/40">
             <label htmlFor="msg" className="text-label font-semibold tracking-wider text-stone-500">COMMIT MESSAGE</label>
-            <textarea id="msg" ref={msgRef} rows={3} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={amend ? "New message for the last commit" : "Summary, then details"} className="w-full resize-none rounded-md border border-stone-300 bg-white p-2 text-body focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700" />
+            <input id="msg" ref={msgRef} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={amend ? "New summary for the last commit" : "Summary"} aria-label="Summary" className="h-8 w-full rounded-md border border-stone-300 bg-white px-2 text-body focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700" />
+            <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)" aria-label="Description" className="w-full resize-none rounded-md border border-stone-300 bg-white p-2 text-body focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700" />
             <div className="flex items-center gap-2">
               <label className="flex items-center gap-1.5 text-body"><input type="checkbox" checked={amend} onChange={(e) => { setAmend(e.target.checked); if (e.target.checked && !message && d.head_summary) setMessage(d.head_summary); }} /> Amend</label>
               <div className="grow" />
-              <button onClick={doCommit} disabled={!canCommit} className="h-7.5 rounded-md bg-teal-700 px-3 text-body font-medium text-white hover:bg-teal-800 disabled:opacity-50">
-                {busy === "commit" ? "Committing…" : amend ? "Amend" : `Commit ${staged.length} ${staged.length === 1 ? "file" : "files"}`} <span className="text-body opacity-70">⌘↵</span>
+              <button onClick={doCommit} disabled={!canCommit} title={d.worktree.branch ? `Commit to ${d.worktree.branch}` : undefined} className="flex h-7.5 min-w-0 shrink items-center gap-1.5 rounded-md bg-teal-700 px-3 text-body font-medium text-white hover:bg-teal-800 disabled:opacity-50">
+                <span className="min-w-0 truncate">{busy === "commit" ? "Committing…" : amend ? "Amend last commit" : `Commit ${staged.length} ${staged.length === 1 ? "file" : "files"}${d.worktree.branch ? ` to ${d.worktree.branch}` : ""}`}</span>
+                <span className="shrink-0 text-body opacity-70">⌘↵</span>
               </button>
             </div>
           </div>
@@ -261,7 +273,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
           {d.operation && sel && (d.operation.conflicted.includes(sel.path) || d.operation.resolved.includes(sel.path)) ? (
             <ConflictView worktree={wt} path={sel.path} op={d.operation} onChanged={refresh} />
           ) : (
-            <DiffView diff={diff} loading={diffLoading} mode={mode} onMode={setMode} onHunk={hunk} />
+            <DiffView diff={diff} loading={diffLoading} mode={mode} onMode={setMode} onHunk={hunk} onLines={lines} />
           )}
         </main>
       </div>

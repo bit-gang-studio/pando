@@ -25,6 +25,9 @@ pub struct PullRequest {
     pub draft: bool,
     /// The PR's branch on its own repo.
     pub head: String,
+    /// The branch it wants to merge into, e.g. "main" or the branch it's stacked on.
+    #[serde(default)]
+    pub base: String,
     /// The branch lives on someone's fork.
     pub from_fork: bool,
     pub url: String,
@@ -65,7 +68,7 @@ pub fn list(repo: &Repo) -> Result<PullRequests> {
             "--limit",
             "100",
             "--json",
-            "number,title,author,isDraft,headRefName,isCrossRepository,url,statusCheckRollup,reviewDecision,updatedAt",
+            "number,title,author,isDraft,headRefName,baseRefName,isCrossRepository,url,statusCheckRollup,reviewDecision,updatedAt",
         ],
     )?;
     if code != 0 {
@@ -102,6 +105,7 @@ pub fn parse(json: &str) -> Vec<PullRequest> {
                     .unwrap_or_else(|| "ghost".into()),
                 draft: v.get("isDraft").and_then(|d| d.as_bool()).unwrap_or(false),
                 head: s(v, "headRefName"),
+                base: s(v, "baseRefName"),
                 from_fork: v
                     .get("isCrossRepository")
                     .and_then(|d| d.as_bool())

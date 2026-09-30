@@ -32,6 +32,13 @@ async function boot(page: Page, hash: string) {
     };
     w.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
     w.__emit = (event: string, payload: unknown) => { for (const id of listeners[event] ?? []) (w[`_${id}`] as (e: unknown) => void)?.({ event, id, payload }); };
+    // The bridge's real file watcher queues changes; deliver them like the app's events.
+    setInterval(async () => {
+      try {
+        const r = await fetch("http://127.0.0.1:4599/invoke", { method: "POST", body: JSON.stringify({ cmd: "__events", args: {} }) });
+        for (const root of ((await r.json()).ok ?? []) as string[]) (w.__emit as (e: string, p: unknown) => void)("repo-changed", root);
+      } catch { /* bridge restarting */ }
+    }, 300);
   });
   await page.goto(`/${hash}`);
 }
@@ -46,11 +53,11 @@ test.beforeEach(() => {
   execSync(`bash setup.sh "${BASE}"`, { cwd: HERE, stdio: "ignore" });
 });
 
-test("the repo page shows real state: merged, ↑1, and after Fetch ↓1", async ({ page }) => {
+test("the repo page shows real state: merged, ↑2, and after Fetch ↓1", async ({ page }) => {
   await repoPage(page);
   await expect(rowOf(page, "feat/done").getByText("merged")).toBeVisible({ timeout: 15_000 });
   await expect(rowOf(page, "feat/dirty").getByText("merged")).toHaveCount(0);
-  await expect(rowOf(page, "feat/login").getByTitle(/1 to push/)).toBeVisible();
+  await expect(rowOf(page, "feat/login").getByTitle(/2 to push/)).toBeVisible();
   await sidebar(page).getByRole("button", { name: "Fetch" }).click();
   await expect(toast(page, "Fetched")).toBeVisible();
   await expect(rowOf(page, "feat/behind").getByTitle(/1 to pull/)).toBeVisible();
@@ -65,9 +72,9 @@ test("Pull ↓1 on the worktree page really pulls", async ({ page }) => {
   await expect(page.getByText("Up to date")).toBeVisible();
 });
 
-test("Push ↑1 on the worktree page really pushes", async ({ page }) => {
+test("Push ↑2 on the worktree page really pushes", async ({ page }) => {
   await worktreePage(page, "feat/login");
-  await page.getByRole("button", { name: "Push ↑1" }).click();
+  await page.getByRole("button", { name: "Push ↑2" }).click();
   await expect(toast(page, "Pushed feat/login")).toBeVisible();
   expect(git(`${BASE}/origin.git`, "rev-parse feat/login")).toBe(git(wtPath("feat/login"), "rev-parse HEAD"));
 });
@@ -166,7 +173,7 @@ test("Open in Terminal asks for the worktree's folder (recorded, not opened)", a
 
 test("a branch opens on All changes with the real files", async ({ page }) => {
   await boot(page, `#/branch?root=${encodeURIComponent(ROOT)}&name=feat%2Flogin`);
-  await expect(page.getByText("All changes on feat/login vs main")).toBeVisible();
+  await expect(page.getByText(/All changes on feat\/login since/)).toBeVisible();
   await expect(page.getByRole("button", { name: /login\.js/ })).toBeVisible();
 });
 
@@ -195,4 +202,49 @@ test("two worktrees editing login.js both show ⚠, and it clears when one is re
   await page.getByRole("menuitem", { name: "Remove worktree…" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Remove worktree" }).click();
   await expect(login.getByText(/⚠/)).toHaveCount(0, { timeout: 15_000 });
+});
+
+test("stage one of two new lines: git has exactly that line staged", async ({ page }) => {
+  await worktreePage(page, "feat/login");
+  await page.locator("div.group", { hasText: "lines.txt" }).first().click();
+  await page.getByRole("checkbox", { name: /line: keep this$/ }).click();
+  await page.getByRole("button", { name: "Stage 1 line" }).click();
+  await expect.poll(() => git(wtPath("feat/login"), "show :lines.txt")).toBe("one\nkeep this\ntwo\nthree");
+  expect(execSync(`cat "${wtPath("feat/login")}/lines.txt"`, { encoding: "utf8" })).toBe("one\nkeep this\ntwo\nnot this\nthree\n");
+});
+
+test("a branch lists exactly its own commits, then the earlier history", async ({ page }) => {
+  const count = Number(git(ROOT, "rev-list --count origin/main..feat/login"));
+  await boot(page, `#/branch?root=${encodeURIComponent(ROOT)}&name=feat%2Flogin`);
+  await expect(page.getByText(`${count} commits on this branch`)).toBeVisible();
+  await expect(page.getByText("Earlier history on main")).toBeVisible();
+  await expect(page.getByText(/All changes on feat\/login since/)).toBeVisible();
+});
+
+test("Fetch updates the Fetched line", async ({ page }) => {
+  await repoPage(page);
+  await sidebar(page).getByRole("button", { name: "Fetch", exact: true }).click();
+  await expect(sidebar(page).getByText("Fetched just now")).toBeVisible();
+});
+
+test("changes made outside Pando show up by themselves", async ({ page }) => {
+  await repoPage(page);
+  await expect(rowOf(page, "feat/login")).toBeVisible();
+  const outside = `${BASE}/shop-feat-outside`;
+
+  // A worktree added from a terminal appears.
+  git(ROOT, `worktree add -q -b feat/outside "${outside}"`);
+  await expect(rowOf(page, "feat/outside")).toBeVisible({ timeout: 10_000 });
+
+  // A commit made in it, from a terminal, reaches the graph.
+  execSync(`echo hi > outside.txt && git -c user.name=T -c user.email=t@e -c commit.gpgsign=false add outside.txt && git -c user.name=T -c user.email=t@e -c commit.gpgsign=false commit -q -m "Made outside Pando"`, { cwd: outside, shell: "/bin/bash" });
+  await expect(page.getByText("Made outside Pando")).toBeVisible({ timeout: 10_000 });
+
+  // Removed from a terminal: it goes.
+  git(ROOT, `worktree remove "${outside}"`);
+  await expect(sidebar(page).locator("div.group", { hasText: "feat/outside" }).filter({ has: page.locator("span.rounded-full") })).toHaveCount(0, { timeout: 10_000 });
+
+  // A worktree folder deleted by hand shows as missing.
+  execSync(`rm -rf "${wtPath("feat/behind")}"`);
+  await expect(rowOf(page, "feat/behind").getByText("folder missing")).toBeVisible({ timeout: 10_000 });
 });
