@@ -248,3 +248,39 @@ test("changes made outside Pando show up by themselves", async ({ page }) => {
   execSync(`rm -rf "${wtPath("feat/behind")}"`);
   await expect(rowOf(page, "feat/behind").getByText("folder missing")).toBeVisible({ timeout: 10_000 });
 });
+
+test("a real merge conflict: pick a side, Continue makes the merge commit", async ({ page }) => {
+  const wt = wtPath("feat/collide");
+  const before = git(wt, "rev-parse HEAD");
+  expect(gitOk(wt, "merge feat/login")).toBe(false);
+  await worktreePage(page, "feat/collide");
+  await expect(page.getByText("Merging feat/login into feat/collide")).toBeVisible();
+  const card = page.getByRole("group", { name: "Conflict 1 of 1" });
+  await expect(card.getByText("a different login")).toBeVisible();
+  await card.getByRole("button", { name: "Keep feat/login" }).click();
+  await expect(page.getByText("✓ Resolved")).toBeVisible();
+  await expect(page.getByText("RESOLVED BY YOU · 1")).toBeVisible();
+  await page.getByRole("button", { name: "Continue", exact: true }).click();
+  await expect(page.getByText(/^Merging/)).toHaveCount(0);
+  expect(git(wt, "cat-file -p HEAD:login.js")).toBe("login v2");
+  expect(git(wt, "rev-parse HEAD^1")).toBe(before);
+  expect(git(wt, "rev-parse HEAD^2")).toBe(git(ROOT, "rev-parse feat/login"));
+});
+
+test("a real conflict: Back to conflicted, then Abort puts the branch back", async ({ page }) => {
+  const wt = wtPath("feat/collide");
+  const before = git(wt, "rev-parse HEAD");
+  gitOk(wt, "merge feat/login");
+  await worktreePage(page, "feat/collide");
+  await page.getByRole("group", { name: "Conflict 1 of 1" }).getByRole("button", { name: "Keep both" }).click();
+  await expect(page.getByText("✓ Resolved")).toBeVisible();
+  expect(execSync(`cat "${wt}/login.js"`, { encoding: "utf8" })).toBe("a different login\nlogin v2\n");
+  await page.getByRole("button", { name: "Back to conflicted" }).click();
+  await expect(page.getByRole("group", { name: "Conflict 1 of 1" })).toBeVisible();
+  expect(execSync(`cat "${wt}/login.js"`, { encoding: "utf8" })).toContain("<<<<<<<");
+  await page.getByRole("button", { name: "Abort" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Abort" }).click();
+  await expect(page.getByText(/^Merging/)).toHaveCount(0);
+  expect(git(wt, "rev-parse HEAD")).toBe(before);
+  expect(git(wt, "status --porcelain")).toBe("");
+});

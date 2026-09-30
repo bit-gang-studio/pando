@@ -54,12 +54,12 @@ test("discard asks first and Escape doesn't discard", async ({ page }) => {
 
 test("a paused rebase can't continue until conflicts are resolved", async ({ page }) => {
   const d = detail(WT, "feat/login", [file("a.ts", { conflicted: true, unstaged: "U" })]);
-  d.operation = { kind: "rebase", applied: 1, total: 3, head_label: "main", incoming_label: "feat/login", conflicted: ["a.ts"], resolved: [] };
+  d.operation = { kind: "rebase", applied: 1, total: 3, head_label: "main", incoming_label: "feat/login", conflicted: ["a.ts"], counts: { "a.ts": 1 }, resolved: [], resolved_by_you: [] };
   await open(page, {
     detail_load: d,
     conflict_file: { path: "a.ts", ours: "ours\n", theirs: "theirs\n", base: "base\n", working: "<<<<<<<\nours\n=======\ntheirs\n>>>>>>>\n", binary: false },
   }).catch(() => {});
-  await expect(page.getByText(/Rebase paused onto main/)).toBeVisible();
+  await expect(page.getByText("Rebasing feat/login onto main · commit 1 of 3")).toBeVisible();
   await expect(page.getByRole("button", { name: /Continue \(1 unresolved\)/ })).toBeDisabled();
 });
 

@@ -204,6 +204,12 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
                     .await,
             )
         }
+        "conflict_choose" => {
+            out(
+                super::conflict_choose(arg(&a, "worktree")?, arg(&a, "path")?, arg(&a, "choices")?)
+                    .await,
+            )
+        }
         "conflict_resolve" => out(super::conflict_resolve(
             arg(&a, "worktree")?,
             arg(&a, "path")?,

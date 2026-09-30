@@ -11,8 +11,9 @@ export default defineConfig({
   workers: 1,
   fullyParallel: false,
   timeout: 60_000,
-  reporter: "list",
-  use: { baseURL: "http://localhost:1497", viewport: { width: 1400, height: 850 }, ...devices["Desktop Chrome"] },
+  // Keep a record of every run, so a rare failure can be looked up afterwards.
+  reporter: [["list"], ["json", { outputFile: `${BASE}-last-run.json` }]],
+  use: { trace: "retain-on-failure", baseURL: "http://localhost:1497", viewport: { width: 1400, height: 850 }, ...devices["Desktop Chrome"] },
   webServer: [
     { command: "pnpm exec vite --port 1497 --strictPort", port: 1497, reuseExistingServer: false, cwd: ".." },
     {

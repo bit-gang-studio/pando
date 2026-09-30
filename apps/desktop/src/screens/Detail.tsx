@@ -33,6 +33,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
   const [notice, setNotice] = useState<string | null>(null);
   const msgRef = useRef<HTMLInputElement>(null);
   const [merging, setMerging] = useState(false);
+  const [showAuto, setShowAuto] = useState(false);
   const split = useSplit("pando.split.worktree", 300, "x", 200, 700);
 
   const refresh = useCallback(async () => {
@@ -85,7 +86,8 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
     finally { setBusy(null); }
   }
 
-  const navFiles = d ? [
+  const opFiles = d?.operation ? [...d.operation.conflicted, ...d.operation.resolved_by_you].map((p) => ({ path: p, staged: false, untracked: false })) : [];
+  const navFiles = d?.operation ? opFiles : d ? [
     ...d.files.filter((f) => f.unstaged || f.untracked).map((f) => ({ path: f.path, staged: false, untracked: f.untracked })),
     ...d.files.filter((f) => f.staged).map((f) => ({ path: f.path, staged: true, untracked: false })),
   ] : [];
@@ -93,8 +95,16 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
   if (!d) return error ? <ErrorState title="Couldn't load this worktree" error={error} onRetry={refresh} /> : <Loading />;
 
   const wt = d.worktree.path;
-  const unstaged = d.files.filter((f) => f.unstaged || f.untracked);
-  const staged = d.files.filter((f) => f.staged);
+  const op = d.operation;
+  // During a merge or rebase, conflicts and resolved files have their own lists.
+  const unstaged = d.files.filter((f) => (f.unstaged || f.untracked) && !(op && f.conflicted));
+  const staged = op ? [] : d.files.filter((f) => f.staged);
+  const auto = op ? op.resolved.filter((p) => !op.resolved_by_you.includes(p)) : [];
+  const nextConflicted = () => {
+    if (!op || op.conflicted.length === 0) return;
+    const later = op.conflicted.find((p) => sel && p > sel.path);
+    setSel({ path: later ?? op.conflicted[0], staged: false, untracked: false });
+  };
   const conflicts = d.files.filter((f) => f.conflicted).length;
   const b = d.branch;
   const isMain = d.worktree.kind === "main";
@@ -167,8 +177,8 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
       <div className="flex h-10 shrink-0 items-center gap-2 overflow-x-auto border-b border-stone-300 bg-white px-4 dark:border-stone-700 dark:bg-stone-800">
         <span className="font-mono text-body font-medium">{d.worktree.branch ?? "(detached)"}</span>
         {isMain && <Chip>main worktree</Chip>}
-        {d.files.length > 0 ? <Chip tone="amber">{d.files.length} changed</Chip> : <Chip>clean</Chip>}
-        {conflicts > 0 && <Chip tone="red">{conflicts} conflicts</Chip>}
+        {!op && (d.files.length > 0 ? <Chip tone="amber">{d.files.length} changed</Chip> : <Chip>clean</Chip>)}
+        {!op && conflicts > 0 && <Chip tone="red">{conflicts} conflicts</Chip>}
         <div className="grow" />
         {b && !d.operation && (() => {
           // One button, the next thing to do: pull first if the remote moved, else push.
@@ -181,17 +191,17 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
           return <span className="text-label text-stone-500" title={b.upstream}>Up to date</span>;
         })()}
         {!isMain && d.base_branch && !d.operation && <button onClick={syncNow} disabled={!!busy} className={btn}>{busy === "sync" ? "Syncing…" : `Sync with ${d.base_branch}`}</button>}
-        {!isMain && <button onClick={() => setMerging(true)} disabled={!d.worktree.branch || !!d.operation} className="h-8 rounded-lg bg-teal-700 px-3.5 text-body font-medium text-white hover:bg-teal-800 disabled:opacity-40">Merge <span className="text-body opacity-70">⌘L</span></button>}
+        {!isMain && !op && <button onClick={() => setMerging(true)} disabled={!d.worktree.branch || !!d.operation} className="h-8 rounded-lg bg-teal-700 px-3.5 text-body font-medium text-white hover:bg-teal-800 disabled:opacity-40">Merge <span className="text-body opacity-70">⌘L</span></button>}
       </div>
 
       {d.operation && (
         <div className="flex items-center gap-3 border-b border-amber-300 bg-amber-50 px-4 py-2 text-body dark:border-amber-800 dark:bg-amber-900/30">
           <span className="h-2 w-2 rounded-full bg-amber-700" />
           <span className="font-semibold text-amber-800 dark:text-amber-200">
-            {d.operation.kind === "rebase" ? `Rebase paused onto ${d.operation.head_label}` : d.operation.kind === "merge" ? `Merge paused: ${d.operation.incoming_label} into ${d.operation.head_label}` : d.operation.kind === "revert" ? `Revert paused: ${d.operation.incoming_label}` : `Cherry-pick paused: ${d.operation.incoming_label}`}
-            {d.operation.total > 0 && ` · ${d.operation.applied} of ${d.operation.total} commits`}
+            {d.operation.kind === "rebase" ? `Rebasing ${d.operation.incoming_label} onto ${d.operation.head_label}` : d.operation.kind === "merge" ? `Merging ${d.operation.incoming_label} into ${d.operation.head_label}` : d.operation.kind === "revert" ? `Reverting ${d.operation.incoming_label}` : `Cherry-picking ${d.operation.incoming_label}`}
+            {d.operation.total > 0 && ` · commit ${d.operation.applied} of ${d.operation.total}`}
           </span>
-          <span className="text-stone-600 dark:text-stone-300">{d.operation.conflicted.length > 0 ? `${d.operation.conflicted.length} ${d.operation.conflicted.length === 1 ? "file has" : "files have"} conflicts. Resolve each, then continue.` : "All conflicts resolved."}</span>
+          <span className="text-stone-600 dark:text-stone-300">{d.operation.conflicted.length > 0 ? `${d.operation.conflicted.length} ${d.operation.conflicted.length === 1 ? "file" : "files"} left` : "All conflicts resolved"}</span>
           <div className="grow" />
           <button onClick={() => run("abort", async () => { if ((await confirm({ title: "Abort", body: "Stop and put the branch back exactly as it was before?", action: "Abort", danger: true })).ok) await api.opAbort(wt); })} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-red-700 dark:border-stone-600 dark:bg-stone-700">Abort</button>
           <button onClick={() => run("continue", () => api.opContinue(wt))} disabled={!!busy || d.operation.conflicted.length > 0} className="h-7 rounded-md bg-teal-700 px-3 font-medium text-white disabled:opacity-50">{busy === "continue" ? "Continuing…" : d.operation.conflicted.length > 0 ? `Continue (${d.operation.conflicted.length} unresolved)` : "Continue"}</button>
@@ -210,36 +220,61 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
             {d.operation && (
               <>
                 <div className="px-2 pb-1 pt-1 text-label font-semibold tracking-wider text-stone-500">CONFLICTED · {d.operation.conflicted.length}</div>
-                {d.operation.conflicted.map((p) => (
-                  <div key={`c-${p}`} onClick={() => setSel({ path: p, staged: false, untracked: false })} className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${sel?.path === p ? "bg-amber-100 dark:bg-amber-900/40" : "bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/20 dark:hover:bg-amber-900/40"}`}>
-                    <span className="h-2 w-2 rounded-full bg-amber-700" /><span className="grow truncate font-mono text-body">{p}</span>
-                  </div>
-                ))}
+                {d.operation.conflicted.map((p) => {
+                  const n = d.operation!.counts[p] ?? 0;
+                  return (
+                    <div key={`c-${p}`} data-selected={sel?.path === p} onClick={() => setSel({ path: p, staged: false, untracked: false })} className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${sel?.path === p ? "bg-amber-100 dark:bg-amber-900/40" : "bg-amber-50 hover:bg-amber-100 dark:bg-amber-900/20 dark:hover:bg-amber-900/40"}`}>
+                      <span className="h-2 w-2 shrink-0 rounded-full bg-amber-700" /><span className="min-w-0 grow truncate font-mono text-body" title={p}>{p}</span>
+                      {n > 0 && <span className="shrink-0 whitespace-nowrap text-label text-amber-800 dark:text-amber-300" title={`${n} ${n === 1 ? "conflict" : "conflicts"} left`}>{n}</span>}
+                    </div>
+                  );
+                })}
                 {d.operation.conflicted.length === 0 && <span className="px-2 text-body text-stone-500">None left.</span>}
-                <div className="px-2 pb-1 pt-3 text-label font-semibold tracking-wider text-stone-500">RESOLVED · {d.operation.resolved.length}</div>
-                {d.operation.resolved.map((p) => (
-                  <div key={`r-${p}`} onClick={() => setSel({ path: p, staged: true, untracked: false })} className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${sel?.path === p ? "bg-teal-100 dark:bg-teal-900/40" : "hover:bg-stone-100 dark:hover:bg-stone-700"}`}>
-                    <span className="w-2 font-semibold text-teal-700">✓</span><span className="grow truncate font-mono text-body">{p}</span>
-                    <button onClick={(e) => { e.stopPropagation(); run("reset", () => api.conflictReset(wt, p)); }} className="text-label text-teal-700 hover:underline">Undo</button>
-                  </div>
-                ))}
+                {d.operation.resolved_by_you.length > 0 && (
+                  <>
+                    <div className="px-2 pb-1 pt-3 text-label font-semibold tracking-wider text-stone-500">RESOLVED BY YOU · {d.operation.resolved_by_you.length}</div>
+                    {d.operation.resolved_by_you.map((p) => (
+                      <div key={`r-${p}`} data-selected={sel?.path === p} onClick={() => setSel({ path: p, staged: false, untracked: false })} className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${sel?.path === p ? "bg-teal-100 dark:bg-teal-900/40" : "hover:bg-stone-100 dark:hover:bg-stone-700"}`}>
+                        <span className="w-2 shrink-0 font-semibold text-teal-700">✓</span><span className="min-w-0 grow truncate font-mono text-body" title={p}>{p}</span>
+                        <button onClick={(e) => { e.stopPropagation(); run("reset", () => api.conflictReset(wt, p)); }} className="invisible shrink-0 text-label text-teal-700 hover:underline group-hover:visible" title="Back to conflicted">Undo</button>
+                      </div>
+                    ))}
+                  </>
+                )}
+                {auto.length > 0 && (
+                  <>
+                    <button onClick={() => setShowAuto(!showAuto)} aria-expanded={showAuto} className="flex items-center gap-1 px-2 pb-1 pt-3 text-left text-label font-semibold tracking-wider text-stone-500 hover:text-stone-700 dark:hover:text-stone-300">
+                      <span className="w-2.5">{showAuto ? "▾" : "▸"}</span>{auto.length} MERGED AUTOMATICALLY
+                    </button>
+                    {showAuto && auto.map((p) => (
+                      <div key={`a-${p}`} data-selected={sel?.path === p} onClick={() => setSel({ path: p, staged: true, untracked: false })} className={`flex cursor-pointer items-center gap-2 rounded-md px-2 py-1 ${sel?.path === p ? "bg-teal-100 dark:bg-teal-900/40" : "hover:bg-stone-100 dark:hover:bg-stone-700"}`}>
+                        <span className="min-w-0 grow truncate font-mono text-body text-stone-600 dark:text-stone-300" title={p}>{p}</span>
+                      </div>
+                    ))}
+                  </>
+                )}
                 <div className="my-2 border-t border-stone-200 dark:border-stone-700" />
               </>
             )}
+            {/* During a merge only show other changes if there are any. */}
+            {(!op || unstaged.length > 0) && <>
             <div className="flex items-center justify-between px-2 pb-1 pt-1">
               <span className="text-label font-semibold tracking-wider text-stone-500">UNSTAGED · {unstaged.length}</span>
-              <button onClick={() => run("stage", () => api.stageAll(wt))} disabled={unstaged.length === 0 || !!busy} className={small}>Stage all</button>
+              {/* Stage all would mark conflicted files resolved, markers and all. */}
+              {!op && <button onClick={() => run("stage", () => api.stageAll(wt))} disabled={unstaged.length === 0 || !!busy} className={small}>Stage all</button>}
             </div>
             {unstaged.map((f) => fileRow(f, false))}
             {unstaged.length === 0 && <span className="px-2 text-body text-stone-500">Nothing unstaged.</span>}
 
-            <div className="flex items-center justify-between px-2 pb-1 pt-4">
+                        </>}
+{!op && <div className="flex items-center justify-between px-2 pb-1 pt-4">
               <span className="text-label font-semibold tracking-wider text-stone-500">STAGED · {staged.length}</span>
               <button onClick={() => run("stage", () => api.unstageAll(wt))} disabled={staged.length === 0 || !!busy} className={small}>Unstage all</button>
-            </div>
+            </div>}
             {staged.map((f) => fileRow(f, true))}
-            {staged.length === 0 && <span className="px-2 text-body text-stone-500">Nothing staged.</span>}
+            {!op && staged.length === 0 && <span className="px-2 text-body text-stone-500">Nothing staged.</span>}
 
+            {!op && <>
             <div className="px-2 pb-1 pt-4 text-label font-semibold tracking-wider text-stone-500">
               {d.base_branch && !isMain ? `COMMITS AHEAD OF ${d.base_branch.toUpperCase()} · ${d.ahead.length}` : `RECENT COMMITS · ${d.ahead.length}`}
             </div>
@@ -251,27 +286,30 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
               </div>
             ))}
             {d.ahead.length === 0 && <span className="px-2 text-body text-stone-500">None.</span>}
+            </>}
           </div>
 
-          <div className="flex shrink-0 flex-col gap-2 border-t border-stone-300 bg-stone-50 p-3 dark:border-stone-700 dark:bg-stone-900/40">
+          {/* During a merge or rebase, Continue makes the commit. */}
+          {!op && <div className="flex shrink-0 flex-col gap-2 border-t border-stone-300 bg-stone-50 p-3 dark:border-stone-700 dark:bg-stone-900/40">
             <label htmlFor="msg" className="text-label font-semibold tracking-wider text-stone-500">COMMIT MESSAGE</label>
             <input id="msg" ref={msgRef} value={message} onChange={(e) => setMessage(e.target.value)} placeholder={amend ? "New summary for the last commit" : "Summary"} aria-label="Summary" className="h-8 w-full rounded-md border border-stone-300 bg-white px-2 text-body focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700" />
             <textarea rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Description (optional)" aria-label="Description" className="w-full resize-none rounded-md border border-stone-300 bg-white p-2 text-body focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700" />
-            <div className="flex items-center gap-2">
-              <label className="flex items-center gap-1.5 text-body"><input type="checkbox" checked={amend} onChange={(e) => { setAmend(e.target.checked); if (e.target.checked && !message && d.head_summary) setMessage(d.head_summary); }} /> Amend</label>
+            <div className="flex min-w-0 items-center gap-2">
+              <label className="flex shrink-0 items-center gap-1.5 text-body"><input type="checkbox" checked={amend} onChange={(e) => { setAmend(e.target.checked); if (e.target.checked && !message && d.head_summary) setMessage(d.head_summary); }} /> Amend</label>
               <div className="grow" />
-              <button onClick={doCommit} disabled={!canCommit} title={d.worktree.branch ? `Commit to ${d.worktree.branch}` : undefined} className="flex h-7.5 min-w-0 shrink items-center gap-1.5 rounded-md bg-teal-700 px-3 text-body font-medium text-white hover:bg-teal-800 disabled:opacity-50">
+              {/* Inline, because the global button rule (flex-shrink: 0) beats the class. */}
+              <button onClick={doCommit} disabled={!canCommit} title={d.worktree.branch ? `Commit to ${d.worktree.branch}` : undefined} style={{ flexShrink: 1 }} className="flex h-7.5 min-w-0 items-center gap-1.5 rounded-md bg-teal-700 px-3 text-body font-medium text-white hover:bg-teal-800 disabled:opacity-50">
                 <span className="min-w-0 truncate">{busy === "commit" ? "Committing…" : amend ? "Amend last commit" : `Commit ${staged.length} ${staged.length === 1 ? "file" : "files"}${d.worktree.branch ? ` to ${d.worktree.branch}` : ""}`}</span>
                 <span className="shrink-0 text-body opacity-70">⌘↵</span>
               </button>
             </div>
-          </div>
+          </div>}
         </aside>
 
         <SplitHandle axis="x" onMouseDown={split.start} handleRef={split.handle} />
         <main className="flex min-w-0 grow flex-col bg-white dark:bg-stone-800">
-          {d.operation && sel && (d.operation.conflicted.includes(sel.path) || d.operation.resolved.includes(sel.path)) ? (
-            <ConflictView worktree={wt} path={sel.path} op={d.operation} onChanged={refresh} />
+          {op && sel && (op.conflicted.includes(sel.path) || op.resolved_by_you.includes(sel.path)) ? (
+            <ConflictView worktree={wt} path={sel.path} op={op} onChanged={refresh} onNextFile={nextConflicted} />
           ) : (
             <DiffView diff={diff} loading={diffLoading} mode={mode} onMode={setMode} onHunk={hunk} onLines={lines} />
           )}

@@ -2,8 +2,9 @@
 
 use crate::cmd::{git, git_env, git_raw};
 use crate::error::Result;
-use crate::status;
+use crate::{conflict, status};
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::path::Path;
 
@@ -28,8 +29,13 @@ pub struct Operation {
     /// What is being brought in. Stage 3 ("theirs") side.
     pub incoming_label: String,
     pub conflicted: Vec<String>,
-    /// Files staged during the pause; usually the ones already resolved.
+    /// Conflicts left in each conflicted file. 0 when there are no markers
+    /// (binary, or deleted on one side).
+    pub counts: BTreeMap<String, u32>,
+    /// Files done during the pause: resolved ones and ones git merged itself.
     pub resolved: Vec<String>,
+    /// The part of `resolved` that had conflicts, from git's resolve-undo record.
+    pub resolved_by_you: Vec<String>,
 }
 
 fn git_path(wt: &Path, name: &str) -> Result<std::path::PathBuf> {
@@ -37,6 +43,50 @@ fn git_path(wt: &Path, name: &str) -> Result<std::path::PathBuf> {
     let p = p.trim();
     let pb = std::path::PathBuf::from(p);
     Ok(if pb.is_absolute() { pb } else { wt.join(pb) })
+}
+
+/// A readable name for a commit: a branch if one points at it, else a short id.
+/// Never `remotes/origin/HEAD`.
+fn nice_name(wt: &Path, id: &str) -> String {
+    let named = git_raw(
+        wt,
+        [
+            "name-rev",
+            "--name-only",
+            "--no-undefined",
+            "--exclude=*/HEAD",
+            "--refs=refs/heads/*",
+            "--refs=refs/remotes/*",
+            id,
+        ],
+    )
+    .ok()
+    .filter(|(code, out, _)| *code == 0 && !out.trim().is_empty())
+    .map(|(_, out, _)| out.trim().to_string());
+    match named {
+        Some(n) => {
+            let n = n.strip_prefix("remotes/").unwrap_or(&n);
+            n.strip_suffix("~0")
+                .or(n.strip_suffix("^0"))
+                .unwrap_or(n)
+                .to_string()
+        }
+        None => id[..7.min(id.len())].to_string(),
+    }
+}
+
+/// The name in git's own merge message: "Merge branch 'main' into x".
+fn merge_msg_name(msg: &str) -> Option<String> {
+    let first = msg.lines().next()?;
+    let rest = [
+        "Merge branch '",
+        "Merge remote-tracking branch '",
+        "Merge tag '",
+        "Merge commit '",
+    ]
+    .iter()
+    .find_map(|p| first.strip_prefix(p))?;
+    Some(rest.split('\'').next()?.to_string())
 }
 
 fn read(p: &Path) -> Option<String> {
@@ -70,12 +120,29 @@ pub fn detect(wt: &Path) -> Result<Option<Operation>> {
         .filter(|l| !l.is_empty())
         .map(str::to_string)
         .collect();
+    let counts = conflicted
+        .iter()
+        .map(|p| (p.clone(), conflict::count(wt, p)))
+        .collect();
+    // Files that had conflicts and don't now. Keeping a side can leave a
+    // file equal to HEAD, so this can't come from what's staged.
+    // Records look like "100644 <id> 1\t<path>", one per stage.
+    let undo = git(wt, ["ls-files", "--resolve-undo", "-z"])?;
+    let resolved_by_you: Vec<String> = undo
+        .split('\0')
+        .filter_map(|l| l.split_once('\t').map(|(_, p)| p.to_string()))
+        .filter(|p| !conflicted.contains(p))
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
     let resolved: Vec<String> = status::files(wt)?
         .into_iter()
         .filter(|f| f.staged.is_some() && !f.conflicted)
         .map(|f| f.path)
+        .chain(resolved_by_you.iter().cloned())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
         .collect();
-
     let (applied, total, head_label, incoming_label) = match kind {
         OpKind::Rebase => {
             let dir = if rebase_merge.is_dir() {
@@ -90,41 +157,24 @@ pub fn detect(wt: &Path) -> Result<Option<Operation>> {
                 .and_then(|s| s.parse().ok())
                 .unwrap_or(0);
             let onto = read(&dir.join("onto"))
-                .map(|o| {
-                    git_raw(
-                        wt,
-                        [
-                            "name-rev",
-                            "--name-only",
-                            "--refs=refs/heads/*",
-                            "--refs=refs/remotes/*",
-                            &o,
-                        ],
-                    )
-                    .map(|(_, n, _)| n.trim().to_string())
-                    .unwrap_or(o)
-                })
+                .map(|o| nice_name(wt, &o))
                 .unwrap_or_else(|| "onto".into());
             let head = read(&dir.join("head-name"))
                 .map(|h| h.trim_start_matches("refs/heads/").to_string())
                 .unwrap_or_else(|| "branch".into());
-            (
-                applied,
-                total,
-                onto,
-                format!("{head} (commit being replayed)"),
-            )
+            (applied, total, onto, head)
         }
         OpKind::Merge => {
             let head = git_raw(wt, ["branch", "--show-current"])?
                 .1
                 .trim()
                 .to_string();
-            let incoming = read(&merge_head)
-                .map(|h| {
-                    git_raw(wt, ["name-rev", "--name-only", &h])
-                        .map(|(_, n, _)| n.trim().to_string())
-                        .unwrap_or(h)
+            let msg = git_path(wt, "MERGE_MSG")?;
+            let incoming = std::fs::read_to_string(&msg)
+                .ok()
+                .and_then(|m| merge_msg_name(&m))
+                .or_else(|| {
+                    read(&merge_head).and_then(|h| h.lines().next().map(|h| nice_name(wt, h)))
                 })
                 .unwrap_or_else(|| "merged branch".into());
             (0, 0, head, incoming)
@@ -153,7 +203,9 @@ pub fn detect(wt: &Path) -> Result<Option<Operation>> {
         head_label,
         incoming_label,
         conflicted,
+        counts,
         resolved,
+        resolved_by_you,
     }))
 }
 

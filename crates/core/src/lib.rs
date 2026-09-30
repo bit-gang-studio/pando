@@ -34,7 +34,7 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub use backup::Backup;
 pub use branch::{Branch, RemoteBranch};
 pub use commit::{Applied, CommitInfo};
-pub use conflict::{ConflictFile, Side};
+pub use conflict::{Choice, ConflictFile, Part, Side};
 pub use detail::Detail;
 pub use diff::{FileDiff, Hunk, Line, LineKind};
 pub use error::{Error, Result};

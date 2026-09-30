@@ -51,8 +51,11 @@ export type DiffLine = { kind: LineKind; old_no: number | null; new_no: number |
 export type Hunk = { header: string; old_start: number; old_count: number; new_start: number; new_count: number; lines: DiffLine[] };
 export type FileDiff = { path: string; staged: boolean; binary: boolean; new_file: boolean; hunks: Hunk[]; added: number; deleted: number };
 
-export type Operation = { kind: "rebase" | "merge" | "cherry_pick" | "revert"; applied: number; total: number; head_label: string; incoming_label: string; conflicted: string[]; resolved: string[] };
-export type ConflictFile = { path: string; ours: string; theirs: string; base: string | null; working: string; binary: boolean };
+export type Operation = { kind: "rebase" | "merge" | "cherry_pick" | "revert"; applied: number; total: number; head_label: string; incoming_label: string; conflicted: string[]; counts: Record<string, number>; resolved: string[]; resolved_by_you: string[] };
+export type Part = { kind: "text"; text: string } | { kind: "conflict"; ours: string; base: string | null; theirs: string };
+export type Side = "ours" | "theirs" | "both";
+export type ConflictFile = { path: string; ours: string; theirs: string; base: string | null; working: string; binary: boolean; parts: Part[]; deleted: "ours" | "theirs" | null };
+export type Choice = { kind: "ours" | "theirs" | "both" | "base" } | { kind: "text"; text: string };
 
 export type Detail = {
   repo: Repo;
@@ -170,7 +173,8 @@ export const api = {
   mergeRun: (root: string, path: string | null, plan: MergePlan) => invoke<MergeResult>("merge_run", { root, path, plan }),
 
   conflictFile: (worktree: string, path: string) => invoke<ConflictFile>("conflict_file", { worktree, path }),
-  conflictTake: (worktree: string, path: string, side: "ours" | "theirs" | "both") => invoke<void>("conflict_take", { worktree, path, side }),
+  conflictTake: (worktree: string, path: string, side: Side) => invoke<void>("conflict_take", { worktree, path, side }),
+  conflictChoose: (worktree: string, path: string, choices: Choice[]) => invoke<void>("conflict_choose", { worktree, path, choices }),
   conflictResolve: (worktree: string, path: string, content: string) => invoke<void>("conflict_resolve", { worktree, path, content }),
   conflictReset: (worktree: string, path: string) => invoke<void>("conflict_reset", { worktree, path }),
   opContinue: (worktree: string) => invoke<Operation | null>("op_continue", { worktree }),

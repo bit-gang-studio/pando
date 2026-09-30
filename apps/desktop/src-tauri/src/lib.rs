@@ -8,9 +8,9 @@ pub mod dev_bridge;
 
 use pando_core::{
     backup, branch, commit, conflict, detail, diff, github, history, index, log, merge, operation,
-    overlap, overview, stash, sync, tag, user_config, watch, worktree, Applied, Backup, CommitDiff,
-    ConflictFile, CreateWorktree, Created, Detail, FileDiff, Hunk, Log, MergePlan, MergeResult,
-    Operation, Overview, Preflight, Repo, Side, Stash, SyncResult, UserConfig,
+    overlap, overview, stash, sync, tag, user_config, watch, worktree, Applied, Backup, Choice,
+    CommitDiff, ConflictFile, CreateWorktree, Created, Detail, FileDiff, Hunk, Log, MergePlan,
+    MergeResult, Operation, Overview, Preflight, Repo, Side, Stash, SyncResult, UserConfig,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -481,6 +481,11 @@ async fn conflict_take(worktree: PathBuf, path: String, side: Side) -> R<()> {
 }
 
 #[tauri::command]
+async fn conflict_choose(worktree: PathBuf, path: String, choices: Vec<Choice>) -> R<()> {
+    blocking(move || conflict::choose(&worktree, &path, &choices).map_err(err)).await
+}
+
+#[tauri::command]
 async fn conflict_resolve(worktree: PathBuf, path: String, content: String) -> R<()> {
     blocking(move || conflict::resolve(&worktree, &path, &content).map_err(err)).await
 }
@@ -610,6 +615,7 @@ pub fn run() {
             merge_run,
             conflict_file,
             conflict_take,
+            conflict_choose,
             conflict_resolve,
             conflict_reset,
             op_continue,
