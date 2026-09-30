@@ -42,7 +42,8 @@ test("remove worktree → Undo puts it back with what core saved", async ({ page
   const removed = { path: `${ROOT}-fix-typo`, branch: "fix/typo", head: null, snapshot: "refs/pando/snapshots/remove-worktree/1" };
   await open(page, { worktree_remove: removed, worktree_undo_remove: null });
   await sidebar(page).locator("div.group", { hasText: "fix/typo" }).first().click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Remove worktree…" }).click();
+  await page.getByRole("menuitem", { name: "Remove worktree (keep branch)…" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Deletes the folder proj-fix-typo. The branch fix/typo and its commits stay.");
   await page.getByRole("alertdialog").getByRole("button", { name: "Remove worktree" }).click();
   await page.getByRole("status").filter({ hasText: "Removed worktree" }).getByRole("button", { name: "Undo" }).click();
   await expect.poll(() => callsTo(page, "worktree_undo_remove")).toEqual([{ root: ROOT, removed }]);
@@ -192,4 +193,10 @@ test("no terminal opens when unticked, for a branch without a worktree, or when 
   await dlg.getByRole("textbox").first().press("Enter");
   await expect.poll(async () => (await callsTo(page, "branch_create")).length).toBe(1);
   expect(await callsTo(page, "open_terminal")).toHaveLength(0);
+});
+
+test("a folder that doesn't match its branch is named on the row", async ({ page }) => {
+  await open(page, { overview_load: overview({ branches: [row("main", { worktree: wt(ROOT, "main") }), row("spike/old", { worktree: wt(`${ROOT}-feat-behind`, "spike/old") }), row("feat/login", { worktree: wt(`${ROOT}-feat-login`, "feat/login") })] }) });
+  await expect(sidebar(page).locator("div.group", { hasText: "spike/old" }).getByText("in proj-feat-behind", { exact: false })).toBeVisible();
+  await expect(sidebar(page).locator("div.group", { hasText: "feat/login" }).getByText(/ in /)).toHaveCount(0);
 });

@@ -95,8 +95,8 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
           <h2 id="nw-title" className="text-title font-semibold">{mode === "new" ? "New branch" : "Add worktree"}</h2>
           {mode === "existing" && (
             <span className="text-stone-500">
-              <span className="font-mono text-stone-800 dark:text-stone-200">{initialBranch}</span>
-              {remote && <> · creates a local branch tracking <span className="font-mono">{remote}</span></>}
+              Check out <span className="font-mono text-stone-800 dark:text-stone-200">{initialBranch}</span> in its own folder.
+              {remote && <> Creates a local branch tracking <span className="font-mono">{remote}</span>.</>}
             </span>
           )}
         </div>

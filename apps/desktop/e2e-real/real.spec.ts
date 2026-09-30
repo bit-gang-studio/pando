@@ -153,7 +153,7 @@ test("a merged worktree: Remove worktree, then Undo, puts the folder back", asyn
 test("forced remove of a dirty worktree, then Undo, brings back the uncommitted work", async ({ page }) => {
   await repoPage(page);
   await rowOf(page, "feat/dirty").click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Remove worktree…" }).click();
+  await page.getByRole("menuitem", { name: /^Remove worktree/ }).click();
   await expect(page.getByRole("alertdialog")).toContainText("saved first, so you can undo");
   await page.getByRole("alertdialog").getByRole("button", { name: "Remove worktree" }).click();
   await expect(toast(page, "Removed worktree feat/dirty")).toBeVisible();
@@ -199,7 +199,7 @@ test("two worktrees editing login.js both show ⚠, and it clears when one is re
   await expect(collide.getByText(/⚠/)).toHaveAttribute("title", /Also changed in feat\/login: .*login\.js/);
   await expect(rowOf(page, "feat/behind").getByText(/⚠/)).toHaveCount(0);
   await collide.click({ button: "right" });
-  await page.getByRole("menuitem", { name: "Remove worktree…" }).click();
+  await page.getByRole("menuitem", { name: /^Remove worktree/ }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Remove worktree" }).click();
   await expect(login.getByText(/⚠/)).toHaveCount(0, { timeout: 15_000 });
 });
@@ -247,6 +247,19 @@ test("changes made outside Pando show up by themselves", async ({ page }) => {
   // A worktree folder deleted by hand shows as missing.
   execSync(`rm -rf "${wtPath("feat/behind")}"`);
   await expect(rowOf(page, "feat/behind").getByText("folder missing")).toBeVisible({ timeout: 10_000 });
+});
+
+test("a branch switched inside a worktree from a terminal shows up, with the folder named", async ({ page }) => {
+  await repoPage(page);
+  await expect(rowOf(page, "feat/behind")).toBeVisible();
+  git(wtPath("feat/behind"), "switch -q spike/old");
+  const row = sidebar(page).locator("div.group", { hasText: "spike/old" }).filter({ has: page.locator("span.rounded-full") });
+  await expect(row).toBeVisible({ timeout: 10_000 });
+  await expect(row.getByText("in shop-feat-behind")).toBeVisible();
+  // feat/behind no longer has a worktree, so it moves to Branches.
+  await expect(sidebar(page).locator("div.group", { hasText: "feat/behind" }).filter({ has: page.locator("span.rounded-full") })).toHaveCount(0);
+  // A worktree whose folder matches its branch doesn't repeat the folder.
+  await expect(rowOf(page, "feat/login").getByText(/^in /)).toHaveCount(0);
 });
 
 test("a real merge conflict: pick a side, Continue makes the merge commit", async ({ page }) => {

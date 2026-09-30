@@ -18,3 +18,13 @@ export function worktreeOptions(data: Overview | null) {
     ...(data?.detached.map((d) => ({ value: d.worktree.path, label: `detached at ${d.worktree.head?.slice(0, 7)}` })) ?? []),
   ];
 }
+
+/// Same rule as core's branch_slug: what Pando names a worktree folder after.
+const slug = (branch: string) => branch.toLowerCase().replace(/[^\p{L}\p{N}._]+/gu, "-").replace(/^-+|-+$/g, "");
+
+/// The folder's name, when it no longer says which branch is in it
+/// (the branch was switched inside the worktree, or the folder was named by hand).
+export function folderHint(path: string, branch: string | null): string | null {
+  const name = path.split(/[/\\]/).filter(Boolean).pop() ?? path;
+  return branch && name.toLowerCase().includes(slug(branch)) ? null : name;
+}

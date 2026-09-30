@@ -13,7 +13,7 @@ import { MergeDialog } from "../dialogs/MergeDialog";
 import { NewBranchDialog } from "../dialogs/NewBranchDialog";
 import { confirm } from "../ui/Confirm";
 import { toastError, withToast } from "../ui/Toast";
-import { dot, worktreeOptions } from "../lib/worktrees";
+import { dot, folderHint, worktreeOptions } from "../lib/worktrees";
 import type { Overlap } from "../lib/api";
 
 type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; prs?: PullRequest[] | null; prByBranch?: Record<string, PullRequest>; overlaps?: Overlap[] };
@@ -65,9 +65,13 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   async function removeWorktree(row: WtRow) {
     // Right after the page opens, change counts may not be in yet: ask for this one.
     const n = row.status ? changed(row.status) : await api.detail(root, row.worktree.path).then((d) => d.files.length).catch(() => 0);
+    const folder = row.worktree.path.split(/[/\\]/).filter(Boolean).pop();
+    const stays = row.worktree.branch
+      ? <> The branch <span className="font-mono">{row.worktree.branch}</span> and its commits stay. You can add a worktree for it again anytime.</>
+      : null;
     const body = n > 0
-      ? <><span className="font-mono">{row.label}</span> has {n} uncommitted {n === 1 ? "change" : "changes"}. They're saved first, so you can undo this. The branch is kept.</>
-      : <>Remove the folder for <span className="font-mono">{row.label}</span>? The branch is kept.</>;
+      ? <>Deletes the folder <span className="font-mono">{folder}</span>. Its {n} uncommitted {n === 1 ? "change is" : "changes are"} saved first, so you can undo this.{stays}</>
+      : <>Deletes the folder <span className="font-mono">{folder}</span>.{stays}</>;
     if (!(await confirm({ title: "Remove worktree", body, action: "Remove worktree", danger: true })).ok) return;
     await run("Removing worktree…", `Removed worktree ${row.label}`, () => api.worktreeRemove(root, row.worktree.path, n > 0), (removed) => () => api.worktreeUndoRemove(root, removed));
   }
@@ -157,7 +161,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       items.push({ label: row.worktree.locked != null ? "Unlock" : "Lock", onClick: () => run(row.worktree.locked != null ? "Unlocking…" : "Locking…", row.worktree.locked != null ? "Unlocked" : "Locked", () => api.worktreeLock(root, row.worktree.path, row.worktree.locked == null)) });
       items.push(sep);
       if (row.worktree.prunable) items.push({ label: "Prune missing folders", onClick: () => run("Pruning…", "Pruned missing folders", () => api.worktreePrune(root)) });
-      items.push({ label: "Remove worktree…", onClick: () => removeWorktree(row), danger: true });
+      items.push({ label: row.worktree.branch ? "Remove worktree (keep branch)…" : "Remove worktree…", onClick: () => removeWorktree(row), danger: true });
     }
     show(e, items);
   };
@@ -304,11 +308,12 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
                 <SyncCounts b={r.branch?.branch} />
                 {r.stale ? " · stale" : ""}
                 {r.time ? ` · ${ago(r.time)}` : ""}
+                {!r.isMain && folderHint(r.worktree.path, r.worktree.branch) && ` · in ${folderHint(r.worktree.path, r.worktree.branch)}`}
               </div>
             </div>
             <div className="hidden shrink-0 items-center gap-1 group-hover:flex" onClick={(e) => e.stopPropagation()}>
               {!r.isMain && r.branch && (r.branch.merged
-                ? <button onClick={() => removeWorktree(r)} disabled={!!busy} className={small}>Remove worktree</button>
+                ? <button onClick={() => removeWorktree(r)} disabled={!!busy} title="Deletes the folder. The branch stays." className={small}>Remove worktree</button>
                 : <button onClick={() => setMerging(r.branch)} disabled={!!busy} className={`${small} border-teal-700 text-teal-700`}>Merge</button>)}
               <button onClick={() => openWin(r.worktree.path)} title="Open in new window" aria-label={`Open ${r.label} in new window`} className={iconBtn}><NewWindowIcon /></button>
             </div>
