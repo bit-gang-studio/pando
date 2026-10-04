@@ -262,6 +262,39 @@ test("a branch switched inside a worktree from a terminal shows up, with the fol
   await expect(rowOf(page, "feat/login").getByText(/^in /)).toHaveCount(0);
 });
 
+test("a folder moved in Finder: missing, then Repair worktree reconnects it", async ({ page }) => {
+  const moved = `${BASE}/moved somewhere`;
+  await repoPage(page);
+  await expect(rowOf(page, "feat/dirty")).toBeVisible();
+  execSync(`mv "${wtPath("feat/dirty")}" "${moved}"`);
+  await expect(rowOf(page, "feat/dirty").getByText("folder missing")).toBeVisible({ timeout: 10_000 });
+  await rowOf(page, "feat/dirty").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Repair worktree…" }).click();
+  // A wrong folder is refused and nothing changes.
+  await page.getByRole("alertdialog").getByRole("textbox").fill(wtPath("feat/login"));
+  await page.getByRole("alertdialog").getByRole("button", { name: "Repair worktree" }).click();
+  await expect(rowOf(page, "feat/dirty").getByText("folder missing")).toBeVisible();
+  // The right one works; the uncommitted work is still there.
+  await rowOf(page, "feat/dirty").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Repair worktree…" }).click();
+  await page.getByRole("alertdialog").getByRole("textbox").fill(moved);
+  await page.getByRole("alertdialog").getByRole("button", { name: "Repair worktree" }).click();
+  await expect(toast(page, "Repaired worktree feat/dirty")).toBeVisible();
+  await expect(rowOf(page, "feat/dirty").getByText("folder missing")).toHaveCount(0);
+  await expect(rowOf(page, "feat/dirty").getByText("in moved somewhere")).toBeVisible();
+  expect(git(moved, "status --porcelain")).toContain("wip.txt");
+  expect(git(ROOT, "worktree list")).toContain("moved somewhere");
+});
+
+test("done in a terminal: a detached checkout and a renamed branch both show up", async ({ page }) => {
+  await repoPage(page);
+  await expect(rowOf(page, "feat/behind")).toBeVisible();
+  git(ROOT, "branch -m feat/behind feat/renamed");
+  await expect(rowOf(page, "feat/renamed").getByText("in shop-feat-behind")).toBeVisible({ timeout: 10_000 });
+  git(wtPath("feat/behind"), "switch -q --detach");
+  await expect(sidebar(page).locator("div.group", { hasText: /detached/ }).first()).toBeVisible({ timeout: 10_000 });
+});
+
 test("a real merge conflict: pick a side, Continue makes the merge commit", async ({ page }) => {
   const wt = wtPath("feat/collide");
   const before = git(wt, "rev-parse HEAD");

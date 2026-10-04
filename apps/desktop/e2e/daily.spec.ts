@@ -200,3 +200,27 @@ test("a folder that doesn't match its branch is named on the row", async ({ page
   await expect(sidebar(page).locator("div.group", { hasText: "spike/old" }).getByText("in proj-feat-behind", { exact: false })).toBeVisible();
   await expect(sidebar(page).locator("div.group", { hasText: "feat/login" }).getByText(/ in /)).toHaveCount(0);
 });
+
+test("a missing folder offers Repair worktree and sends where it is now", async ({ page }) => {
+  const gone = wt(`${ROOT}-fix-typo`, "fix/typo", { prunable: "gitdir file points to non-existent location" });
+  await open(page, { overview_load: overview({ branches: [row("main", { worktree: wt(ROOT, "main") }), row("fix/typo", { worktree: gone })] }), worktree_repair: { $seq: [{ $error: "/x/moved isn't a worktree of this repository." }, null] } });
+  const r = sidebar(page).locator("div.group", { hasText: "fix/typo" }).first();
+  await expect(r.getByText("folder missing")).toBeVisible();
+  await r.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Repair worktree…" }).click();
+  const dlg = page.getByRole("alertdialog");
+  await expect(dlg.getByRole("textbox")).toHaveValue(`${ROOT}-fix-typo`);
+  await dlg.getByRole("textbox").fill("  /x/moved ");
+  await dlg.getByRole("button", { name: "Repair worktree" }).click();
+  await expect.poll(() => callsTo(page, "worktree_repair")).toEqual([{ root: ROOT, path: "/x/moved" }]);
+  // A refusal says why and doesn't claim success.
+  await expect(page.getByRole("alert")).toContainText("isn't a worktree of this repository");
+  await expect(page.getByRole("status").filter({ hasText: "Repaired worktree" })).toHaveCount(0);
+});
+
+test("a worktree whose folder is there has no Repair item", async ({ page }) => {
+  await open(page);
+  await sidebar(page).locator("div.group", { hasText: "fix/typo" }).first().click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: /^Remove worktree/ })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Repair worktree…" })).toHaveCount(0);
+});

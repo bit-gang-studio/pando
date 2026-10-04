@@ -174,6 +174,11 @@ async fn worktree_lock(root: PathBuf, path: PathBuf, locked: bool) -> R<()> {
 }
 
 #[tauri::command]
+async fn worktree_repair(root: PathBuf, path: PathBuf) -> R<()> {
+    blocking(move || worktree::repair(&repo(&root)?, &path).map_err(err)).await
+}
+
+#[tauri::command]
 async fn worktree_prune(root: PathBuf) -> R<u32> {
     blocking(move || worktree::prune(&repo(&root)?).map_err(err)).await
 }
@@ -564,6 +569,7 @@ pub fn run() {
             worktree_move,
             worktree_lock,
             worktree_prune,
+            worktree_repair,
             branch_switch,
             branch_create_and_switch,
             watch_repo,

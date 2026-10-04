@@ -61,6 +61,7 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
             out(super::worktree_lock(arg(&a, "root")?, arg(&a, "path")?, arg(&a, "locked")?).await)
         }
         "worktree_prune" => out(super::worktree_prune(arg(&a, "root")?).await),
+        "worktree_repair" => out(super::worktree_repair(arg(&a, "root")?, arg(&a, "path")?).await),
         "branch_switch" => out(super::branch_switch(arg(&a, "root")?, arg(&a, "name")?).await),
         "branch_create_and_switch" => {
             out(super::branch_create_and_switch(arg(&a, "path")?, arg(&a, "name")?).await)

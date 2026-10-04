@@ -116,6 +116,10 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     const a = await confirm({ title: "Set upstream", body: <>The remote branch <span className="font-mono">{name}</span> pulls from and pushes to.</>, action: "Set upstream", input: { label: "Upstream", value: current ?? `origin/${name}`, mono: true } });
     if (a.ok) await run("Setting upstream…", `Upstream set to ${a.value}`, () => api.branchSetUpstream(root, name, a.value));
   }
+  async function repairWorktree(row: WtRow) {
+    const a = await confirm({ title: "Repair worktree", body: <>Git can't find the folder for <span className="font-mono">{row.label}</span>. If you moved or renamed it, say where it is now. Nothing inside it changes.</>, action: "Repair worktree", input: { label: "Where the folder is now", value: row.worktree.path, mono: true } });
+    if (a.ok) await run("Repairing worktree…", `Repaired worktree ${row.label}`, () => api.worktreeRepair(root, a.value.trim()));
+  }
   async function moveWorktree(row: WtRow) {
     const a = await confirm({ title: "Move worktree", body: <>Move the folder for <span className="font-mono">{row.label}</span>.</>, action: "Move", input: { label: "New location", value: row.worktree.path, mono: true } });
     if (a.ok && a.value !== row.worktree.path) await run("Moving worktree…", "Moved worktree", () => api.worktreeMove(root, row.worktree.path, a.value));
@@ -161,6 +165,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       items.push({ label: "Move…", onClick: () => moveWorktree(row) });
       items.push({ label: row.worktree.locked != null ? "Unlock" : "Lock", onClick: () => run(row.worktree.locked != null ? "Unlocking…" : "Locking…", row.worktree.locked != null ? "Unlocked" : "Locked", () => api.worktreeLock(root, row.worktree.path, row.worktree.locked == null)) });
       items.push(sep);
+      if (row.worktree.prunable) items.push({ label: "Repair worktree…", onClick: () => repairWorktree(row) });
       if (row.worktree.prunable) items.push({ label: "Prune missing folders", onClick: () => run("Pruning…", "Pruned missing folders", () => api.worktreePrune(root)) });
       items.push({ label: row.worktree.branch ? "Remove worktree (keep branch)…" : "Remove worktree…", onClick: () => removeWorktree(row), danger: true });
     }

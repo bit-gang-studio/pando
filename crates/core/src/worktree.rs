@@ -224,6 +224,40 @@ pub fn prune(repo: &Repo) -> Result<u32> {
     Ok(before.saturating_sub(after) as u32)
 }
 
+/// `git worktree repair`: reconnect a worktree whose folder was moved by hand.
+/// `moved_to` is where the folder is now. Only fixes git's two pointer files;
+/// nothing in the folder changes. Refuses a folder that isn't this repo's worktree.
+pub fn repair(repo: &Repo, moved_to: &Path) -> Result<()> {
+    let not_ours = || {
+        crate::Error::Msg(format!(
+            "{} isn't a worktree of this repository.",
+            moved_to.display()
+        ))
+    };
+    // A linked worktree's `.git` is a file: "gitdir: <repo>/.git/worktrees/<id>".
+    let pointer = std::fs::read_to_string(moved_to.join(".git")).map_err(|_| not_ours())?;
+    let gitdir = pointer
+        .lines()
+        .find_map(|l| l.strip_prefix("gitdir:"))
+        .map(|p| PathBuf::from(p.trim()))
+        .ok_or_else(not_ours)?;
+    let same = |a: &Path, b: &Path| match (dunce::canonicalize(a), dunce::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => false,
+    };
+    let ours = gitdir
+        .parent()
+        .is_some_and(|p| same(p, &repo.common_git_dir.join("worktrees")));
+    if !ours || !gitdir.is_dir() {
+        return Err(not_ours());
+    }
+    git(
+        &repo.root,
+        ["worktree", "repair", &moved_to.to_string_lossy()],
+    )?;
+    Ok(())
+}
+
 /// `git worktree move`: put the worktree's folder somewhere else.
 /// Move a worktree to exactly `to`. Fails if `to` exists: `git worktree move`
 /// would otherwise move it *inside* that folder.

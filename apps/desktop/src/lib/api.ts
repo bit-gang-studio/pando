@@ -126,6 +126,7 @@ export const api = {
   worktreeMove: (root: string, from: string, to: string) => invoke<void>("worktree_move", { root, from, to }),
   worktreeLock: (root: string, path: string, locked: boolean) => invoke<void>("worktree_lock", { root, path, locked }),
   worktreePrune: (root: string) => invoke<number>("worktree_prune", { root }),
+  worktreeRepair: (root: string, path: string) => invoke<void>("worktree_repair", { root, path }),
   cherryPick: (root: string, worktree: string, id: string) => invoke<Applied>("commit_cherry_pick", { root, worktree, id }),
   revert: (root: string, worktree: string, id: string) => invoke<Applied>("commit_revert", { root, worktree, id }),
   tagCreate: (root: string, name: string, target: string, message: string | null, push: boolean) => invoke<void>("tag_create", { root, name, target, message, push }),
