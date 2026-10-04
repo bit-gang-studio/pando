@@ -8,9 +8,10 @@ pub mod dev_bridge;
 
 use pando_core::{
     backup, branch, commit, conflict, detail, diff, github, history, index, log, merge, operation,
-    overlap, overview, stash, sync, tag, user_config, watch, worktree, Applied, Backup, Choice,
-    CommitDiff, ConflictFile, CreateWorktree, Created, Detail, FileDiff, Hunk, Log, MergePlan,
-    MergeResult, Operation, Overview, Preflight, Repo, Side, Stash, SyncResult, UserConfig,
+    overlap, overview, rewrite, rewrite::Rewritten, stash, sync, tag, user_config, watch, worktree,
+    Applied, Backup, Choice, CommitDiff, ConflictFile, CreateWorktree, Created, Detail, FileDiff,
+    Hunk, Log, MergePlan, MergeResult, Operation, Overview, Preflight, Repo, Side, Stash,
+    SyncResult, UserConfig,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -218,6 +219,38 @@ async fn branch_delete_remote(root: PathBuf, name: String) -> R<()> {
 #[tauri::command]
 async fn commit_cherry_pick(root: PathBuf, worktree: PathBuf, id: String) -> R<Applied> {
     blocking(move || commit::cherry_pick(&repo(&root)?, &worktree, &id).map_err(err)).await
+}
+
+#[tauri::command]
+async fn rewrite_editable(root: PathBuf, branch: String) -> R<Vec<String>> {
+    blocking(move || rewrite::editable(&repo(&root)?, &branch).map_err(err)).await
+}
+
+#[tauri::command]
+async fn commit_reword(root: PathBuf, branch: String, id: String, message: String) -> R<Rewritten> {
+    blocking(move || rewrite::reword(&repo(&root)?, &branch, &id, &message).map_err(err)).await
+}
+
+#[tauri::command]
+async fn commit_squash(
+    root: PathBuf,
+    branch: String,
+    older: String,
+    newer: String,
+    message: String,
+) -> R<Rewritten> {
+    blocking(move || rewrite::squash(&repo(&root)?, &branch, &older, &newer, &message).map_err(err))
+        .await
+}
+
+#[tauri::command]
+async fn commit_drop(root: PathBuf, branch: String, id: String) -> R<Rewritten> {
+    blocking(move || rewrite::drop(&repo(&root)?, &branch, &id).map_err(err)).await
+}
+
+#[tauri::command]
+async fn rewrite_undo(root: PathBuf, branch: String, from: String, to: String) -> R<()> {
+    blocking(move || rewrite::undo(&repo(&root)?, &branch, &from, &to).map_err(err)).await
 }
 
 #[tauri::command]
@@ -594,6 +627,11 @@ pub fn run() {
             branch_delete_remote,
             commit_cherry_pick,
             commit_revert,
+            rewrite_editable,
+            commit_reword,
+            commit_squash,
+            commit_drop,
+            rewrite_undo,
             tag_create,
             tag_delete,
             tag_push,

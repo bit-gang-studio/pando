@@ -21,6 +21,7 @@ pub mod operation;
 pub mod overlap;
 pub mod overview;
 pub mod repo;
+pub mod rewrite;
 pub mod stash;
 pub mod status;
 pub mod sync;

@@ -130,6 +130,34 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
         )
         .await),
         "commit_diff" => out(super::commit_diff(arg(&a, "root")?, arg(&a, "id")?).await),
+        "rewrite_editable" => {
+            out(super::rewrite_editable(arg(&a, "root")?, arg(&a, "branch")?).await)
+        }
+        "commit_reword" => out(super::commit_reword(
+            arg(&a, "root")?,
+            arg(&a, "branch")?,
+            arg(&a, "id")?,
+            arg(&a, "message")?,
+        )
+        .await),
+        "commit_squash" => out(super::commit_squash(
+            arg(&a, "root")?,
+            arg(&a, "branch")?,
+            arg(&a, "older")?,
+            arg(&a, "newer")?,
+            arg(&a, "message")?,
+        )
+        .await),
+        "commit_drop" => {
+            out(super::commit_drop(arg(&a, "root")?, arg(&a, "branch")?, arg(&a, "id")?).await)
+        }
+        "rewrite_undo" => out(super::rewrite_undo(
+            arg(&a, "root")?,
+            arg(&a, "branch")?,
+            arg(&a, "from")?,
+            arg(&a, "to")?,
+        )
+        .await),
         "commit_range" => {
             out(super::commit_range(arg(&a, "root")?, arg(&a, "older")?, arg(&a, "newer")?).await)
         }

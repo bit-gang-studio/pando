@@ -87,9 +87,27 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
+    git_stdin_env(cwd, &[], args, input)
+}
+
+/// `git_stdin` with extra environment variables, e.g. a commit's author.
+pub(crate) fn git_stdin_env<I, S>(
+    cwd: &Path,
+    env: &[(&str, &OsStr)],
+    args: I,
+    input: &[u8],
+) -> Result<(i32, Vec<u8>, String)>
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<OsStr>,
+{
     use std::io::Write;
     use std::process::Stdio;
-    let mut child = base(cwd)
+    let mut c = base(cwd);
+    for (k, v) in env {
+        c.env(k, v);
+    }
+    let mut child = c
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())

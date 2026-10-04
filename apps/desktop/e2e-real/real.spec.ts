@@ -46,6 +46,19 @@ const repoPage = (page: Page) => boot(page, `#/repo?root=${encodeURIComponent(RO
 const worktreePage = (page: Page, b: string) => boot(page, `#/worktree?root=${encodeURIComponent(ROOT)}&path=${encodeURIComponent(wtPath(b))}`);
 const sidebar = (page: Page) => page.locator("aside").first();
 const rowOf = (page: Page, text: string) => sidebar(page).locator("div.group", { hasText: text }).first();
+/// A commit's row in the graph (the same summary can also show in the staging list).
+const logRow = (page: Page, summary: string) => page.locator("[data-row]").filter({ has: page.getByText(summary, { exact: true }) });
+/// Right-click a commit and pick a menu item. Which items a commit gets is
+/// known a moment after the page loads, so reopen the menu until it's there.
+async function commitAction(page: Page, summary: string, item: string) {
+  await expect(async () => {
+    // Only with a menu open: on a bare page Escape means "go back".
+    if (await page.getByRole("menu").count()) await page.keyboard.press("Escape");
+    await logRow(page, summary).click({ button: "right" });
+    await expect(page.getByRole("menuitem", { name: item })).toBeVisible({ timeout: 500 });
+  }).toPass({ timeout: 15_000 });
+  await page.getByRole("menuitem", { name: item }).click();
+}
 const toast = (page: Page, text: string) => page.getByRole("status").filter({ hasText: text });
 const bridge = async (cmd: string) => (await (await fetch("http://127.0.0.1:4599/invoke", { method: "POST", body: JSON.stringify({ cmd, args: {} }) })).json()).ok;
 
@@ -349,4 +362,69 @@ test("a real conflict: Back to conflicted, then Abort puts the branch back", asy
   await expect(page.getByText(/^Merging/)).toHaveCount(0);
   expect(git(wt, "rev-parse HEAD")).toBe(before);
   expect(git(wt, "status --porcelain")).toBe("");
+});
+
+test("reword a real unpushed commit: message changes, uncommitted work stays, Undo puts it back", async ({ page }) => {
+  const wt = wtPath("feat/login");
+  const before = git(wt, "rev-parse HEAD");
+  const status = git(wt, "status --porcelain");
+  await worktreePage(page, "feat/login");
+  // "Add login" is on origin already: no Reword for it.
+  await logRow(page, "Add login").click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Cherry-pick…" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Reword…" })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await commitAction(page, "Improve login", "Reword…");
+  const dlg = page.getByRole("dialog");
+  await expect(dlg.getByLabel("Summary")).toHaveValue("Improve login");
+  await dlg.getByLabel("Summary").fill("Make login better");
+  await dlg.getByRole("button", { name: /^Reword/ }).click();
+  await expect(toast(page, "Reworded")).toBeVisible();
+  expect(git(wt, "log --format=%s -2")).toBe("Add lines\nMake login better");
+  expect(git(wt, "status --porcelain")).toBe(status);
+  await expect(logRow(page, "Make login better")).toBeVisible();
+  await toast(page, "Reworded").getByRole("button", { name: "Undo" }).click();
+  await expect(toast(page, "Undone")).toBeVisible();
+  expect(git(wt, "rev-parse HEAD")).toBe(before);
+  expect(git(wt, "status --porcelain")).toBe(status);
+});
+
+test("squash two real commits into one: same files, one commit", async ({ page }) => {
+  const wt = wtPath("feat/login");
+  const tree = git(wt, "rev-parse HEAD^{tree}");
+  const status = git(wt, "status --porcelain");
+  await worktreePage(page, "feat/login");
+  await commitAction(page, "Add lines", "Squash into previous…");
+  const dlg = page.getByRole("dialog");
+  await expect(dlg.getByLabel("Summary")).toHaveValue("Improve login");
+  await dlg.getByLabel("Summary").fill("Login v2 with lines");
+  await dlg.getByRole("button", { name: /^Squash/ }).click();
+  await expect(toast(page, "Squashed 2 commits")).toBeVisible();
+  expect(git(wt, "log --format=%s origin/feat/login..HEAD")).toBe("Login v2 with lines");
+  expect(git(wt, "rev-parse HEAD^{tree}")).toBe(tree);
+  expect(git(wt, "status --porcelain")).toBe(status);
+});
+
+test("drop a real commit: its file goes, Undo brings it back; a dirty worktree is refused", async ({ page }) => {
+  const wt = wtPath("feat/collide");
+  const before = git(wt, "rev-parse HEAD");
+  await worktreePage(page, "feat/collide");
+  await commitAction(page, "Rewrite login", "Drop…");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Drop commit" }).click();
+  await expect(toast(page, "Dropped")).toBeVisible();
+  expect(git(wt, "rev-parse HEAD")).toBe(git(wt, `rev-parse ${before}^`));
+  expect(gitOk(wt, "cat-file -e HEAD:login.js")).toBe(false);
+  await toast(page, "Dropped").getByRole("button", { name: "Undo" }).click();
+  await expect(toast(page, "Undone")).toBeVisible();
+  expect(git(wt, "rev-parse HEAD")).toBe(before);
+  expect(execSync(`cat "${wt}/login.js"`, { encoding: "utf8" })).toBe("a different login\n");
+
+  // feat/login has uncommitted changes: drop is refused and nothing moves.
+  const login = wtPath("feat/login");
+  const tip = git(login, "rev-parse HEAD");
+  await worktreePage(page, "feat/login");
+  await commitAction(page, "Add lines", "Drop…");
+  await page.getByRole("alertdialog").getByRole("button", { name: "Drop commit" }).click();
+  await expect(page.getByRole("alert")).toContainText("Commit or stash your changes");
+  expect(git(login, "rev-parse HEAD")).toBe(tip);
 });

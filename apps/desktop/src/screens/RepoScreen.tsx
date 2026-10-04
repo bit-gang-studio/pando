@@ -12,7 +12,9 @@ import { UncommittedPanel } from "./UncommittedPanel";
 import { Detail } from "./Detail";
 import { SplitHandle, useSplit } from "../ui/Split";
 import { ErrorState, Loading } from "../ui/State";
-import { withToast } from "../ui/Toast";
+import { toastDone, toastError, withToast } from "../ui/Toast";
+import { MessageDialog } from "../dialogs/MessageDialog";
+import type { Rewritten } from "../lib/api";
 import { errorParts } from "../lib/errors";
 import { useRepoRefresh, watchRepo } from "../lib/watch";
 import { dot, worktreeOptions } from "../lib/worktrees";
@@ -133,6 +135,57 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
       if (r === "paused") navigate({ kind: "worktree", root, path: a.choice });
     });
   }
+  // ---- clean up commits: reword, squash, drop -----------------------------------
+  async function rewritten(r: Rewritten, done: string) {
+    pickSpan(null); setWtCommit(null); setBrCommit(null);
+    if (!r.paused) toastDone(done, { run: () => api.rewriteUndo(root, r.branch, r.new_tip, r.old_tip), after: refresh });
+    await refresh();
+  }
+  /// Menu items for a commit that hasn't been pushed, on this page's branch.
+  function rewriteItems(entry: LogEntry): MenuItem[] {
+    if (!head || !editable.has(entry.id)) return [];
+    const on = head;
+    const short = entry.id.slice(0, 7);
+    const items: MenuItem[] = [{ divider: true }, {
+      label: "Reword…",
+      onClick: () => setMsgDlg({
+        title: "Reword commit", action: "Reword",
+        body: <>Change the message of <span className="font-mono">{short}</span> on <span className="font-mono">{on}</span>. Files don't change.</>,
+        initial: api.commitDiff(root, entry.id).then((c) => c.message),
+        onSubmit: async (m) => rewritten(await api.commitReword(root, on, entry.id, m), `Reworded ${short}`),
+      }),
+    }];
+    // Several picked with shift-click, or this one into the one before it. Oldest first.
+    const run = span && spanIds && spanIds.length > 1 && spanIds.includes(entry.id) && spanIds.every((id) => editable.has(id))
+      ? [...spanIds].reverse()
+      : entry.parents.length === 1 && editable.has(entry.parents[0]) ? [entry.parents[0], entry.id] : null;
+    if (run) {
+      const older = run[0], newer = run[run.length - 1];
+      items.push({
+        label: run.length > 2 || span ? `Squash ${run.length} commits…` : "Squash into previous…",
+        onClick: () => setMsgDlg({
+          title: `Squash ${run.length} commits`, action: "Squash",
+          body: <>Make one commit out of <span className="font-mono">{older.slice(0, 7)}</span> to <span className="font-mono">{newer.slice(0, 7)}</span> on <span className="font-mono">{on}</span>. Files don't change.</>,
+          // The oldest commit's message, then the others' underneath.
+          initial: Promise.all(run.slice(0, 30).map((id) => api.commitDiff(root, id).then((c) => c.message.trim()))).then((all) => all.join("\n\n")),
+          onSubmit: async (m) => rewritten(await api.commitSquash(root, on, older, newer, m), `Squashed ${run.length} commits`),
+        }),
+      });
+    }
+    // Dropping changes files, so it needs the branch's worktree: this page.
+    if (worktree && entry.parents.length === 1) {
+      items.push({ label: "Drop…", danger: true, onClick: async () => {
+        const a = await confirm({ title: "Drop commit", body: <>Remove <span className="font-mono">{short}</span> {entry.summary} and its changes from <span className="font-mono">{on}</span>? You can undo this.</>, action: "Drop commit", danger: true });
+        if (!a.ok) return;
+        try {
+          const r = await api.commitDrop(root, on, entry.id);
+          if (r.paused) toastDone("Later commits conflict without it. Resolve them, then Continue, or Abort to put it back.");
+          await rewritten(r, `Dropped ${short}`);
+        } catch (err) { toastError(err); }
+      } });
+    }
+    return items;
+  }
   const commitMenu = (e: React.MouseEvent, entry: LogEntry) => {
     const sep: MenuItem = { divider: true };
     setMenu({ x: e.clientX, y: e.clientY, items: [
@@ -162,6 +215,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
         const a = await confirm({ title: "Tag commit", body: <><span className="font-mono">{entry.id.slice(0, 7)}</span> {entry.summary}</>, action: "Create tag", input: { label: "Tag name", placeholder: "v1.0.0", mono: true }, checkbox: { label: "Push to origin" } });
         if (a.ok) await act("Tagging…", `Tagged ${a.value}`, () => api.tagCreate(root, a.value, entry.id, null, a.checked));
       } },
+      ...rewriteItems(entry),
     ] });
   };
 
@@ -173,6 +227,15 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   const base = (head && baseFor[head]) || prBase || data?.compare_base || data?.base || null;
   const local = (b: string) => b.replace(/^origin\//, "");
   const canCompare = !!base && !!head && local(head) !== local(base);
+  // Commits on this branch that can be reworded, squashed or dropped: not pushed yet.
+  const [editable, setEditable] = useState<Set<string>>(new Set());
+  const [msgDlg, setMsgDlg] = useState<Omit<React.ComponentProps<typeof MessageDialog>, "onClose"> | null>(null);
+  useEffect(() => {
+    if (!head) { setEditable(new Set()); return; }
+    let live = true;
+    api.rewriteEditable(root, head).then((ids) => { if (live) setEditable(new Set(ids ?? [])); }).catch(() => { if (live) setEditable(new Set()); });
+    return () => { live = false; };
+  }, [root, head, tick]);
   const [cmp, setCmp] = useState<{ key: string; mergeBase: string | null; ahead: number } | null>(null);
   const cmpKey = canCompare ? `${base}...${head}` : "";
   useEffect(() => {
@@ -196,6 +259,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   return (
     <div ref={side.box} className="flex min-h-0 min-w-0 grow">
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
+      {msgDlg && <MessageDialog {...msgDlg} onClose={() => setMsgDlg(null)} />}
       <div style={{ width: side.size }} className="flex shrink-0 flex-col">
         <RepoSidebar root={root} data={data} current={worktree} currentBranch={branch} onOpenBranch={(name) => navigate({ kind: "branch", root, name })} onOpenRepo={() => navigate({ kind: "repo", root })} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} prs={prs} prByBranch={prByBranch} overlaps={overlaps} />
       </div>
