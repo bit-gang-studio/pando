@@ -3521,7 +3521,7 @@ dependencies = [
 
 [[package]]
 name = "pando-cli"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "clap",
  "dunce",
@@ -3532,7 +3532,7 @@ dependencies = [
 
 [[package]]
 name = "pando-core"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "dunce",
  "gix",
@@ -3545,7 +3545,7 @@ dependencies = [
 
 [[package]]
 name = "pando-desktop"
-version = "0.1.5"
+version = "0.1.6"
 dependencies = [
  "pando-core",
  "serde",
