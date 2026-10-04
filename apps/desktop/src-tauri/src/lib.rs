@@ -373,6 +373,22 @@ async fn compare(root: PathBuf, base: String, head: String) -> R<history::Compar
 }
 
 #[tauri::command]
+async fn commit_range(root: PathBuf, older: String, newer: String) -> R<history::Range> {
+    blocking(move || history::range(&repo(&root)?, &older, &newer).map_err(err)).await
+}
+
+#[tauri::command]
+async fn commit_range_file_diff(
+    root: PathBuf,
+    base: String,
+    newer: String,
+    path: String,
+) -> R<FileDiff> {
+    blocking(move || history::range_file_diff(&repo(&root)?, &base, &newer, &path).map_err(err))
+        .await
+}
+
+#[tauri::command]
 async fn compare_file_diff(root: PathBuf, base: String, head: String, path: String) -> R<FileDiff> {
     blocking(move || history::compare_file_diff(&repo(&root)?, &base, &head, &path).map_err(err))
         .await
@@ -606,6 +622,8 @@ pub fn run() {
             commit_file_diff,
             compare,
             compare_file_diff,
+            commit_range,
+            commit_range_file_diff,
             detail_load,
             diff_file,
             stage_paths,

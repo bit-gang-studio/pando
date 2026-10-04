@@ -1,15 +1,27 @@
 import { useEffect, useState } from "react";
-import { ago, api, type CommitDiff, type Compare, type FileDiff } from "../lib/api";
+import { ago, api, type CommitDiff, type Compare, type FileDiff, type Range } from "../lib/api";
 import { DiffView } from "./DiffView";
 import { SplitHandle, useSplit } from "../ui/Split";
 import { ErrorState, Loading } from "../ui/State";
 import { useLayer } from "../lib/keys";
 import { useArrowKeys } from "../lib/useArrowKeys";
 
-/// One commit's changes, or with `compare` a whole branch against its base
-/// (what a pull request shows as "Files changed").
-export function CommitDetail({ root, id = "", compare, onPickBase, onBack }: { root: string; id?: string; compare?: { base: string; head: string }; onPickBase?: (e: React.MouseEvent) => void; onBack?: () => void }) {
-  const [c, setC] = useState<CommitDiff | Compare | null>(null);
+type Props = {
+  root: string;
+  id?: string;
+  compare?: { base: string; head: string };
+  /// Several commits picked together, shown as one diff.
+  span?: { older: string; newer: string };
+  /// Called with the commits a `span` adds up, once known.
+  onRange?: (ids: string[]) => void;
+  onPickBase?: (e: React.MouseEvent) => void;
+  onBack?: () => void;
+};
+
+/// One commit's changes; with `compare` a whole branch against its base
+/// (what a pull request shows as "Files changed"); with `span` several commits.
+export function CommitDetail({ root, id = "", compare, span, onRange, onPickBase, onBack }: Props) {
+  const [c, setC] = useState<CommitDiff | Compare | Range | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [diff, setDiff] = useState<FileDiff | null>(null);
   const [loading, setLoading] = useState(false);
@@ -21,31 +33,38 @@ export function CommitDetail({ root, id = "", compare, onPickBase, onBack }: { r
   useEffect(() => {
     let live = true;
     setC(null); setSel(null); setDiff(null); setError(null);
-    const load = compare ? api.compare(root, compare.base, compare.head) : api.commitDiff(root, id);
-    load.then((x) => { if (live) { setC(x); setSel(x.files[0]?.path ?? null); } }).catch((e) => { if (live) setError(String(e)); });
+    const load: Promise<CommitDiff | Compare | Range> = span ? api.commitRange(root, span.older, span.newer) : compare ? api.compare(root, compare.base, compare.head) : api.commitDiff(root, id);
+    load.then((x) => { if (live) { setC(x); setSel(x.files[0]?.path ?? null); if ("commits" in x) onRange?.(x.commits); } }).catch((e) => { if (live) setError(String(e)); });
     return () => { live = false; };
-  }, [root, id, compare?.base, compare?.head, attempt]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [root, id, compare?.base, compare?.head, span?.older, span?.newer, attempt]);
 
   useEffect(() => {
     if (!sel) { setDiff(null); return; }
     let live = true;
     setLoading(true);
-    (compare ? api.compareFileDiff(root, compare.base, compare.head, sel) : api.commitFileDiff(root, id, sel)).then((d) => { if (live) setDiff(d); }).catch((e) => { if (live) setError(String(e)); }).finally(() => { if (live) setLoading(false); });
+    const one = c && "commits" in c ? api.commitRangeFileDiff(root, c.base, c.newer, sel) : compare ? api.compareFileDiff(root, compare.base, compare.head, sel) : api.commitFileDiff(root, id, sel);
+    one.then((d) => { if (live) setDiff(d); }).catch((e) => { if (live) setError(String(e)); }).finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
-  }, [root, id, compare?.base, compare?.head, sel]);
+  }, [root, id, compare?.base, compare?.head, c, sel]);
 
   useLayer("page", onBack ?? null, !!onBack);
 
   const files = c?.files ?? [];
   const onListKey = useArrowKeys(files, files.findIndex((f) => f.path === sel), (f) => setSel(f.path));
-  if (error) return <ErrorState title={compare ? "Couldn't compare these branches" : "Couldn't load this commit"} error={error} onRetry={() => setAttempt((n) => n + 1)} />;
+  if (error) return <ErrorState title={span ? "Couldn't load these commits" : compare ? "Couldn't compare these branches" : "Couldn't load this commit"} error={error} onRetry={() => setAttempt((n) => n + 1)} />;
   if (!c) return <Loading />;
 
   return (
     <div className="flex min-h-0 min-w-0 grow flex-col">
       <div className="flex h-9 shrink-0 items-center gap-3 border-b border-stone-200 bg-white px-4 text-body dark:border-stone-700 dark:bg-stone-800">
-        {onBack && <button onClick={onBack} className="text-stone-500 hover:text-stone-800 dark:hover:text-stone-200">‹ Back to list</button>}
-        {"commit" in c ? (
+        {onBack && <button onClick={onBack} className="text-stone-500 hover:text-stone-800 dark:hover:text-stone-200">{span ? "‹ Back to one commit" : "‹ Back to list"}</button>}
+        {"commits" in c ? (
+          <span className="min-w-0 truncate" title={c.ancestor ? undefined : "Neither commit leads to the other, so this is just what differs between them."}>
+            {c.ancestor ? `Changes in ${c.count} commits` : "Difference between 2 commits"}
+            <span className="text-stone-500"> · <span className="selectable font-mono">{c.older.slice(0, 7)}</span> to <span className="selectable font-mono">{c.newer.slice(0, 7)}</span>{c.ancestor ? "" : " · on different lines of history"}</span>
+          </span>
+        ) : "commit" in c ? (
           <>
             <span className="selectable font-mono" title={c.commit.id}>{c.commit.id.slice(0, 7)}</span>
             <span className="min-w-0 truncate text-stone-500">{c.commit.author} · {ago(c.commit.time)}</span>

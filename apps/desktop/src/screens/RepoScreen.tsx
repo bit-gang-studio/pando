@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, changed, type Overview as OverviewData } from "../lib/api";
 import { navigate } from "../lib/routes";
 import { CommitDetail } from "./CommitDetail";
-import { CommitLog } from "./CommitLog";
+import { CommitLog, type Span } from "./CommitLog";
 import { RepoSidebar } from "./RepoSidebar";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { confirm } from "../ui/Confirm";
@@ -40,6 +40,12 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   // "All changes" vs base: shown first on a branch, offered on a worktree.
   const [brCompare, setBrCompare] = useState(true);
   const [wtCompare, setWtCompare] = useState(false);
+  // Several commits picked with shift-click, shown as one diff.
+  const [span, setSpan] = useState<Span | null>(null);
+  const [spanIds, setSpanIds] = useState<string[] | null>(null); // the commits it adds up, once known
+  const pickSpan = (s: Span | null) => { setSpan(s); setSpanIds(null); };
+  useEffect(() => { setSpan(null); setSpanIds(null); }, [root, worktree, branch, commit]);
+  const picked = useMemo(() => (span ? new Set(spanIds ?? [span.older, span.newer]) : undefined), [span, spanIds]);
   useEffect(() => { setWtCommit(null); setWtCompare(false); }, [worktree]);
   useEffect(() => { setBrCommit(null); setBrFirst(null); setBrCompare(true); }, [branch]);
   const onBranchLoaded = useCallback((id: string | null) => setBrFirst(id), []);
@@ -212,10 +218,13 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
           compare={canCompare ? { base: local(base!), ahead: cmpNow?.ahead ?? null } : undefined}
           range={canCompare && cmpNow ? { own: `${base}..${head}`, rest: cmpNow.mergeBase, restLabel: `Earlier history on ${local(base!)}` } : undefined}
           compareSelected={canCompare && (branch ? brCompare : wtCompare)}
-          onCompare={() => (branch ? setBrCompare(true) : (setWtCompare(true), setWtCommit(null)))}
-          onSelect={(id) => { setShowUncommitted(false); setBrCompare(false); setWtCompare(false); if (branch) setBrCommit(id); else if (worktree) setWtCommit(id); else navigate(id ? { kind: "commit", root, id } : { kind: "repo", root }); }}
+          picked={picked}
+          spanEnd={span?.other}
+          onSpan={pickSpan}
+          onCompare={() => { pickSpan(null); if (branch) setBrCompare(true); else { setWtCompare(true); setWtCommit(null); } }}
+          onSelect={(id) => { pickSpan(null); setShowUncommitted(false); setBrCompare(false); setWtCompare(false); if (branch) setBrCommit(id); else if (worktree) setWtCommit(id); else navigate(id ? { kind: "commit", root, id } : { kind: "repo", root }); }}
           onLoaded={branch ? onBranchLoaded : worktree ? undefined : onLoaded}
-          onUncommitted={() => (worktree ? (setWtCommit(null), setWtCompare(false)) : setShowUncommitted(true))}
+          onUncommitted={() => { pickSpan(null); if (worktree) { setWtCommit(null); setWtCompare(false); } else setShowUncommitted(true); }}
           onCommitMenu={commitMenu}
           branchDots={branchDots}
           prByBranch={prByBranch}
@@ -226,7 +235,9 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
       </div>
       <SplitHandle axis="y" onMouseDown={split.start} handleRef={split.handle} />
       <div className="flex min-h-0 min-w-0 grow">
-        {branch ? (
+        {span ? (
+          <CommitDetail key={`span-${span.older}-${span.newer}`} root={root} span={span} onRange={setSpanIds} onBack={() => pickSpan(null)} />
+        ) : branch ? (
           canCompare && brCompare ? <CommitDetail key={`cmp-${head}`} root={root} compare={{ base: base!, head: head! }} onPickBase={pickBase} />
           : brCommit ?? brFirst ? <CommitDetail root={root} id={(brCommit ?? brFirst)!} /> : <Loading />
         ) : worktree ? (

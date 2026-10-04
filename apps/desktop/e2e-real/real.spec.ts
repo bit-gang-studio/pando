@@ -298,6 +298,23 @@ test("done in a terminal: a detached checkout and a renamed branch both show up"
   await expect(sidebar(page).locator("div.group", { hasText: /detached/ }).first()).toBeVisible({ timeout: 10_000 });
 });
 
+test("shift-click two real commits: one diff with both commits' files", async ({ page }) => {
+  await boot(page, `#/branch?root=${encodeURIComponent(ROOT)}&name=feat%2Flogin`);
+  await page.getByText("Add lines", { exact: true }).click();
+  await expect(page.getByText("lines.txt").first()).toBeVisible();
+  await page.getByText("Add login", { exact: true }).click({ modifiers: ["Shift"] });
+  await expect(page.getByText("Changes in 3 commits")).toBeVisible();
+  await expect(page.locator('[data-picked="true"]')).toHaveCount(3);
+  const files = page.locator("aside").last();
+  await expect(files.getByText("login.js")).toBeVisible();
+  await expect(files.getByText("lines.txt")).toBeVisible();
+  // login.js was added then improved: the range shows its final content once.
+  await files.getByText("login.js").click();
+  await expect(page.getByText("login v2")).toBeVisible();
+  await expect(page.getByText("login v1")).toHaveCount(0);
+  await expect(files.getByText("app.js")).toHaveCount(0);
+});
+
 test("a real merge conflict: pick a side, Continue makes the merge commit", async ({ page }) => {
   const wt = wtPath("feat/collide");
   const before = git(wt, "rev-parse HEAD");

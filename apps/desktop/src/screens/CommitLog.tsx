@@ -35,6 +35,12 @@ type Props = {
   range?: { own: string; rest: string | null; restLabel: string };
   compareSelected?: boolean;
   onCompare?: () => void;
+  /// Commits picked together with shift-click, highlighted with `selected`.
+  picked?: Set<string>;
+  /// The far end of that pick (the near end is `selected`).
+  spanEnd?: string | null;
+  /// Shift-click or Shift+Up/Down: pick from `selected` to another commit.
+  onSpan?: (span: Span) => void;
   /// Right-click on a commit.
   onCommitMenu?: (e: React.MouseEvent, entry: LogEntry) => void;
   /// Called with the newest commit id after each load.
@@ -42,9 +48,13 @@ type Props = {
   refreshKey: number;
 };
 
+/// `anchor` is where the pick started, `other` where it ends now. `older` and
+/// `newer` are the same two, by their place in the list.
+export type Span = { anchor: string; other: string; older: string; newer: string };
+
 const PAGE = 200;
 
-export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, prByBranch = {}, detachedDots = {}, heads, compare, compareSelected, onCompare, range, onCommitMenu, onLoaded, refreshKey }: Props) {
+export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, prByBranch = {}, detachedDots = {}, heads, compare, compareSelected, onCompare, range, picked, spanEnd, onSpan, onCommitMenu, onLoaded, refreshKey }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +93,27 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
   useEffect(() => { load(0); }, [load, refreshKey]);
 
   const graph = useMemo(() => layoutGraph(entries), [entries]);
-  const onListKey = useArrowKeys(entries, entries.findIndex((e) => e.id === selected), (e) => onSelect(e.id));
+  const moveKey = useArrowKeys(entries, entries.findIndex((e) => e.id === selected), (e) => onSelect(e.id));
+  const at = (id: string | null | undefined) => entries.findIndex((e) => e.id === id);
+  /// Pick everything from the selected commit to row `to`.
+  function spanTo(to: number) {
+    const from = at(selected);
+    if (!onSpan || from < 0 || to < 0) return false;
+    if (to === from) { onSelect(entries[from].id); return true; }
+    const [hi, lo] = to < from ? [to, from] : [from, to];
+    onSpan({ anchor: entries[from].id, other: entries[to].id, newer: entries[hi].id, older: entries[lo].id });
+    return true;
+  }
+  const onListKey = (e: React.KeyboardEvent<HTMLElement>) => {
+    if (!e.shiftKey || (e.key !== "ArrowDown" && e.key !== "ArrowUp")) return moveKey(e);
+    const end = at(spanEnd) >= 0 ? at(spanEnd) : at(selected);
+    if (end < 0) return moveKey(e);
+    e.preventDefault();
+    const to = Math.max(0, Math.min(entries.length - 1, end + (e.key === "ArrowDown" ? 1 : -1)));
+    spanTo(to);
+    const list = e.currentTarget;
+    requestAnimationFrame(() => list.querySelector(`[data-row="${to}"]`)?.scrollIntoView({ block: "nearest" }));
+  };
   const maxLanes = Math.max(1, ...graph.map((g) => g.lanes));
   const graphW = maxLanes * LANE_W + 6;
 
@@ -118,15 +148,22 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
           )}
           <div
             data-selected={selected === e.id}
+            data-picked={!!picked?.has(e.id)}
+            data-row={i}
             style={{ height: ROW_H }}
-            onClick={(ev) => (wantsNewWindow(ev) ? openInNewWindow({ kind: "commit", root, id: e.id }) : onSelect(selected === e.id ? null : e.id))}
+            onMouseDown={(ev) => { if (ev.shiftKey) ev.preventDefault(); }}
+            onClick={(ev) => {
+              if (wantsNewWindow(ev)) openInNewWindow({ kind: "commit", root, id: e.id });
+              else if (ev.shiftKey && spanTo(i)) return;
+              else onSelect(selected === e.id && !picked?.size ? null : e.id);
+            }}
             onContextMenu={(ev) => { if (onCommitMenu) { ev.preventDefault(); onCommitMenu(ev, e); } }}
-            className={`flex cursor-pointer items-center gap-3 pl-2 pr-4 ${selected === e.id ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}
+            className={`flex cursor-pointer items-center gap-3 pl-2 pr-4 ${(picked?.size ? picked.has(e.id) : selected === e.id) ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}
           >
             <GraphCell row={graph[i]} width={graphW} head={heads ? heads.has(e.id) : e.is_head} />
             {/* Earlier history is dimmed, but not the graph: see-through lane lines that
                 overlap row to row would draw as dots at every row boundary. */}
-            <div data-dim={ownCount != null && i >= ownCount && selected !== e.id} className={`flex min-w-0 grow items-center gap-3 ${ownCount != null && i >= ownCount && selected !== e.id ? "opacity-60" : ""}`}>
+            <div data-dim={ownCount != null && i >= ownCount && selected !== e.id && !picked?.has(e.id)} className={`flex min-w-0 grow items-center gap-3 ${ownCount != null && i >= ownCount && selected !== e.id && !picked?.has(e.id) ? "opacity-60" : ""}`}>
             <span className="flex shrink-0 gap-1">
               {(detachedDots[e.id] ?? []).map((dot, k) => (
                 <span key={`det-${k}`} title="A worktree has this commit checked out, with no branch" className="flex items-center gap-1 rounded bg-stone-100 px-1.5 py-px font-mono text-label text-stone-700 dark:bg-stone-700 dark:text-stone-200"><span className={`h-1.5 w-1.5 rounded-full ${dot}`} />detached</span>

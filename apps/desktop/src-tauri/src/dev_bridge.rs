@@ -130,6 +130,16 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
         )
         .await),
         "commit_diff" => out(super::commit_diff(arg(&a, "root")?, arg(&a, "id")?).await),
+        "commit_range" => {
+            out(super::commit_range(arg(&a, "root")?, arg(&a, "older")?, arg(&a, "newer")?).await)
+        }
+        "commit_range_file_diff" => out(super::commit_range_file_diff(
+            arg(&a, "root")?,
+            arg(&a, "base")?,
+            arg(&a, "newer")?,
+            arg(&a, "path")?,
+        )
+        .await),
         "compare" => {
             out(super::compare(arg(&a, "root")?, arg(&a, "base")?, arg(&a, "head")?).await)
         }

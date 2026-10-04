@@ -1,6 +1,6 @@
 //! Linear history and single-commit diffs.
 
-use crate::cmd::git;
+use crate::cmd::{git, git_opt, git_raw, git_stdin};
 use crate::commit::{self, CommitInfo};
 use crate::error::{gix_err, Result};
 use crate::repo::Repo;
@@ -194,6 +194,121 @@ pub fn compare_file_diff(
             "--no-ext-diff",
             "-U3",
             &format!("{base}...{head}"),
+            "--",
+            path,
+        ],
+    )?;
+    let mut d = crate::diff::parse_unified(&out);
+    d.path = path.to_string();
+    Ok(d)
+}
+
+/// Several commits picked together in the list, as one diff.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Range {
+    pub older: String,
+    pub newer: String,
+    /// What the diff starts from: the older commit's parent (an empty tree
+    /// for the first commit), or the older commit itself when `ancestor` is false.
+    pub base: String,
+    /// True when the older commit leads to the newer one, so the diff is the
+    /// sum of the commits between them. False when they're on different lines
+    /// of history: then it's just the difference between the two.
+    pub ancestor: bool,
+    /// The commits whose changes are added up, newest first (at most 5,000).
+    pub commits: Vec<String>,
+    pub count: u32,
+    pub added: u32,
+    pub deleted: u32,
+    pub files: Vec<FileChange>,
+}
+
+const RANGE_IDS: usize = 5000;
+
+/// The changes from `older` through `newer`, both included. The two may be
+/// given in either order when one leads to the other.
+pub fn range(repo: &Repo, older: &str, newer: &str) -> Result<Range> {
+    let g = repo.open_gix()?;
+    let id = |rev: &str| -> Result<String> {
+        Ok(g.rev_parse_single(rev)
+            .map_err(gix_err)?
+            .detach()
+            .to_string())
+    };
+    let (a, b) = (id(older)?, id(newer)?);
+    let dir = &repo.common_git_dir;
+    let leads_to = |x: &str, y: &str| -> Result<bool> {
+        Ok(git_raw(dir, ["merge-base", "--is-ancestor", x, y])?.0 == 0)
+    };
+    let (older, newer, ancestor) = if leads_to(&a, &b)? {
+        (a, b, true)
+    } else if leads_to(&b, &a)? {
+        (b, a, true)
+    } else {
+        (a, b, false)
+    };
+    let (base, ids) = if ancestor {
+        let parent = git_opt(
+            dir,
+            ["rev-parse", "--verify", "--quiet", &format!("{older}^")],
+        )
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty());
+        match parent {
+            Some(p) => {
+                let ids = git(dir, ["rev-list", &format!("{p}..{newer}")])?;
+                (p, ids)
+            }
+            // The first commit has no parent: diff from an empty tree.
+            None => {
+                let (_, out, _) = git_stdin(dir, ["hash-object", "-t", "tree", "--stdin"], b"")?;
+                let empty = String::from_utf8_lossy(&out).trim().to_string();
+                (empty, git(dir, ["rev-list", &newer])?)
+            }
+        }
+    } else {
+        (older.clone(), format!("{newer}\n{older}\n"))
+    };
+    let stat = git(
+        dir,
+        ["diff", "--numstat", "-z", "--no-renames", &base, &newer],
+    )?;
+    let files = numstat(&stat);
+    let count = ids.lines().count() as u32;
+    Ok(Range {
+        older,
+        newer,
+        base,
+        ancestor,
+        commits: ids.lines().take(RANGE_IDS).map(str::to_string).collect(),
+        count,
+        added: files.iter().map(|f| f.added).sum(),
+        deleted: files.iter().map(|f| f.deleted).sum(),
+        files,
+    })
+}
+
+/// One file's diff within `range`. `base` and `newer` are the ids `range` returned.
+pub fn range_file_diff(
+    repo: &Repo,
+    base: &str,
+    newer: &str,
+    path: &str,
+) -> Result<crate::diff::FileDiff> {
+    for id in [base, newer] {
+        if id.is_empty() || !id.chars().all(|c| c.is_ascii_hexdigit()) {
+            return Err(crate::Error::Msg(format!("{id} isn't a commit id.")));
+        }
+    }
+    let out = git(
+        &repo.common_git_dir,
+        [
+            "diff",
+            "--no-color",
+            "--no-ext-diff",
+            "-U3",
+            base,
+            newer,
             "--",
             path,
         ],
