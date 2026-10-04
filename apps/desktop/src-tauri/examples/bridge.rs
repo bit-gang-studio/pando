@@ -10,6 +10,9 @@ use pando_desktop_lib::dev_bridge::dispatch;
 use serde_json::Value;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpListener;
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+static IN_FLIGHT: AtomicUsize = AtomicUsize::new(0);
 
 fn main() {
     let port = std::env::args().nth(1).unwrap_or_else(|| "4599".into());
@@ -46,9 +49,22 @@ fn main() {
                     .unwrap_or("")
                     .to_string();
                 let args = req.get("args").cloned().unwrap_or(Value::Null);
-                match tauri::async_runtime::block_on(dispatch(&cmd, args)) {
-                    Ok(v) => serde_json::json!({ "ok": v }).to_string(),
-                    Err(e) => serde_json::json!({ "err": e }).to_string(),
+                if cmd == "__idle" {
+                    // Wait for commands a closed page left running, so the next
+                    // test can wipe the repo without racing them.
+                    let start = std::time::Instant::now();
+                    while IN_FLIGHT.load(Ordering::SeqCst) > 0 && start.elapsed().as_secs() < 20 {
+                        std::thread::sleep(std::time::Duration::from_millis(20));
+                    }
+                    serde_json::json!({ "ok": IN_FLIGHT.load(Ordering::SeqCst) == 0 }).to_string()
+                } else {
+                    IN_FLIGHT.fetch_add(1, Ordering::SeqCst);
+                    let r = tauri::async_runtime::block_on(dispatch(&cmd, args));
+                    IN_FLIGHT.fetch_sub(1, Ordering::SeqCst);
+                    match r {
+                        Ok(v) => serde_json::json!({ "ok": v }).to_string(),
+                        Err(e) => serde_json::json!({ "err": e }).to_string(),
+                    }
                 }
             };
             let mut s = &stream;

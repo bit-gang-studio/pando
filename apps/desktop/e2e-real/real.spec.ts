@@ -49,8 +49,11 @@ const rowOf = (page: Page, text: string) => sidebar(page).locator("div.group", {
 const toast = (page: Page, text: string) => page.getByRole("status").filter({ hasText: text });
 const bridge = async (cmd: string) => (await (await fetch("http://127.0.0.1:4599/invoke", { method: "POST", body: JSON.stringify({ cmd, args: {} }) })).json()).ok;
 
-test.beforeEach(() => {
-  execSync(`bash setup.sh "${BASE}"`, { cwd: HERE, stdio: "ignore" });
+test.beforeEach(async () => {
+  // The last test's page is closed, but git it started may still be running.
+  await bridge("__idle");
+  try { execSync(`bash setup.sh "${BASE}"`, { cwd: HERE, stdio: "pipe", encoding: "utf8" }); }
+  catch (e) { throw new Error(`setup.sh failed:\n${(e as { stderr?: string }).stderr}`); }
 });
 
 test("the repo page shows real state: merged, ↑2, and after Fetch ↓1", async ({ page }) => {
