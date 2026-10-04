@@ -10,6 +10,7 @@ import { toastDone } from "../ui/Toast";
 import { ErrorState, Loading } from "../ui/State";
 import { errorParts } from "../lib/errors";
 import { useRepoRefresh } from "../lib/watch";
+import { overlayOpen, useLayer } from "../lib/keys";
 import { useArrowKeys } from "../lib/useArrowKeys";
 
 const STATUS_LABEL: Record<string, string> = { M: "Modified", A: "Added", D: "Deleted", R: "Renamed", C: "Copied", T: "Type changed", U: "Conflict", "?": "Untracked (new, not tracked by git yet)" };
@@ -66,11 +67,12 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
     return () => { live = false; };
   }, [d, sel]);
 
+  useLayer("page", onBack);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      const typing = document.activeElement instanceof HTMLInputElement || document.activeElement instanceof HTMLTextAreaElement;
-      if (e.key === "Escape" && !typing) onBack();
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && !merging) { e.preventDefault(); doCommit(); }
+      // A dialog, confirm or menu is open: its keys are its own.
+      if (overlayOpen()) return;
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); doCommit(); }
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "l" && d && d.worktree.kind === "linked" && d.worktree.branch) { e.preventDefault(); setMerging(true); }
     };
     window.addEventListener("keydown", onKey);

@@ -14,6 +14,7 @@ import { NewBranchDialog } from "../dialogs/NewBranchDialog";
 import { confirm } from "../ui/Confirm";
 import { toastError, withToast } from "../ui/Toast";
 import { dot, folderHint, worktreeOptions } from "../lib/worktrees";
+import { overlayOpen } from "../lib/keys";
 import type { Overlap } from "../lib/api";
 
 type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; prs?: PullRequest[] | null; prByBranch?: Record<string, PullRequest>; overlaps?: Overlap[] };
@@ -46,7 +47,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "n") { e.preventDefault(); setCreating({}); }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "n") { e.preventDefault(); if (!overlayOpen()) setCreating({}); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

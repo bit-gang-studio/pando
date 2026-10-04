@@ -1,3 +1,4 @@
+import { useLayer } from "../lib/keys";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 /// A divider is written as `{ divider: true }`.
@@ -14,11 +15,10 @@ export function ContextMenu({ x, y, items, onClose }: { x: number; y: number; it
   }, [x, y]);
   useEffect(() => {
     const onDown = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) onClose(); };
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("mousedown", onDown);
-    window.addEventListener("keydown", onKey);
-    return () => { window.removeEventListener("mousedown", onDown); window.removeEventListener("keydown", onKey); };
+    return () => window.removeEventListener("mousedown", onDown);
   }, [onClose]);
+  useLayer("overlay", onClose);
   return (
     <div ref={ref} role="menu" style={pos} className="fixed z-50 min-w-[180px] rounded-md border border-stone-300 bg-white p-1 text-body shadow-lg dark:border-stone-600 dark:bg-stone-800">
       {items.map((it, i) =>

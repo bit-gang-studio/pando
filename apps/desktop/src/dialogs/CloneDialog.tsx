@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { open } from "@tauri-apps/plugin-dialog";
 import { homeDir } from "@tauri-apps/api/path";
 import { api, type RemoteRepo, type UserConfig } from "../lib/api";
+import { useLayer } from "../lib/keys";
 import { ErrorLine, Loading } from "../ui/State";
 
 const LAST = "pando.cloneParent";
@@ -83,11 +84,7 @@ export function CloneDialog({ repos, onClose, onCloned }: { repos: string[]; onC
     }
   }
 
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape" && !busy) onClose(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  });
+  useLayer("overlay", busy ? null : onClose);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onMouseDown={(e) => { if (e.target === e.currentTarget && !busy) onClose(); }}>

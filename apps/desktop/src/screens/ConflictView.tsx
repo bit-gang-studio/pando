@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Choice, type ConflictFile, type Operation, type Part } from "../lib/api";
+import { overlayOpen } from "../lib/keys";
 import { ErrorLine, ErrorState, Loading } from "../ui/State";
 
 type Props = {
@@ -108,7 +109,7 @@ export function ConflictView({ worktree, path, op, onChanged, onNextFile }: Prop
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (!e.altKey || e.metaKey || e.ctrlKey) return;
+      if (!e.altKey || e.metaKey || e.ctrlKey || overlayOpen()) return;
       if (document.activeElement instanceof HTMLTextAreaElement || document.activeElement instanceof HTMLInputElement) return;
       if (e.key === "ArrowDown") { e.preventDefault(); next(); }
       if (e.key === "ArrowUp") { e.preventDefault(); if (cur > 0) go(cur - 1); }

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, type Created } from "../lib/api";
 import { ErrorLine } from "../ui/State";
+import { useLayer } from "../lib/keys";
 import { openTerminal, useTerminalName } from "../lib/reveal";
 
 type Props = {
@@ -48,10 +49,10 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
     return () => { live = false; };
   }, [repo, branch, pathEdited]);
 
+  const isTop = useLayer("overlay", busy ? null : onClose);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-      if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submit();
+      if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && isTop()) submit();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);

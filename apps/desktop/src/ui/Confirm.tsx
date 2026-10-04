@@ -1,3 +1,4 @@
+import { useLayer } from "../lib/keys";
 import { useEffect, useRef, useState } from "react";
 
 export type ConfirmOptions = {
@@ -51,10 +52,8 @@ export function ConfirmHost() {
     if (!p) return;
     if (p.input) inputRef.current?.focus();
     else (p.danger ? cancelRef : actionRef).current?.focus();
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") { e.preventDefault(); done(false); } };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
   });
+  useLayer("overlay", () => done(false), !!p);
 
   function done(ok: boolean) {
     if (!p) return;

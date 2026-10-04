@@ -3,6 +3,7 @@ import { ago, api, type CommitDiff, type Compare, type FileDiff } from "../lib/a
 import { DiffView } from "./DiffView";
 import { SplitHandle, useSplit } from "../ui/Split";
 import { ErrorState, Loading } from "../ui/State";
+import { useLayer } from "../lib/keys";
 import { useArrowKeys } from "../lib/useArrowKeys";
 
 /// One commit's changes, or with `compare` a whole branch against its base
@@ -33,12 +34,7 @@ export function CommitDetail({ root, id = "", compare, onPickBase, onBack }: { r
     return () => { live = false; };
   }, [root, id, compare?.base, compare?.head, sel]);
 
-  useEffect(() => {
-    if (!onBack) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onBack(); };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onBack]);
+  useLayer("page", onBack ?? null, !!onBack);
 
   const files = c?.files ?? [];
   const onListKey = useArrowKeys(files, files.findIndex((f) => f.path === sel), (f) => setSel(f.path));

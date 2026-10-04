@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { api, type MergePlan, type MergeResult, type Preflight } from "../lib/api";
+import { useLayer } from "../lib/keys";
 import { ErrorLine } from "../ui/State";
 
 type Props = {
@@ -39,10 +40,10 @@ export function MergeDialog({ root, path, branch, headSummary, onClose, onMerged
     }).catch((e) => setError(String(e)));
   }, [root, path, branch, headSummary]);
 
+  const isTop = useLayer("overlay", busy ? null : onClose);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && !busy) onClose();
-      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") merge();
+      if ((e.metaKey || e.ctrlKey) && e.key === "Enter" && isTop()) merge();
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
