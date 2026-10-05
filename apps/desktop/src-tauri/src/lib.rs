@@ -1,5 +1,6 @@
 //! Thin Tauri shell. All logic is in pando-core.
 
+mod editor;
 mod terminal;
 
 #[cfg(debug_assertions)]
@@ -151,6 +152,17 @@ fn terminal_name() -> Option<String> {
 #[tauri::command]
 fn open_terminal(path: PathBuf) -> R<()> {
     terminal::open(&path)
+}
+
+/// The code editors "Open in …" can use. Empty if none is installed.
+#[tauri::command]
+fn editor_names() -> Vec<String> {
+    editor::names()
+}
+
+#[tauri::command]
+fn open_editor(name: String, path: PathBuf) -> R<()> {
+    editor::open(&name, &path)
 }
 
 /// Undo Remove worktree: add it back in the same folder, with any saved changes.
@@ -668,6 +680,8 @@ pub fn run() {
             worktree_undo_remove,
             terminal_name,
             open_terminal,
+            editor_names,
+            open_editor,
             log_list,
             commit_diff,
             commit_file_diff,

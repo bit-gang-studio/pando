@@ -187,6 +187,14 @@ test("Open in Terminal asks for the worktree's folder (recorded, not opened)", a
   await expect.poll(async () => JSON.stringify(await bridge("__opened"))).toContain(wtPath("feat/login"));
 });
 
+test("Open in an editor asks for that editor and the worktree's folder (recorded, not opened)", async ({ page }) => {
+  await repoPage(page);
+  await rowOf(page, "feat/login").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Open in VS Code" }).click();
+  // Each entry is the call's arguments, as JSON text.
+  await expect.poll(async () => ((await bridge("__opened")) as string[]).map((x) => JSON.parse(x))).toContainEqual({ name: "VS Code", path: wtPath("feat/login") });
+});
+
 test("a branch opens on All changes with the real files", async ({ page }) => {
   await boot(page, `#/branch?root=${encodeURIComponent(ROOT)}&name=feat%2Flogin`);
   await expect(page.getByText(/All changes on feat\/login since/)).toBeVisible();

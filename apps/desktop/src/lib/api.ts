@@ -156,6 +156,8 @@ export const api = {
   worktreeUndoRemove: (root: string, removed: Removed) => invoke<void>("worktree_undo_remove", { root, removed }),
   terminalName: () => invoke<string | null>("terminal_name"),
   openTerminal: (path: string) => invoke<void>("open_terminal", { path }),
+  editorNames: () => invoke<string[]>("editor_names"),
+  openEditor: (name: string, path: string) => invoke<void>("open_editor", { name, path }),
 
   log: (root: string, branch: string | null, skip: number, limit: number) => invoke<Log>("log_list", { root, branch, skip, limit }),
   commitDiff: (root: string, id: string) => invoke<CommitDiff>("commit_diff", { root, id }),

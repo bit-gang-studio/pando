@@ -4,7 +4,7 @@ import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { MoreButton } from "../ui/MoreButton";
 import { navigate } from "../lib/routes";
-import { openTerminal, reveal, REVEAL_LABEL, useTerminalName } from "../lib/reveal";
+import { openEditor, openTerminal, reveal, REVEAL_LABEL, useEditors, useTerminalName } from "../lib/reveal";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { prBranch } from "../lib/prs";
 import { ChecksMark, PrBadge } from "../ui/PrBadge";
@@ -43,6 +43,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
 
   useEffect(() => { api.stashList(root).then(setStashes).catch(() => setStashes([])); }, [root, data]);
   const term = useTerminalName();
+  const editors = useEditors();
   const [backups, setBackups] = useState<Backup[]>([]);
   useEffect(() => { api.backupsList(root).then((b) => setBackups(b ?? [])).catch(() => setBackups([])); }, [root, data]);
 
@@ -154,6 +155,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       { label: "Copy path", onClick: () => navigator.clipboard.writeText(row.worktree.path) },
       { label: REVEAL_LABEL, onClick: () => reveal(row.worktree.path).catch(toastError) },
       ...(term ? [{ label: `Open in ${term}`, onClick: () => openTerminal(row.worktree.path) }] : []),
+      ...editors.map((e) => ({ label: `Open in ${e}`, onClick: () => { openEditor(e, row.worktree.path); } })),
       sep,
     ];
     if (b?.upstream_rewritten) items.push({ label: "Force push…", onClick: () => force(b) });

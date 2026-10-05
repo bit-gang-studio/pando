@@ -224,3 +224,73 @@ test("a worktree whose folder is there has no Repair item", async ({ page }) => 
   await expect(page.getByRole("menuitem", { name: /^Remove worktree/ })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Repair worktree…" })).toHaveCount(0);
 });
+
+// ---- Open in editor -----------------------------------------------------------------
+
+test("Open in <editor> lists each editor found and sends its name and the path", async ({ page }) => {
+  await open(page, { editor_names: ["Cursor", "VS Code"], open_editor: null });
+  await sidebar(page).locator("div.group", { hasText: "feat/login" }).first().click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Open in Cursor" })).toBeVisible();
+  await page.getByRole("menuitem", { name: "Open in VS Code" }).click();
+  await expect.poll(() => callsTo(page, "open_editor")).toEqual([{ name: "VS Code", path: WT }]);
+  // The one used last is listed first from now on.
+  await page.reload();
+  await sidebar(page).locator("div.group", { hasText: "feat/login" }).first().click({ button: "right" });
+  const items = page.getByRole("menuitem", { name: /^Open in (Cursor|VS Code)$/ });
+  await expect(items).toHaveText(["Open in VS Code", "Open in Cursor"]);
+});
+
+test("no editor found, no menu item and no tick-box", async ({ page }) => {
+  await open(page, { editor_names: [], terminal_name: null, worktree_path_preview: `${ROOT}-x` });
+  await sidebar(page).locator("div.group", { hasText: "feat/login" }).first().click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: /^Open in (?!new window)/ })).toHaveCount(0);
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("ControlOrMeta+n");
+  await expect(page.getByRole("dialog").getByLabel(/^Open in .* when it's ready$/)).toHaveCount(0);
+});
+
+test("a failed launch says why", async ({ page }) => {
+  await open(page, { editor_names: ["Zed"], open_editor: { $error: "Zed isn't installed any more." } });
+  await sidebar(page).locator("div.group", { hasText: "feat/login" }).first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Open in Zed" }).click();
+  await expect(page.getByRole("alert")).toContainText("Zed isn't installed any more.");
+});
+
+test("an editor remembered from before but gone now isn't offered", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("pando.editor", "Windsurf"));
+  await open(page, { editor_names: ["Cursor"] });
+  await sidebar(page).locator("div.group", { hasText: "feat/login" }).first().click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Open in Cursor" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Open in Windsurf" })).toHaveCount(0);
+});
+
+test("new worktree can open straight in the editor, and the choice is remembered", async ({ page }) => {
+  const made = { worktree: { path: `${ROOT}-feat-new` } };
+  await open(page, { editor_names: ["Cursor", "Zed"], terminal_name: "Terminal", worktree_path_preview: `${ROOT}-feat-new`, worktree_add: made, open_editor: null, open_terminal: null });
+  await page.keyboard.press("ControlOrMeta+n");
+  let dlg = page.getByRole("dialog");
+  const box = dlg.getByLabel("Open in Cursor when it's ready");
+  await expect(box).not.toBeChecked();
+  await box.check();
+  await dlg.getByRole("textbox").first().fill("feat/new");
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect.poll(() => callsTo(page, "open_editor")).toEqual([{ name: "Cursor", path: `${ROOT}-feat-new` }]);
+  // The terminal box was left alone: no terminal.
+  expect(await callsTo(page, "open_terminal")).toHaveLength(0);
+  await page.reload();
+  await expect(sidebar(page).getByText("WORKTREES")).toBeVisible();
+  await page.keyboard.press("ControlOrMeta+n");
+  dlg = page.getByRole("dialog");
+  await expect(dlg.getByLabel("Open in Cursor when it's ready")).toBeChecked();
+});
+
+test("no editor opens when the worktree couldn't be created, or for a branch without one", async ({ page }) => {
+  await open(page, { editor_names: ["Cursor"], worktree_path_preview: `${ROOT}-x`, worktree_add: { $error: "fatal: already exists" }, branch_create: null });
+  await page.keyboard.press("ControlOrMeta+n");
+  const dlg = page.getByRole("dialog");
+  await dlg.getByLabel("Open in Cursor when it's ready").check();
+  await dlg.getByRole("textbox").first().fill("feat/x");
+  await page.keyboard.press("ControlOrMeta+Enter");
+  await expect(dlg.getByText("already exists", { exact: false })).toBeVisible();
+  expect(await callsTo(page, "open_editor")).toHaveLength(0);
+});

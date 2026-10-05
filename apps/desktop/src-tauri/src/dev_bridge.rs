@@ -47,6 +47,12 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
             out(super::worktree_remove(arg(&a, "root")?, arg(&a, "path")?, arg(&a, "force")?).await)
         }
         "terminal_name" => Ok(Value::String("Terminal".into())),
+        // Never the real editors: tests must not open apps.
+        "editor_names" => Ok(serde_json::json!(["Cursor", "VS Code"])),
+        "open_editor" => {
+            OPENED.lock().unwrap().push(a.to_string());
+            Ok(Value::Null)
+        }
         "open_terminal" => {
             OPENED.lock().unwrap().push(a.to_string());
             Ok(Value::Null)

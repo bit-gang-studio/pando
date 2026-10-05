@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { api, type Created } from "../lib/api";
 import { ErrorLine } from "../ui/State";
 import { useLayer } from "../lib/keys";
-import { openTerminal, useTerminalName } from "../lib/reveal";
+import { openEditor, openTerminal, useEditors, useTerminalName } from "../lib/reveal";
 
 type Props = {
   root: string;
@@ -19,6 +19,7 @@ type Mode = "new" | "existing";
 const PREFIXES = ["feat/", "fix/", "chore/", "spike/"];
 
 const THEN_TERMINAL = "pando.newBranch.openTerminal";
+const THEN_EDITOR = "pando.newBranch.openEditor";
 
 export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote = null, onClose, onCreated }: Props) {
   const repo = root;
@@ -32,6 +33,8 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
   // Remembered on this machine: people who want it want it every time.
   const [thenTerminal, setThenTerminal] = useState(() => { try { return localStorage.getItem(THEN_TERMINAL) === "1"; } catch { return false; } });
   const term = useTerminalName();
+  const [thenEditor, setThenEditor] = useState(() => { try { return localStorage.getItem(THEN_EDITOR) === "1"; } catch { return false; } });
+  const editor = useEditors()[0] ?? null;
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<Created | null>(null);
   const branchRef = useRef<HTMLInputElement>(null);
@@ -79,6 +82,7 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
       });
       setResult(r);
       if (thenTerminal) openTerminal(r.worktree.path);
+      if (thenEditor && editor) openEditor(editor, r.worktree.path);
       onCreated();
       onClose();
     } catch (e) {
@@ -142,6 +146,13 @@ export function NewBranchDialog({ root, base: defaultBase, initialBranch, remote
             <label className="flex items-center gap-2">
               <input type="checkbox" checked={thenTerminal} onChange={(e) => { setThenTerminal(e.target.checked); try { localStorage.setItem(THEN_TERMINAL, e.target.checked ? "1" : "0"); } catch { /* ignore */ } }} />
               Open in {term} when it's ready
+            </label>
+          )}
+
+          {editor && (mode === "existing" || withWorktree) && (
+            <label className="flex items-center gap-2">
+              <input type="checkbox" checked={thenEditor} onChange={(e) => { setThenEditor(e.target.checked); try { localStorage.setItem(THEN_EDITOR, e.target.checked ? "1" : "0"); } catch { /* ignore */ } }} />
+              Open in {editor} when it's ready
             </label>
           )}
 
