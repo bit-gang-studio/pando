@@ -480,3 +480,21 @@ test("a teammate's unpulled commit: pushed commits can't be reworded, and nothin
   expect(git(wtPath("feat/behind"), "rev-parse HEAD")).toBe(mine);
   expect(git(origin, "rev-parse feat/behind")).toBe(theirs);
 });
+
+test("Create pull request starts from the branch's real commits (gh is stubbed)", async ({ page }) => {
+  await worktreePage(page, "feat/login");
+  await page.getByRole("button", { name: "Create pull request…" }).click();
+  const dlg = page.getByRole("dialog");
+  await expect(dlg).toContainText("3 commits");
+  await expect(dlg.getByLabel("Base")).toHaveValue("main");
+  await expect(dlg.getByLabel("Title")).toHaveValue("Login");
+  await expect(dlg.getByLabel("Description")).toHaveValue("- Add login\n- Improve login\n- Add lines");
+  await dlg.getByLabel("Title").fill("Login, done properly");
+  await dlg.getByRole("button", { name: /^Create pull request/ }).click();
+  await expect(toast(page, "Created a pull request for feat/login")).toBeVisible();
+  await expect.poll(async () => ((await bridge("__opened")) as string[]).map((x) => JSON.parse(x).req).filter(Boolean)).toContainEqual({ branch: "feat/login", base: "main", title: "Login, done properly", body: "- Add login\n- Improve login\n- Add lines", draft: false });
+  // The base itself, and a branch that was never pushed, don't get the button.
+  await worktreePage(page, "feat/dirty");
+  await expect(page.getByRole("button", { name: "Push to origin" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Create pull request…" })).toHaveCount(0);
+});

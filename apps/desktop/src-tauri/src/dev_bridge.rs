@@ -98,7 +98,16 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
         "remote_repos" => Ok(Value::Null),
         "repo_clone" => out(super::repo_clone(arg(&a, "source")?, arg(&a, "parent")?).await),
         "overlaps" => out(super::overlaps(arg(&a, "root")?).await),
-        "prs_list" => Ok(serde_json::json!({"state":"no_gh"})),
+        // gh is never run in tests: signed in, with no open pull requests.
+        "prs_list" => Ok(serde_json::json!({"state":"ok","prs":[]})),
+        "pr_draft" => {
+            out(super::pr_draft(arg(&a, "root")?, arg(&a, "branch")?, arg(&a, "base")?).await)
+        }
+        // gh is never run in tests: record the request and answer like GitHub would.
+        "pr_create" => {
+            OPENED.lock().unwrap().push(a.to_string());
+            Ok(Value::String("https://github.com/test/shop/pull/1".into()))
+        }
         "pr_add_worktree" => out(super::pr_add_worktree(arg(&a, "root")?, arg(&a, "pr")?).await),
         "backups_list" => out(super::backups_list(arg(&a, "root")?).await),
         "backup_restore_branch" => {

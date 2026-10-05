@@ -18,14 +18,14 @@ import { overlayOpen } from "../lib/keys";
 import { forcePush } from "../lib/forcePush";
 import type { Overlap } from "../lib/api";
 
-type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; prs?: PullRequest[] | null; prByBranch?: Record<string, PullRequest>; overlaps?: Overlap[] };
+type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; /** Open the Create pull request dialog for a branch. */ onCreatePr?: (branch: string) => void; prs?: PullRequest[] | null; prByBranch?: Record<string, PullRequest>; overlaps?: Overlap[] };
 
 const small = "h-6 rounded border border-stone-300 bg-white px-1.5 text-label hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 const iconBtn = "inline-flex h-6 items-center rounded px-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100";
 
 type WtRow = { key: string; label: string; worktree: Worktree; status: Summary | null; branch: BranchRow | null; isMain: boolean; ahead: number | null; stale: boolean; time: number | null };
 
-export function RepoSidebar({ root, data, current = null, currentBranch = null, onOpenBranch, onOpenRepo, onRefresh: refresh, onOpenWorktree, prs = null, prByBranch = {}, overlaps = [] }: Props) {
+export function RepoSidebar({ root, data, current = null, currentBranch = null, onOpenBranch, onOpenRepo, onRefresh: refresh, onOpenWorktree, onCreatePr, prs = null, prByBranch = {}, overlaps = [] }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ branch?: string; remote?: string } | null>(null);
   const [merging, setMerging] = useState<BranchRow | null>(null);
@@ -118,6 +118,8 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     const a = await confirm({ title: "Set upstream", body: <>The remote branch <span className="font-mono">{name}</span> pulls from and pushes to.</>, action: "Set upstream", input: { label: "Upstream", value: current ?? `origin/${name}`, mono: true } });
     if (a.ok) await run("Setting upstream…", `Upstream set to ${a.value}`, () => api.branchSetUpstream(root, name, a.value));
   }
+  /// A pushed branch with no open pull request, when gh can list them.
+  const canPr = (b?: Branch | null): b is Branch => !!b && !!onCreatePr && prs !== null && !!b.upstream && !prByBranch[b.name] && b.name !== data?.base && !b.upstream_rewritten;
   async function force(b: Branch) {
     if (await forcePush(root, b)) await refresh();
   }
@@ -163,6 +165,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       if (b?.upstream) items.push({ label: "Pull", onClick: () => run(`Pulling ${b.name}…`, `Pulled ${b.name}`, () => api.branchPull(row.worktree.path)) });
       if (b) items.push({ label: b.upstream ? "Push" : "Push to origin", onClick: () => run(`Pushing ${b.name}…`, `Pushed ${b.name}`, () => api.branchPush(root, b.name)) });
     }
+    if (canPr(b)) items.push({ label: "Create pull request…", onClick: () => onCreatePr!(b.name) });
     if (!row.isMain && row.branch) items.push({ label: "Merge…", onClick: () => setMerging(row.branch!) });
     if (changed(row.status) > 0) items.push({ label: "Stash changes…", onClick: () => stashChanges(row) });
     items.push(sep);
@@ -189,6 +192,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     r.branch.upstream_rewritten
       ? { label: "Force push…", onClick: () => force(r.branch) }
       : { label: r.branch.upstream ? "Push" : "Push to origin", onClick: () => run(`Pushing ${r.branch.name}…`, `Pushed ${r.branch.name}`, () => api.branchPush(root, r.branch.name)) },
+    ...(canPr(r.branch) ? [{ label: "Create pull request…", onClick: () => onCreatePr!(r.branch.name) }] : []),
     sep,
     { label: "Rename…", onClick: () => rename(r.branch.name) },
     { label: "Set upstream…", onClick: () => setUpstream(r.branch.name, r.branch.upstream) },

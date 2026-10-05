@@ -455,3 +455,203 @@ mod clone_tests {
         assert!(r[0].private);
     }
 }
+
+// ---- creating a pull request -------------------------------------------------
+
+/// What to start a new pull request's form with.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrDraft {
+    pub title: String,
+    pub body: String,
+    /// Commits the pull request would hold. 0 means there's nothing to open.
+    pub commits: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NewPullRequest {
+    pub branch: String,
+    /// The branch to merge into, e.g. "main" ("origin/main" is fine too).
+    pub base: String,
+    pub title: String,
+    pub body: String,
+    pub draft: bool,
+}
+
+fn msg<T>(m: impl Into<String>) -> Result<T> {
+    Err(crate::Error::Msg(m.into()))
+}
+
+fn base_name(base: &str) -> &str {
+    base.strip_prefix("origin/").unwrap_or(base)
+}
+
+/// "feat/add-login_page" -> "Add login page".
+fn title_from_branch(branch: &str) -> String {
+    let last = branch.rsplit('/').next().unwrap_or(branch);
+    let words = last.replace(['-', '_'], " ");
+    let words = words.trim();
+    let mut c = words.chars();
+    match c.next() {
+        Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+        None => branch.to_string(),
+    }
+}
+
+/// Title and description to start from: the one commit's message, or for
+/// several, the branch name and a list of their summaries (oldest first).
+pub fn pr_draft(repo: &Repo, branch: &str, base: &str) -> Result<PrDraft> {
+    let dir = &repo.common_git_dir;
+    let head = format!("refs/heads/{branch}");
+    if git_opt(dir, ["rev-parse", "--verify", "-q", &head]).is_none() {
+        return msg(format!("No branch named {branch}."));
+    }
+    let base = base_name(base);
+    // The remote's copy of the base is what GitHub compares against.
+    let against = [
+        format!("refs/remotes/origin/{base}"),
+        format!("refs/heads/{base}"),
+    ]
+    .into_iter()
+    .find(|r| git_opt(dir, ["rev-parse", "--verify", "-q", r]).is_some());
+    let Some(against) = against else {
+        return msg(format!(
+            "No branch named {base} to open a pull request into."
+        ));
+    };
+    let ids = git(
+        dir,
+        [
+            "rev-list",
+            "--reverse",
+            "--no-merges",
+            &head,
+            &format!("^{against}"),
+            "--",
+        ],
+    )?;
+    let ids: Vec<&str> = ids.lines().collect();
+    let message = |id: &str| -> Result<String> {
+        Ok(git(dir, ["log", "-1", "--format=%B", id])?
+            .trim()
+            .to_string())
+    };
+    let (title, body) = match ids.as_slice() {
+        [] => (title_from_branch(branch), String::new()),
+        [one] => {
+            let m = message(one)?;
+            let (first, rest) = m.split_once('\n').unwrap_or((&m, ""));
+            (first.trim().to_string(), rest.trim().to_string())
+        }
+        many => {
+            let mut body = String::new();
+            for id in many.iter().take(50) {
+                let m = message(id)?;
+                body.push_str(&format!("- {}\n", m.lines().next().unwrap_or_default()));
+            }
+            if many.len() > 50 {
+                body.push_str(&format!("- and {} more\n", many.len() - 50));
+            }
+            (title_from_branch(branch), body.trim_end().to_string())
+        }
+    };
+    Ok(PrDraft {
+        title,
+        body,
+        commits: ids.len() as u32,
+    })
+}
+
+/// Open a pull request with `gh`. Pushes the branch first if it has commits
+/// that aren't on its upstream yet. Returns the pull request's URL.
+pub fn create_pr(repo: &Repo, req: &NewPullRequest) -> Result<String> {
+    let Some(bin) = gh_path() else {
+        return msg("Creating a pull request needs GitHub's gh tool. Install it from cli.github.com, run gh auth login, then try again.");
+    };
+    create_pr_with(&bin, repo, req)
+}
+
+/// `create_pr` with a given `gh` binary.
+pub fn create_pr_with(bin: &std::path::Path, repo: &Repo, req: &NewPullRequest) -> Result<String> {
+    let dir = &repo.common_git_dir;
+    let branch = req.branch.as_str();
+    let title = req.title.trim();
+    if title.is_empty() {
+        return msg("A pull request needs a title.");
+    }
+    let Some(tip) = git_opt(
+        dir,
+        [
+            "rev-parse",
+            "--verify",
+            "-q",
+            &format!("refs/heads/{branch}"),
+        ],
+    ) else {
+        return msg(format!("No branch named {branch}."));
+    };
+    let base = base_name(&req.base);
+    if base.is_empty() || base.starts_with('-') {
+        return msg(format!("{base} isn't a branch name."));
+    }
+    // What the branch is called on GitHub: its upstream's name, else its own.
+    let theirs = git_opt(dir, ["config", &format!("branch.{branch}.merge")])
+        .map(|m| m.strip_prefix("refs/heads/").unwrap_or(&m).to_string())
+        .unwrap_or_else(|| branch.to_string());
+    if theirs == base {
+        return msg(format!(
+            "{branch} can't be merged into itself. Pick another base."
+        ));
+    }
+    let pushed = git_opt(
+        dir,
+        [
+            "rev-parse",
+            "--verify",
+            "-q",
+            &format!("refs/remotes/origin/{theirs}"),
+        ],
+    );
+    if pushed.as_deref() != Some(tip.as_str()) {
+        crate::branch::push(repo, branch, "origin", false)?;
+    }
+    let mut args = vec![
+        "pr".to_string(),
+        "create".into(),
+        format!("--head={theirs}"),
+        format!("--base={base}"),
+        format!("--title={title}"),
+        format!("--body={}", req.body.trim()),
+    ];
+    if req.draft {
+        args.push("--draft".into());
+    }
+    let (code, out, err) = gh(bin, &repo.root, &args)?;
+    if code != 0 {
+        let e = err.to_lowercase();
+        return msg(if e.contains("already exists") {
+            format!("{branch} already has a pull request.")
+        } else if e.contains("auth login")
+            || e.contains("not logged")
+            || e.contains("authentication")
+        {
+            "GitHub's gh tool isn't signed in. Run gh auth login in a terminal, then try again."
+                .to_string()
+        } else if e.contains("no commits between") {
+            format!("{base} already has everything on {branch}. There's nothing to open a pull request for.")
+        } else {
+            let line = err
+                .lines()
+                .map(str::trim)
+                .find(|l| !l.is_empty())
+                .unwrap_or("gh pr create failed");
+            format!("GitHub didn't create the pull request: {line}")
+        });
+    }
+    // gh prints the new pull request's URL, last.
+    Ok(out
+        .lines()
+        .map(str::trim)
+        .rfind(|l| l.starts_with("http"))
+        .unwrap_or_default()
+        .to_string())
+}

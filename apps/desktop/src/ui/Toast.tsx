@@ -4,7 +4,9 @@ import { Spinner } from "./State";
 
 /// An undo for a finished action: runs, then refreshes the screen.
 export type Undo = { run: () => Promise<unknown>; after?: () => unknown };
-type Item = { id: number; kind: "busy" | "ok" | "error"; text: string; detail?: string; undo?: Undo };
+/// A follow-up on a "done" toast that isn't an undo, e.g. "Open on GitHub".
+export type Then = { label: string; run: () => unknown };
+type Item = { id: number; kind: "busy" | "ok" | "error"; text: string; detail?: string; undo?: Undo; then?: Then };
 let items: Item[] = [];
 let listener: ((i: Item[]) => void) | null = null;
 let next = 1;
@@ -25,8 +27,8 @@ export function toastError(e: unknown) {
 }
 
 /// "Done" with an optional Undo, for actions that report their own progress.
-export function toastDone(text: string, undo?: Undo) {
-  put({ id: next++, kind: "ok", text, undo });
+export function toastDone(text: string, undo?: Undo, then?: Then) {
+  put({ id: next++, kind: "ok", text, undo, then });
 }
 
 async function runUndo(id: number, u: Undo) {
@@ -68,6 +70,7 @@ export function ToastHost() {
             {i.kind === "busy" ? <span className="mt-1"><Spinner /></span> : i.kind === "ok" ? <span className="text-teal-700">✓</span> : <span className="font-semibold">✕</span>}
             <span className="selectable min-w-0 grow break-words">{i.text}</span>
             {i.kind === "error" && i.detail && <button onClick={() => setOpen(open === i.id ? null : i.id)} className="shrink-0 text-label underline">{open === i.id ? "Hide" : "Details"}</button>}
+            {i.then && <button onClick={() => { drop(i.id); i.then!.run(); }} className="shrink-0 font-medium text-teal-700 hover:underline">{i.then.label}</button>}
             {i.undo && <button onClick={() => runUndo(i.id, i.undo!)} className="shrink-0 font-medium text-teal-700 hover:underline">Undo</button>}
             {i.kind !== "busy" && <button onClick={() => drop(i.id)} aria-label="Dismiss" className="shrink-0 px-1 opacity-60 hover:opacity-100">×</button>}
           </div>

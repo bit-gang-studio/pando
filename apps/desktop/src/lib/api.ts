@@ -95,6 +95,8 @@ export type RemoteRepo = { name: string; description: string; private: boolean; 
 export type Checks = "passing" | "failing" | "pending" | "none";
 export type PullRequest = { number: number; title: string; author: string; draft: boolean; head: string; base: string; from_fork: boolean; url: string; checks: Checks; review: string; updated_at: string };
 /// `ok` with the list, or why there's none (then the app shows nothing).
+export type PrDraft = { title: string; body: string; commits: number };
+export type NewPullRequest = { branch: string; base: string; title: string; body: string; draft: boolean };
 export type PullRequests = { state: "ok"; prs: PullRequest[] } | { state: "no_gh" } | { state: "signed_out" } | { state: "not_git_hub" };
 export type Overlap = { a: string; b: string; files: string[] };
 export type Removed = { path: string; branch: string | null; head: string | null; snapshot: string | null };
@@ -140,6 +142,8 @@ export const api = {
   repoClone: (source: string, parent: string) => invoke<UserConfig>("repo_clone", { source, parent }),
   overlaps: (root: string) => invoke<Overlap[]>("overlaps", { root }),
   prsList: (root: string) => invoke<PullRequests>("prs_list", { root }),
+  prDraft: (root: string, branch: string, base: string) => invoke<PrDraft>("pr_draft", { root, branch, base }),
+  prCreate: (root: string, req: NewPullRequest) => invoke<string>("pr_create", { root, req }),
   prAddWorktree: (root: string, pr: PullRequest) => invoke<Created>("pr_add_worktree", { root, pr }),
   backupsList: (root: string) => invoke<Backup[]>("backups_list", { root }),
   backupRestoreBranch: (root: string, refname: string) => invoke<void>("backup_restore_branch", { root, refname }),

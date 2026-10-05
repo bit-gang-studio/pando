@@ -14,6 +14,8 @@ import { SplitHandle, useSplit } from "../ui/Split";
 import { ErrorState, Loading } from "../ui/State";
 import { toastDone, toastError, withToast } from "../ui/Toast";
 import { MessageDialog } from "../dialogs/MessageDialog";
+import { PullRequestDialog } from "../dialogs/PullRequestDialog";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Rewritten } from "../lib/api";
 import { errorParts } from "../lib/errors";
 import { useRepoRefresh, watchRepo } from "../lib/watch";
@@ -233,6 +235,17 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   const [editable, setEditable] = useState<Set<string>>(new Set());
   // The ones already on the branch's upstream: changing them means a force push after.
   const [pushed, setPushed] = useState<Set<string>>(new Set());
+  // ---- create pull request ------------------------------------------------------
+  const [prFor, setPrFor] = useState<string | null>(null);
+  /// Branches a pull request could merge into: the usual base first, then the rest on origin.
+  const prBases = (name: string) => {
+    const theirs = data?.branches.find((b) => b.branch.name === name)?.branch.upstream?.replace(/^origin\//, "") ?? name;
+    const first = (baseFor[name] || data?.compare_base || data?.base || "main").replace(/^origin\//, "");
+    const others = [data?.base, ...(data?.branches.map((b) => b.branch.upstream?.startsWith("origin/") ? b.branch.upstream.slice(7) : null) ?? []), ...(data?.remote_only.map((r) => r.short) ?? [])];
+    return [...new Set([first, ...others].filter((n): n is string => !!n && n !== theirs))];
+  };
+  const wtB = wtRow?.branch;
+  const canPrHere = !!wtB && prs !== null && !!wtB.upstream && !prByBranch[wtB.name] && wtB.name !== data?.base;
   const [msgDlg, setMsgDlg] = useState<Omit<React.ComponentProps<typeof MessageDialog>, "onClose"> | null>(null);
   useEffect(() => {
     if (!head) { setEditable(new Set()); setPushed(new Set()); return; }
@@ -265,8 +278,18 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
     <div ref={side.box} className="flex min-h-0 min-w-0 grow">
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
       {msgDlg && <MessageDialog {...msgDlg} onClose={() => setMsgDlg(null)} />}
+      {prFor && (
+        <PullRequestDialog
+          root={root}
+          branch={prFor}
+          base={prBases(prFor)[0]}
+          bases={prBases(prFor)}
+          onClose={() => setPrFor(null)}
+          onCreated={(url) => { toastDone(`Created a pull request for ${prFor}`, undefined, url ? { label: "Open on GitHub", run: () => openUrl(url).catch(toastError) } : undefined); reloadPrs(); refresh(); }}
+        />
+      )}
       <div style={{ width: side.size }} className="flex shrink-0 flex-col">
-        <RepoSidebar root={root} data={data} current={worktree} currentBranch={branch} onOpenBranch={(name) => navigate({ kind: "branch", root, name })} onOpenRepo={() => navigate({ kind: "repo", root })} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} prs={prs} prByBranch={prByBranch} overlaps={overlaps} />
+        <RepoSidebar root={root} data={data} current={worktree} currentBranch={branch} onOpenBranch={(name) => navigate({ kind: "branch", root, name })} onOpenRepo={() => navigate({ kind: "repo", root })} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} onCreatePr={setPrFor} prs={prs} prByBranch={prByBranch} overlaps={overlaps} />
       </div>
       <SplitHandle axis="x" onMouseDown={side.start} handleRef={side.handle} />
     <div ref={split.box} className="flex min-h-0 min-w-0 grow flex-col">
@@ -315,7 +338,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
           ) : wtCommit ? (
             <CommitDetail root={root} id={wtCommit} onBack={() => setWtCommit(null)} />
           ) : (
-            <Detail root={root} path={worktree} onBack={() => navigate({ kind: "repo", root })} onChanged={refresh} />
+            <Detail root={root} path={worktree} onBack={() => navigate({ kind: "repo", root })} onChanged={refresh} onCreatePr={canPrHere ? () => setPrFor(wtB!.name) : undefined} />
           )
         ) : showUncommitted && dirtyPaths.length > 0 ? (
           <UncommittedPanel root={root} worktrees={dirtyPaths} refreshKey={tick} />

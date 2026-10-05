@@ -15,13 +15,13 @@ import { useArrowKeys } from "../lib/useArrowKeys";
 import { forcePush } from "../lib/forcePush";
 
 const STATUS_LABEL: Record<string, string> = { M: "Modified", A: "Added", D: "Deleted", R: "Renamed", C: "Copied", T: "Type changed", U: "Conflict", "?": "Untracked (new, not tracked by git yet)" };
-type Props = { root: string; path: string; onBack: () => void; onChanged: () => void };
+type Props = { root: string; path: string; onBack: () => void; onChanged: () => void; /** Set when this branch can get a pull request. */ onCreatePr?: () => void };
 type Sel = { path: string; staged: boolean; untracked: boolean } | null;
 
 const btn = "h-8 rounded-lg border border-stone-300 bg-white px-3 text-body hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 const small = "h-5.5 rounded border border-stone-300 bg-white px-2 text-label dark:border-stone-600 dark:bg-stone-700";
 
-export function Detail({ root, path, onBack, onChanged }: Props) {
+export function Detail({ root, path, onBack, onChanged, onCreatePr }: Props) {
   const [d, setD] = useState<DetailData | null>(null);
   const [sel, setSel] = useState<Sel>(null);
   const [diff, setDiff] = useState<FileDiff | null>(null);
@@ -195,6 +195,7 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
           if (up > 0) return <button onClick={push} disabled={!!busy} className={btn} title={`${up} to push (${b.upstream})`}>{busy === "push" ? "Pushing…" : `Push ↑${up}`}</button>;
           return <span className="text-label text-stone-500" title={b.upstream}>Up to date</span>;
         })()}
+        {b?.upstream && !b.upstream_rewritten && !d.operation && onCreatePr && <button onClick={onCreatePr} disabled={!!busy} className={btn}>Create pull request…</button>}
         {!isMain && d.base_branch && !d.operation && <button onClick={syncNow} disabled={!!busy} className={btn}>{busy === "sync" ? "Syncing…" : `Sync with ${d.base_branch}`}</button>}
         {!isMain && !op && <button onClick={() => setMerging(true)} disabled={!d.worktree.branch || !!d.operation} className="h-8 rounded-lg bg-teal-700 px-3.5 text-body font-medium text-white hover:bg-teal-800 disabled:opacity-40">Merge <span className="text-body opacity-70">⌘L</span></button>}
       </div>

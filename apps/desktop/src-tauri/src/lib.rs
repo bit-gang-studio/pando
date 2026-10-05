@@ -330,6 +330,17 @@ async fn prs_list(root: PathBuf) -> R<github::PullRequests> {
 }
 
 #[tauri::command]
+async fn pr_draft(root: PathBuf, branch: String, base: String) -> R<github::PrDraft> {
+    blocking(move || github::pr_draft(&repo(&root)?, &branch, &base).map_err(err)).await
+}
+
+/// Open a pull request with gh. Returns its URL.
+#[tauri::command]
+async fn pr_create(root: PathBuf, req: github::NewPullRequest) -> R<String> {
+    blocking(move || github::create_pr(&repo(&root)?, &req).map_err(err)).await
+}
+
+#[tauri::command]
 async fn pr_add_worktree(root: PathBuf, pr: github::PullRequest) -> R<Created> {
     blocking(move || github::add_worktree(&repo(&root)?, &pr).map_err(err)).await
 }
@@ -665,6 +676,8 @@ pub fn run() {
             overlaps,
             prs_list,
             pr_add_worktree,
+            pr_draft,
+            pr_create,
             backups_list,
             backup_restore_branch,
             backup_restore_files,
