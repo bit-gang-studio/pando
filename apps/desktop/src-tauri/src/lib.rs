@@ -430,6 +430,20 @@ async fn log_list(root: PathBuf, branch: Option<String>, skip: usize, limit: usi
 }
 
 #[tauri::command]
+async fn log_search(
+    root: PathBuf,
+    branch: Option<String>,
+    query: String,
+    skip: usize,
+    limit: usize,
+) -> R<Log> {
+    blocking(move || {
+        log::search(&repo(&root)?, branch.as_deref(), &query, skip, limit).map_err(err)
+    })
+    .await
+}
+
+#[tauri::command]
 async fn commit_diff(root: PathBuf, id: String) -> R<CommitDiff> {
     blocking(move || history::commit_diff(&repo(&root)?, &id).map_err(err)).await
 }
@@ -696,6 +710,7 @@ pub fn run() {
             editor_names,
             open_editor,
             log_list,
+            log_search,
             commit_diff,
             commit_file_diff,
             compare,

@@ -137,6 +137,14 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
             out(super::stash_restore(arg(&a, "root")?, arg(&a, "kept")?, arg(&a, "message")?).await)
         }
         "stash_drop" => out(super::stash_drop(arg(&a, "root")?, arg(&a, "index")?).await),
+        "log_search" => out(super::log_search(
+            arg(&a, "root")?,
+            arg(&a, "branch")?,
+            arg(&a, "query")?,
+            arg(&a, "skip")?,
+            arg(&a, "limit")?,
+        )
+        .await),
         "log_list" => out(super::log_list(
             arg(&a, "root")?,
             arg(&a, "branch")?,

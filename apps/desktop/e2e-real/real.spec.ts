@@ -498,3 +498,30 @@ test("Create pull request starts from the branch's real commits (gh is stubbed)"
   await expect(page.getByRole("button", { name: "Push to origin" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Create pull request…" })).toHaveCount(0);
 });
+
+test("search real commits by message, author and id, inside the branch", async ({ page }) => {
+  const box = page.getByLabel("Search commits");
+  await repoPage(page);
+  await expect(logRow(page, "Main moves on")).toBeVisible();
+  await box.fill("LOGIN");
+  for (const s of ["Add login", "Improve login", "Rewrite login"]) await expect(logRow(page, s)).toBeVisible();
+  await expect(logRow(page, "Main moves on")).toHaveCount(0);
+  // A short commit id finds exactly that commit.
+  const id = git(wtPath("feat/collide"), "rev-parse HEAD");
+  await box.fill(id.slice(0, 8));
+  await expect(logRow(page, "Rewrite login")).toBeVisible();
+  await expect(page.locator("[data-row]")).toHaveCount(1);
+  // The author every setup commit has.
+  await box.fill("test");
+  await expect(logRow(page, "Initial commit")).toBeVisible();
+  await box.press("Escape");
+  await expect(logRow(page, "Main moves on")).toBeVisible();
+
+  // On a worktree page the search stays on that branch.
+  await worktreePage(page, "feat/collide");
+  await expect(logRow(page, "Rewrite login")).toBeVisible();
+  await box.fill("login");
+  await expect(logRow(page, "Rewrite login")).toBeVisible();
+  await expect(logRow(page, "Improve login")).toHaveCount(0);
+  await expect(page.getByText("1 commit matches “login” on feat/collide")).toBeVisible();
+});

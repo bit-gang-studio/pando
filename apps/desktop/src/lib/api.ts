@@ -164,6 +164,7 @@ export const api = {
   openEditor: (name: string, path: string) => invoke<void>("open_editor", { name, path }),
 
   log: (root: string, branch: string | null, skip: number, limit: number) => invoke<Log>("log_list", { root, branch, skip, limit }),
+  logSearch: (root: string, branch: string | null, query: string, skip: number, limit: number) => invoke<Log>("log_search", { root, branch, query, skip, limit }),
   commitDiff: (root: string, id: string) => invoke<CommitDiff>("commit_diff", { root, id }),
   compare: (root: string, base: string, head: string) => invoke<Compare>("compare", { root, base, head }),
   branchForcePush: (root: string, name: string) => invoke<void>("branch_force_push", { root, name }),

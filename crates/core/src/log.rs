@@ -33,7 +33,7 @@ pub fn list(repo: &Repo, branch: Option<&str>, skip: usize, limit: usize) -> Res
         "--date-order".into(),
         format!("--skip={skip}"),
         format!("--max-count={}", limit + 1),
-        "--format=%H%x1f%P%x1f%an%x1f%ct%x1f%s%x1f%D".into(),
+        FORMAT.into(),
     ];
     match branch {
         Some(b) => args.push(b.to_string()),
@@ -49,6 +49,100 @@ pub fn list(repo: &Repo, branch: Option<&str>, skip: usize, limit: usize) -> Res
     let truncated = entries.len() > limit;
     entries.truncate(limit);
     Ok(Log { entries, truncated })
+}
+
+const FORMAT: &str = "--format=%H%x1f%P%x1f%an%x1f%ct%x1f%s%x1f%D";
+
+/// Commits whose message or author contains `query` (any case, taken
+/// literally), or whose id starts with it. Newest first. `branch = None`
+/// searches every branch and tag. Any case holds for A–Z only: git runs in
+/// the C locale here, so "é" doesn't match "É".
+pub fn search(
+    repo: &Repo,
+    branch: Option<&str>,
+    query: &str,
+    skip: usize,
+    limit: usize,
+) -> Result<Log> {
+    let query = query.trim();
+    if query.is_empty() || query.contains(['\n', '\0']) {
+        return Ok(Log {
+            entries: vec![],
+            truncated: false,
+        });
+    }
+    if branch.is_some_and(|b| b.is_empty() || b.starts_with('-')) {
+        return Err(crate::Error::Msg("That isn't a branch name.".into()));
+    }
+    let want = skip + limit + 1;
+    let run = |by: String| -> Result<Vec<LogEntry>> {
+        let mut args: Vec<String> = vec![
+            "log".into(),
+            "-z".into(),
+            "--date-order".into(),
+            format!("--max-count={want}"),
+            FORMAT.into(),
+            "--regexp-ignore-case".into(),
+            "--fixed-strings".into(),
+            by,
+        ];
+        match branch {
+            Some(b) => args.push(b.to_string()),
+            None => args.extend(["--branches".into(), "--remotes".into(), "--tags".into()]),
+        }
+        args.push("--".into());
+        let out = git_bytes(&repo.root, &args)?;
+        Ok(String::from_utf8_lossy(&out)
+            .split('\0')
+            .filter(|e| !e.is_empty())
+            .filter_map(parse_entry)
+            .collect())
+    };
+    // git ANDs --grep with --author, so ask twice and join the answers.
+    let mut found = run(format!("--grep={query}"))?;
+    found.extend(run(format!("--author={query}"))?);
+    // Newest first. The sort is stable, so commits made in the same second
+    // keep git's own order.
+    let mut seen = std::collections::HashSet::new();
+    found.retain(|f| seen.insert(f.id.clone()));
+    found.sort_by_key(|f| std::cmp::Reverse(f.time));
+    // A commit id, full or short, goes first.
+    if let Some(e) = by_id(repo, branch, query) {
+        found.retain(|f| f.id != e.id);
+        found.insert(0, e);
+    }
+    let mut entries: Vec<LogEntry> = found.into_iter().skip(skip).collect();
+    let truncated = entries.len() > limit;
+    entries.truncate(limit);
+    Ok(Log { entries, truncated })
+}
+
+/// The commit `query` names, if it looks like an id and (with a branch) is on that branch.
+fn by_id(repo: &Repo, branch: Option<&str>, query: &str) -> Option<LogEntry> {
+    if !(4..=64).contains(&query.len()) || !query.chars().all(|c| c.is_ascii_hexdigit()) {
+        return None;
+    }
+    let dir = &repo.common_git_dir;
+    let id = crate::cmd::git_opt(
+        dir,
+        [
+            "rev-parse",
+            "--verify",
+            "-q",
+            &format!("{query}^{{commit}}"),
+        ],
+    )?;
+    if let Some(b) = branch {
+        let on = crate::cmd::git_raw(dir, ["merge-base", "--is-ancestor", &id, b]).ok()?;
+        if on.0 != 0 {
+            return None;
+        }
+    }
+    let out = git_bytes(&repo.root, ["log", "-1", "-z", FORMAT, &id, "--"]).ok()?;
+    String::from_utf8_lossy(&out)
+        .split('\0')
+        .find(|e| !e.is_empty())
+        .and_then(parse_entry)
 }
 
 fn parse_entry(e: &str) -> Option<LogEntry> {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ago, api, type LogEntry, type PullRequest } from "../lib/api";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { colorFor, LANE_W, layoutGraph, ROW_H, type GraphRow } from "../lib/graph";
@@ -8,6 +8,7 @@ import { ErrorState, Loading } from "../ui/State";
 import { errorParts } from "../lib/errors";
 import { useArrowKeys } from "../lib/useArrowKeys";
 import { PrBadge } from "../ui/PrBadge";
+import { overlayOpen } from "../lib/keys";
 import { Fragment } from "react";
 
 type Props = {
@@ -92,13 +93,46 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
 
   useEffect(() => { load(0); }, [load, refreshKey]);
 
-  const graph = useMemo(() => layoutGraph(entries), [entries]);
-  const moveKey = useArrowKeys(entries, entries.findIndex((e) => e.id === selected), (e) => onSelect(e.id));
-  const at = (id: string | null | undefined) => entries.findIndex((e) => e.id === id);
+  // ---- search: message, author or commit id, in this scope -----------------------
+  const [query, setQuery] = useState("");
+  const [found, setFound] = useState<{ q: string; entries: LogEntry[]; truncated: boolean } | null>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  const searchBox = useRef<HTMLInputElement>(null);
+  const q = query.trim();
+  const search = useCallback(async (text: string, skip: number) => {
+    try {
+      const l = await api.logSearch(root, scope || null, text, skip, PAGE);
+      setFound((prev) => ({ q: text, entries: skip === 0 || prev?.q !== text ? l.entries : [...prev.entries, ...l.entries], truncated: l.truncated }));
+      setSearchError(null);
+    } catch (e) { setSearchError(String(e)); }
+  }, [root, scope]);
+  useEffect(() => {
+    if (!q) { setFound(null); setSearchError(null); return; }
+    // Wait for a pause in typing.
+    const t = setTimeout(() => search(q, 0), 200);
+    return () => clearTimeout(t);
+  }, [q, search, refreshKey]);
+  useEffect(() => { setQuery(""); }, [root, scope]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "f" && !overlayOpen()) { e.preventDefault(); searchBox.current?.focus(); searchBox.current?.select(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+  // While searching, the list is the results: plain rows, no graph, no picking a range.
+  const searching = q !== "";
+  const results = found?.q === q ? found : null;
+  const graphEntries = entries;
+  const rows = searching ? results?.entries ?? [] : entries;
+
+  const graph = useMemo(() => layoutGraph(graphEntries), [graphEntries]);
+  const moveKey = useArrowKeys(rows, rows.findIndex((e) => e.id === selected), (e) => onSelect(e.id));
+  const at = (id: string | null | undefined) => rows.findIndex((e) => e.id === id);
   /// Pick everything from the selected commit to row `to`.
   function spanTo(to: number) {
     const from = at(selected);
-    if (!onSpan || from < 0 || to < 0) return false;
+    if (!onSpan || searching || from < 0 || to < 0) return false;
     if (to === from) { onSelect(entries[from].id); return true; }
     const [hi, lo] = to < from ? [to, from] : [from, to];
     onSpan({ anchor: entries[from].id, other: entries[to].id, newer: entries[hi].id, older: entries[lo].id });
@@ -109,6 +143,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
     const end = at(spanEnd) >= 0 ? at(spanEnd) : at(selected);
     if (end < 0) return moveKey(e);
     e.preventDefault();
+    if (searching) return moveKey(e);
     const to = Math.max(0, Math.min(entries.length - 1, end + (e.key === "ArrowDown" ? 1 : -1)));
     spanTo(to);
     const list = e.currentTarget;
@@ -121,29 +156,53 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
     <div className="flex min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-4 py-1.5 dark:border-stone-700 dark:bg-stone-800">
         <span className="min-w-0 truncate text-body text-stone-500">{scope ? <span className="font-mono">{scope}</span> : "All branches"} · {ownCount != null ? `${ownCount} ${ownCount === 1 ? "commit" : "commits"} on this branch` : `${entries.length}${truncated ? "+" : ""} commits`}</span>
+        <div className="grow" />
+        <input
+          ref={searchBox}
+          type="search"
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => { if (e.key === "Escape" && query) { e.stopPropagation(); setQuery(""); } else if (e.key === "Escape") e.currentTarget.blur(); }}
+          placeholder="Search commits  ⌘F"
+          aria-label="Search commits"
+          spellCheck={false}
+          className="h-6.5 w-56 shrink-0 rounded-md border border-stone-300 bg-white px-2 text-body focus:border-teal-700 focus:outline-none dark:border-stone-600 dark:bg-stone-700"
+        />
       </div>
       <div tabIndex={0} onKeyDown={onListKey} className="min-h-0 grow overflow-auto bg-white focus:outline-none dark:bg-stone-800">
-        {dirtyWorktrees > 0 && (
+        {searching && (
+          <div className="flex items-center gap-2 border-b border-stone-200 bg-stone-50 px-4 py-1 text-label text-stone-500 dark:border-stone-700 dark:bg-stone-900/40">
+            <span className="min-w-0 grow truncate">
+              {searchError ? <span className="text-red-700">{errorParts(searchError).message}</span>
+                : !results ? "Searching…"
+                : results.entries.length === 0 ? <>No commits match “{q}”{scope ? <> on <span className="font-mono">{scope}</span></> : ""}.</>
+                : <>{results.entries.length}{results.truncated ? "+" : ""} {results.entries.length === 1 && !results.truncated ? "commit matches" : "commits match"} “{q}”{scope ? <> on <span className="font-mono">{scope}</span></> : ""}</>}
+            </span>
+            {searchError && <button onClick={() => search(q, 0)} className="underline">Retry</button>}
+            <button onClick={() => setQuery("")} className="underline">Clear</button>
+          </div>
+        )}
+        {!searching && dirtyWorktrees > 0 && (
           <button onClick={onUncommitted} className={`flex w-full items-center gap-3 px-4 py-1.5 text-left ${uncommittedSelected || (selected === null && uncommittedLabel && !compareSelected) ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
             <span className="h-2.5 w-2.5 shrink-0 rounded-full border-2 border-stone-400" />
             <span className="font-medium">Uncommitted changes</span>
             <span className="text-body text-stone-500">{uncommittedLabel ?? `in ${dirtyWorktrees} ${dirtyWorktrees === 1 ? "worktree" : "worktrees"}`}</span>
           </button>
         )}
-        {compare && (
+        {!searching && compare && (
           <button onClick={onCompare} className={`flex w-full items-center gap-3 px-4 py-1.5 text-left ${compareSelected ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
             <span className="h-2.5 w-2.5 shrink-0 rounded-sm border-2 border-stone-400" />
             <span className="font-medium">All changes</span>
             <span className="text-body text-stone-500">since <span className="font-mono">{compare.base}</span>{compare.ahead != null ? ` · ${compare.ahead} ${compare.ahead === 1 ? "commit" : "commits"}` : ""}</span>
           </button>
         )}
-        {!loaded && error && <ErrorState title="Couldn't load commits" error={error} onRetry={() => load(0)} />}
-        {!loaded && !error && <Loading />}
-        {loaded && error && <div className="flex items-center gap-2 px-4 py-1.5 text-body text-red-700"><span className="selectable min-w-0 grow truncate">{errorParts(error).message}</span><button onClick={() => load(0)} className="underline">Retry</button></div>}
-        {loaded && entries.length === 0 && dirtyWorktrees === 0 && <div className="p-4 text-body text-stone-500">No commits yet.</div>}
-        {entries.map((e, i) => (
+        {!searching && !loaded && error && <ErrorState title="Couldn't load commits" error={error} onRetry={() => load(0)} />}
+        {!searching && !loaded && !error && <Loading />}
+        {!searching && loaded && error && <div className="flex items-center gap-2 px-4 py-1.5 text-body text-red-700"><span className="selectable min-w-0 grow truncate">{errorParts(error).message}</span><button onClick={() => load(0)} className="underline">Retry</button></div>}
+        {!searching && loaded && entries.length === 0 && dirtyWorktrees === 0 && <div className="p-4 text-body text-stone-500">No commits yet.</div>}
+        {rows.map((e, i) => (
           <Fragment key={e.id}>
-          {ownCount != null && i === ownCount && (
+          {!searching && ownCount != null && i === ownCount && (
             <div className="flex items-center gap-2 border-y border-stone-200 bg-stone-50 px-4 py-1 text-label text-stone-500 dark:border-stone-700 dark:bg-stone-900/40">{range?.restLabel}</div>
           )}
           <div
@@ -155,15 +214,15 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
             onClick={(ev) => {
               if (wantsNewWindow(ev)) openInNewWindow({ kind: "commit", root, id: e.id });
               else if (ev.shiftKey && spanTo(i)) return;
-              else onSelect(selected === e.id && !picked?.size ? null : e.id);
+              else onSelect(selected === e.id && !picked?.size && !searching ? null : e.id);
             }}
             onContextMenu={(ev) => { if (onCommitMenu) { ev.preventDefault(); onCommitMenu(ev, e); } }}
             className={`flex cursor-pointer items-center gap-3 pl-2 pr-4 ${(picked?.size ? picked.has(e.id) : selected === e.id) ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}
           >
-            <GraphCell row={graph[i]} width={graphW} head={heads ? heads.has(e.id) : e.is_head} />
+            {searching ? <span className="w-2 shrink-0" /> : <GraphCell row={graph[i]} width={graphW} head={heads ? heads.has(e.id) : e.is_head} />}
             {/* Earlier history is dimmed, but not the graph: see-through lane lines that
                 overlap row to row would draw as dots at every row boundary. */}
-            <div data-dim={ownCount != null && i >= ownCount && selected !== e.id && !picked?.has(e.id)} className={`flex min-w-0 grow items-center gap-3 ${ownCount != null && i >= ownCount && selected !== e.id && !picked?.has(e.id) ? "opacity-60" : ""}`}>
+            <div data-dim={!searching && ownCount != null && i >= ownCount && selected !== e.id && !picked?.has(e.id)} className={`flex min-w-0 grow items-center gap-3 ${!searching && ownCount != null && i >= ownCount && selected !== e.id && !picked?.has(e.id) ? "opacity-60" : ""}`}>
             <span className="flex shrink-0 gap-1">
               {(detachedDots[e.id] ?? []).map((dot, k) => (
                 <span key={`det-${k}`} title="A worktree has this commit checked out, with no branch" className="flex items-center gap-1 rounded bg-stone-100 px-1.5 py-px font-mono text-label text-stone-700 dark:bg-stone-700 dark:text-stone-200"><span className={`h-1.5 w-1.5 rounded-full ${dot}`} />detached</span>
@@ -180,7 +239,10 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
           </div>
           </Fragment>
         ))}
-        {truncated && (
+        {searching && results?.truncated && (
+          <button onClick={() => search(q, results.entries.length)} className="m-2 rounded-md border border-stone-300 bg-white px-3 py-1 text-body dark:border-stone-600 dark:bg-stone-700">Load {PAGE} more</button>
+        )}
+        {!searching && truncated && (
           <button onClick={() => load(entries.length)} className="m-2 rounded-md border border-stone-300 bg-white px-3 py-1 text-body dark:border-stone-600 dark:bg-stone-700">Load {PAGE} more</button>
         )}
       </div>
