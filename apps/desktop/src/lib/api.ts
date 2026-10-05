@@ -24,6 +24,8 @@ export type Branch = {
   upstream: string | null;
   ahead: number | null;
   behind: number | null;
+  /// Ahead and behind because it was rewritten here: force push, don't pull.
+  upstream_rewritten: boolean;
   checked_out_in: string | null;
   last_commit: CommitInfo | null;
 };
@@ -158,6 +160,8 @@ export const api = {
   log: (root: string, branch: string | null, skip: number, limit: number) => invoke<Log>("log_list", { root, branch, skip, limit }),
   commitDiff: (root: string, id: string) => invoke<CommitDiff>("commit_diff", { root, id }),
   compare: (root: string, base: string, head: string) => invoke<Compare>("compare", { root, base, head }),
+  branchForcePush: (root: string, name: string) => invoke<void>("branch_force_push", { root, name }),
+  rewritePushed: (root: string, branch: string) => invoke<string[]>("rewrite_pushed", { root, branch }),
   rewriteEditable: (root: string, branch: string) => invoke<string[]>("rewrite_editable", { root, branch }),
   commitReword: (root: string, branch: string, id: string, message: string) => invoke<Rewritten>("commit_reword", { root, branch, id, message }),
   commitSquash: (root: string, branch: string, older: string, newer: string, message: string) => invoke<Rewritten>("commit_squash", { root, branch, older, newer, message }),

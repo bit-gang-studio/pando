@@ -12,6 +12,7 @@ import { errorParts } from "../lib/errors";
 import { useRepoRefresh } from "../lib/watch";
 import { overlayOpen, useLayer } from "../lib/keys";
 import { useArrowKeys } from "../lib/useArrowKeys";
+import { forcePush } from "../lib/forcePush";
 
 const STATUS_LABEL: Record<string, string> = { M: "Modified", A: "Added", D: "Deleted", R: "Renamed", C: "Copied", T: "Type changed", U: "Conflict", "?": "Untracked (new, not tracked by git yet)" };
 type Props = { root: string; path: string; onBack: () => void; onChanged: () => void };
@@ -188,6 +189,8 @@ export function Detail({ root, path, onBack, onChanged }: Props) {
           const pull = async () => { if (await run("pull", () => api.branchPull(wt))) toastDone(`Pulled ${b.name}`); };
           const push = async () => { if (await run("push", () => api.branchPush(root, b.name))) toastDone(`Pushed ${b.name}`); };
           if (!b.upstream) return <button onClick={push} disabled={!!busy} className={btn} title="Push this branch to origin and track it">{busy === "push" ? "Pushing…" : "Push to origin"}</button>;
+          // Rewritten here (reword, squash, drop, amend): pulling would bring the old commits back.
+          if (b.upstream_rewritten) return <button onClick={async () => { if (await forcePush(root, b)) { await refresh(); onChanged(); } }} disabled={!!busy} className={btn} title={`You rewrote commits that are on ${b.upstream}. Force push to update it.`}>Force push…</button>;
           if (down > 0) return <button onClick={pull} disabled={!!busy} className={btn} title={up ? `${down} to pull, then ${up} to push (${b.upstream})` : `${down} to pull (${b.upstream})`}>{busy === "pull" ? "Pulling…" : `Pull ↓${down}`}</button>;
           if (up > 0) return <button onClick={push} disabled={!!busy} className={btn} title={`${up} to push (${b.upstream})`}>{busy === "push" ? "Pushing…" : `Push ↑${up}`}</button>;
           return <span className="text-label text-stone-500" title={b.upstream}>Up to date</span>;

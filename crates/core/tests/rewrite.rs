@@ -1,7 +1,7 @@
 //! Reword, squash and drop a branch's own commits.
 mod common;
 use common::*;
-use pando_core::{operation, rewrite, worktree, Repo as CoreRepo};
+use pando_core::{branch, operation, rewrite, worktree, Repo as CoreRepo};
 use std::path::{Path, PathBuf};
 
 /// feat/x in its own worktree with commits a, b, c, d (oldest first), none pushed.
@@ -31,38 +31,6 @@ fn tree(cwd: &Path, rev: &str) -> String {
 }
 fn err(r: pando_core::Result<rewrite::Rewritten>) -> String {
     r.unwrap_err().to_string()
-}
-
-#[test]
-fn only_unpushed_commits_off_the_base_are_editable() {
-    let (r, wt, ids) = four();
-    let core = r.core();
-    let mut want = ids.clone();
-    want.reverse();
-    assert_eq!(rewrite::editable(&core, "feat/x").unwrap(), want);
-    // Push the first two: only c and d are left.
-    git(
-        &wt,
-        &[
-            "push",
-            "-q",
-            "-u",
-            "origin",
-            &format!("{}:refs/heads/feat/x", ids[1]),
-        ],
-    );
-    assert_eq!(
-        rewrite::editable(&core, "feat/x").unwrap(),
-        vec![ids[3].clone(), ids[2].clone()]
-    );
-    // main is all on origin/main: nothing to edit. One local commit: just that.
-    assert!(rewrite::editable(&core, "main").unwrap().is_empty());
-    commit(&r.root, "local.txt", "x\n");
-    assert_eq!(
-        rewrite::editable(&core, "main").unwrap(),
-        vec![r.tip("main")]
-    );
-    assert!(rewrite::editable(&core, "nope").is_err());
 }
 
 #[test]
@@ -194,42 +162,6 @@ fn a_merge_after_the_reworded_commit_keeps_both_parents() {
         "the side branch is untouched"
     );
     assert!(subjects(&wt, "origin/main..HEAD").contains(&"c, reworded".to_string()));
-}
-
-#[test]
-fn pushed_commits_and_strangers_are_refused_and_nothing_moves() {
-    let (r, wt, ids) = four();
-    let core = r.core();
-    git(
-        &wt,
-        &[
-            "push",
-            "-q",
-            "-u",
-            "origin",
-            &format!("{}:refs/heads/feat/x", ids[1]),
-        ],
-    );
-    let e = err(rewrite::reword(&core, "feat/x", &ids[1], "x"));
-    assert!(
-        e.contains("already pushed") && e.contains("origin/feat/x"),
-        "{e}"
-    );
-    let e = err(rewrite::squash(&core, "feat/x", &ids[1], &ids[2], "x"));
-    assert!(e.contains("already pushed"), "{e}");
-    assert!(err(rewrite::drop(&core, "feat/x", &ids[0])).contains("already pushed"));
-    // A commit on main is on the base.
-    assert!(err(rewrite::reword(&core, "feat/x", &r.tip("main"), "x"))
-        .contains("already pushed to origin/"));
-    // A commit from somewhere else entirely.
-    commit(&r.root, "elsewhere.txt", "x\n");
-    assert!(err(rewrite::reword(&core, "feat/x", &r.tip("main"), "x")).contains("isn't on feat/x"));
-    for bad in ["HEAD", "--all", "", "zzzz", "feat/x", "deadbeefdeadbeef"] {
-        assert!(rewrite::reword(&core, "feat/x", bad, "x").is_err(), "{bad}");
-        assert!(rewrite::drop(&core, "feat/x", bad).is_err(), "{bad}");
-    }
-    assert!(rewrite::reword(&core, "no-such-branch", &ids[3], "x").is_err());
-    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), ids[3]);
 }
 
 #[test]
@@ -380,4 +312,266 @@ fn undo_refuses_when_the_branch_has_moved_on() {
         .to_string();
     assert!(e.contains("has changed since"), "{e}");
     assert_eq!(git(&wt, &["rev-parse", "HEAD"]), now);
+}
+
+/// Push feat/x's first `n` commits to origin/<to>.
+fn push_first(wt: &Path, ids: &[String], n: usize, to: &str) {
+    git(
+        wt,
+        &[
+            "push",
+            "-q",
+            "origin",
+            &format!("{}:refs/heads/{to}", ids[n - 1]),
+        ],
+    );
+}
+/// Push a and b to origin/feat/x and track it; c and d stay local.
+fn track_first_two(wt: &Path, ids: &[String]) {
+    push_first(wt, ids, 2, "feat/x");
+    git(
+        wt,
+        &["branch", "-q", "--set-upstream-to=origin/feat/x", "feat/x"],
+    );
+}
+/// feat/x pushed in full, tracking origin/feat/x.
+fn four_pushed() -> (Repo, PathBuf, Vec<String>) {
+    let (r, wt, ids) = four();
+    git(&wt, &["push", "-q", "-u", "origin", "feat/x"]);
+    (r, wt, ids)
+}
+fn row(r: &Repo, name: &str) -> branch::Branch {
+    branch::list(&r.core())
+        .unwrap()
+        .into_iter()
+        .find(|b| b.name == name)
+        .unwrap()
+}
+/// A second clone commits on top of origin/feat/x and pushes.
+fn teammate_pushes(r: &Repo) -> String {
+    let dir = r.base.join("teammate");
+    if !dir.exists() {
+        git(
+            &r.base,
+            &["clone", "-q", r.origin.to_str().unwrap(), "teammate"],
+        );
+        for (k, v) in [
+            ("user.name", "Ana"),
+            ("user.email", "ana@e"),
+            ("commit.gpgsign", "false"),
+        ] {
+            git(&dir, &["config", k, v]);
+        }
+        git(&dir, &["switch", "-q", "feat/x"]);
+    }
+    let n = git(&dir, &["rev-list", "--count", "HEAD"]);
+    commit(&dir, "ana.txt", &format!("from ana {n}\n"));
+    git(&dir, &["push", "-q", "origin", "feat/x"]);
+    git(&dir, &["rev-parse", "HEAD"])
+}
+
+#[test]
+fn a_branchs_own_commits_are_editable_pushed_or_not_but_shared_ones_never() {
+    let (r, wt, ids) = four();
+    let core = r.core();
+    let mut all = ids.clone();
+    all.reverse();
+    assert_eq!(rewrite::editable(&core, "feat/x").unwrap(), all);
+    assert!(rewrite::pushed(&core, "feat/x").unwrap().is_empty());
+    // Pushed to its own upstream: still editable, and listed as pushed.
+    track_first_two(&wt, &ids);
+    assert_eq!(rewrite::editable(&core, "feat/x").unwrap(), all);
+    assert_eq!(
+        rewrite::pushed(&core, "feat/x").unwrap(),
+        vec![ids[1].clone(), ids[0].clone()]
+    );
+    // The first commit is also on another remote branch: someone builds on it.
+    push_first(&wt, &ids, 1, "shared");
+    git(&wt, &["fetch", "-q", "origin"]);
+    assert_eq!(rewrite::editable(&core, "feat/x").unwrap(), all[..3]);
+    assert_eq!(
+        rewrite::pushed(&core, "feat/x").unwrap(),
+        vec![ids[1].clone()]
+    );
+    let e = err(rewrite::reword(&core, "feat/x", &ids[0], "x"));
+    assert!(
+        e.contains("is on origin/shared") && e.contains("yours alone"),
+        "{e}"
+    );
+    assert!(err(rewrite::squash(&core, "feat/x", &ids[0], &ids[1], "x")).contains("origin/shared"));
+    assert!(err(rewrite::drop(&core, "feat/x", &ids[0])).contains("origin/shared"));
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), ids[3]);
+}
+
+#[test]
+fn the_default_branch_and_strangers_are_never_editable() {
+    let (r, wt, ids) = four();
+    let core = r.core();
+    // main tracks origin/main, the default branch: pushed commits there stay put.
+    assert!(rewrite::editable(&core, "main").unwrap().is_empty());
+    assert!(err(rewrite::reword(&core, "main", &r.tip("main"), "x")).contains("on origin/main"));
+    assert!(err(rewrite::reword(&core, "feat/x", &r.tip("main"), "x")).contains("on origin/main"));
+    commit(&r.root, "local.txt", "x\n");
+    assert_eq!(
+        rewrite::editable(&core, "main").unwrap(),
+        vec![r.tip("main")]
+    );
+    assert!(rewrite::pushed(&core, "main").unwrap().is_empty());
+    assert!(err(rewrite::reword(&core, "feat/x", &r.tip("main"), "x")).contains("isn't on feat/x"));
+    for bad in ["HEAD", "--all", "", "zzzz", "feat/x", "deadbeefdeadbeef"] {
+        assert!(rewrite::reword(&core, "feat/x", bad, "x").is_err(), "{bad}");
+        assert!(rewrite::drop(&core, "feat/x", bad).is_err(), "{bad}");
+    }
+    assert!(rewrite::editable(&core, "nope").is_err());
+    assert!(rewrite::reword(&core, "no-such-branch", &ids[3], "x").is_err());
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), ids[3]);
+}
+
+#[test]
+fn reword_a_pushed_commit_then_force_push_updates_the_remote() {
+    let (r, wt, ids) = four_pushed();
+    let core = r.core();
+    assert!(!row(&r, "feat/x").upstream_rewritten);
+    rewrite::reword(&core, "feat/x", &ids[1], "b, reworded").unwrap();
+    let b = row(&r, "feat/x");
+    assert_eq!((b.ahead, b.behind), (Some(3), Some(3)));
+    assert!(
+        b.upstream_rewritten,
+        "the remote only has commits we replaced"
+    );
+    assert_eq!(
+        git(&r.origin, &["rev-parse", "feat/x"]),
+        ids[3],
+        "nothing pushed yet"
+    );
+
+    branch::force_push(&core, "feat/x").unwrap();
+    assert_eq!(
+        git(&r.origin, &["rev-parse", "feat/x"]),
+        git(&wt, &["rev-parse", "HEAD"])
+    );
+    let b = row(&r, "feat/x");
+    assert_eq!(
+        (b.ahead, b.behind, b.upstream_rewritten),
+        (Some(0), Some(0), false)
+    );
+    // The remote's old tip is still reachable here.
+    let kept = git(
+        &r.root,
+        &[
+            "for-each-ref",
+            "--format=%(objectname)",
+            "refs/pando/snapshots/force-push",
+        ],
+    );
+    assert_eq!(kept, ids[3]);
+    // Doing it again with nothing to push is harmless.
+    branch::force_push(&core, "feat/x").unwrap();
+}
+
+#[test]
+fn drop_a_pushed_commit_then_force_push() {
+    let (r, wt, ids) = four_pushed();
+    let core = r.core();
+    rewrite::drop(&core, "feat/x", &ids[2]).unwrap();
+    assert!(row(&r, "feat/x").upstream_rewritten);
+    branch::force_push(&core, "feat/x").unwrap();
+    assert_eq!(
+        subjects(&r.origin, "main..feat/x"),
+        ["edit d.txt", "edit b.txt", "edit a.txt"]
+    );
+    assert_eq!(
+        git(&r.origin, &["rev-parse", "feat/x"]),
+        git(&wt, &["rev-parse", "HEAD"])
+    );
+}
+
+#[test]
+fn a_teammates_unpulled_commits_block_changing_pushed_commits() {
+    let (r, wt, ids) = four_pushed();
+    let core = r.core();
+    let ana = teammate_pushes(&r);
+    git(&wt, &["fetch", "-q", "origin"]);
+    let e = err(rewrite::reword(&core, "feat/x", &ids[1], "x"));
+    assert!(
+        e.contains("origin/feat/x has commits you haven't pulled"),
+        "{e}"
+    );
+    assert!(err(rewrite::drop(&core, "feat/x", &ids[3])).contains("haven't pulled"));
+    assert_eq!(git(&wt, &["rev-parse", "HEAD"]), ids[3]);
+    // A new local commit isn't pushed: that one can still change.
+    commit(&wt, "e.txt", "e\n");
+    let mine = git(&wt, &["rev-parse", "HEAD"]);
+    rewrite::reword(&core, "feat/x", &mine, "e, reworded").unwrap();
+    // Ahead and behind, but not from a rewrite: force push is refused.
+    let b = row(&r, "feat/x");
+    assert_eq!(
+        (b.ahead, b.behind, b.upstream_rewritten),
+        (Some(1), Some(1), false)
+    );
+    let e = branch::force_push(&core, "feat/x").unwrap_err().to_string();
+    assert!(e.contains("never had") && e.contains("Pull first"), "{e}");
+    assert_eq!(git(&r.origin, &["rev-parse", "feat/x"]), ana);
+}
+
+#[test]
+fn a_teammate_pushing_after_our_rewrite_is_never_overwritten() {
+    let (r, wt, ids) = four_pushed();
+    let core = r.core();
+    rewrite::reword(&core, "feat/x", &ids[3], "d, reworded").unwrap();
+    let ana = teammate_pushes(&r);
+    // Not fetched: our view of the remote is stale. Git's lease catches it.
+    assert!(row(&r, "feat/x").upstream_rewritten);
+    assert!(branch::force_push(&core, "feat/x").is_err());
+    assert_eq!(git(&r.origin, &["rev-parse", "feat/x"]), ana);
+    // Fetched: now we can see her commit, and refuse before pushing.
+    git(&wt, &["fetch", "-q", "origin"]);
+    assert!(!row(&r, "feat/x").upstream_rewritten);
+    let e = branch::force_push(&core, "feat/x").unwrap_err().to_string();
+    assert!(e.contains("never had"), "{e}");
+    assert_eq!(git(&r.origin, &["rev-parse", "feat/x"]), ana);
+    // A second teammate push, fetched again: still refused.
+    let ana2 = teammate_pushes(&r);
+    git(&wt, &["fetch", "-q", "origin"]);
+    assert!(branch::force_push(&core, "feat/x").is_err());
+    assert_eq!(git(&r.origin, &["rev-parse", "feat/x"]), ana2);
+}
+
+#[test]
+fn force_push_refuses_the_default_branch_and_a_branch_with_no_upstream() {
+    let (r, wt, ids) = four();
+    let core = r.core();
+    let e = branch::force_push(&core, "feat/x").unwrap_err().to_string();
+    assert!(e.contains("no upstream yet"), "{e}");
+    commit(&r.root, "local.txt", "x\n");
+    git(&r.root, &["commit", "-q", "--amend", "-m", "amended"]);
+    let before = git(&r.origin, &["rev-parse", "main"]);
+    let e = branch::force_push(&core, "main").unwrap_err().to_string();
+    assert!(e.contains("doesn't force push main"), "{e}");
+    assert_eq!(git(&r.origin, &["rev-parse", "main"]), before);
+    assert!(branch::force_push(&core, "nope").is_err());
+    // Only ahead: it's a plain push.
+    track_first_two(&wt, &ids);
+    branch::force_push(&core, "feat/x").unwrap();
+    assert_eq!(git(&r.origin, &["rev-parse", "feat/x"]), ids[3]);
+    assert!(git(
+        &r.root,
+        &["for-each-ref", "refs/pando/snapshots/force-push"]
+    )
+    .is_empty());
+}
+
+#[test]
+fn an_amend_in_a_terminal_counts_as_a_rewrite_too() {
+    let (r, wt, _ids) = four_pushed();
+    git(
+        &wt,
+        &["commit", "-q", "--amend", "-m", "amended in a terminal"],
+    );
+    assert!(row(&r, "feat/x").upstream_rewritten);
+    branch::force_push(&r.core(), "feat/x").unwrap();
+    assert_eq!(
+        git(&r.origin, &["log", "-1", "--format=%s", "feat/x"]),
+        "amended in a terminal"
+    );
 }

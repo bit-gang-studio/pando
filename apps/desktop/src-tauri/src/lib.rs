@@ -96,6 +96,12 @@ async fn branch_push(root: PathBuf, name: String) -> R<()> {
     blocking(move || branch::push(&repo(&root)?, &name, "origin", false).map_err(err)).await
 }
 
+/// Make the upstream match a branch that was rewritten here.
+#[tauri::command]
+async fn branch_force_push(root: PathBuf, name: String) -> R<()> {
+    blocking(move || branch::force_push(&repo(&root)?, &name).map_err(err)).await
+}
+
 /// `git pull --rebase` in a worktree.
 #[tauri::command]
 async fn branch_pull(worktree: PathBuf) -> R<()> {
@@ -224,6 +230,11 @@ async fn commit_cherry_pick(root: PathBuf, worktree: PathBuf, id: String) -> R<A
 #[tauri::command]
 async fn rewrite_editable(root: PathBuf, branch: String) -> R<Vec<String>> {
     blocking(move || rewrite::editable(&repo(&root)?, &branch).map_err(err)).await
+}
+
+#[tauri::command]
+async fn rewrite_pushed(root: PathBuf, branch: String) -> R<Vec<String>> {
+    blocking(move || rewrite::pushed(&repo(&root)?, &branch).map_err(err)).await
 }
 
 #[tauri::command]
@@ -613,6 +624,8 @@ pub fn run() {
             fetch_all,
             branch_create,
             branch_push,
+            branch_force_push,
+            rewrite_pushed,
             branch_pull,
             branch_delete,
             worktree_move,

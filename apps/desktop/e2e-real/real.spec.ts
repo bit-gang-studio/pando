@@ -369,8 +369,8 @@ test("reword a real unpushed commit: message changes, uncommitted work stays, Un
   const before = git(wt, "rev-parse HEAD");
   const status = git(wt, "status --porcelain");
   await worktreePage(page, "feat/login");
-  // "Add login" is on origin already: no Reword for it.
-  await logRow(page, "Add login").click({ button: "right" });
+  // "Add app" is on origin/main, which others build on: no Reword for it.
+  await logRow(page, "Add app").click({ button: "right" });
   await expect(page.getByRole("menuitem", { name: "Cherry-pick…" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Reword…" })).toHaveCount(0);
   await page.keyboard.press("Escape");
@@ -427,4 +427,48 @@ test("drop a real commit: its file goes, Undo brings it back; a dirty worktree i
   await page.getByRole("alertdialog").getByRole("button", { name: "Drop commit" }).click();
   await expect(page.getByRole("alert")).toContainText("Commit or stash your changes");
   expect(git(login, "rev-parse HEAD")).toBe(tip);
+});
+
+test("reword a pushed commit, then Force push updates the real remote", async ({ page }) => {
+  const wt = wtPath("feat/login");
+  const origin = `${BASE}/origin.git`;
+  const before = git(origin, "rev-parse feat/login");
+  await worktreePage(page, "feat/login");
+  await commitAction(page, "Add login", "Reword…");
+  const dlg = page.getByRole("dialog");
+  await expect(dlg).toContainText("Already on origin/feat/login, so you'll force push afterwards.");
+  await dlg.getByLabel("Summary").fill("Add the login page");
+  await dlg.getByRole("button", { name: /^Reword/ }).click();
+  await expect(toast(page, "Reworded")).toBeVisible();
+  expect(git(origin, "rev-parse feat/login")).toBe(before);
+  // Not Pull: that would bring the old commit back.
+  await expect(page.getByRole("button", { name: /^Pull/ })).toHaveCount(0);
+  await page.getByRole("button", { name: "Force push…" }).click();
+  const ask = page.getByRole("alertdialog");
+  await expect(ask).toContainText("origin/feat/login will match feat/login");
+  await expect(ask).toContainText("Add login");
+  await ask.getByRole("button", { name: "Force push" }).click();
+  await expect(toast(page, "Force pushed feat/login")).toBeVisible();
+  expect(git(origin, "rev-parse feat/login")).toBe(git(wt, "rev-parse HEAD"));
+  expect(git(origin, "log --format=%s feat/login -3")).toBe("Add lines\nImprove login\nAdd the login page");
+  await expect(page.getByText("Up to date")).toBeVisible();
+  // The remote's old commit is still kept in this repository.
+  expect(git(ROOT, "for-each-ref '--format=%(objectname)' refs/pando/snapshots/force-push")).toBe(before);
+});
+
+test("a teammate's unpulled commit: pushed commits can't be reworded, and nothing is overwritten", async ({ page }) => {
+  const origin = `${BASE}/origin.git`;
+  git(ROOT, "fetch -q origin");
+  const theirs = git(origin, "rev-parse feat/behind");
+  const mine = git(wtPath("feat/behind"), "rev-parse HEAD");
+  await worktreePage(page, "feat/behind");
+  await expect(page.getByRole("button", { name: "Pull ↓1" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Force push…" })).toHaveCount(0);
+  await commitAction(page, "Start behind", "Reword…");
+  const dlg = page.getByRole("dialog");
+  await dlg.getByLabel("Summary").fill("Should not happen");
+  await dlg.getByRole("button", { name: /^Reword/ }).click();
+  await expect(dlg).toContainText("rigin/feat/behind has commits you haven't pulled. Pull first");
+  expect(git(wtPath("feat/behind"), "rev-parse HEAD")).toBe(mine);
+  expect(git(origin, "rev-parse feat/behind")).toBe(theirs);
 });

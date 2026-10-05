@@ -130,6 +130,10 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
         )
         .await),
         "commit_diff" => out(super::commit_diff(arg(&a, "root")?, arg(&a, "id")?).await),
+        "branch_force_push" => {
+            out(super::branch_force_push(arg(&a, "root")?, arg(&a, "name")?).await)
+        }
+        "rewrite_pushed" => out(super::rewrite_pushed(arg(&a, "root")?, arg(&a, "branch")?).await),
         "rewrite_editable" => {
             out(super::rewrite_editable(arg(&a, "root")?, arg(&a, "branch")?).await)
         }

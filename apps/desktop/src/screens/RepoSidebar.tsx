@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ago, api, changed, type BranchRow, type DetachedRow, type Overview as OverviewData, type Backup, type PullRequest, type RemoteBranch, type Stash, type Summary, type Worktree } from "../lib/api";
+import { ago, api, changed, type Branch, type BranchRow, type DetachedRow, type Overview as OverviewData, type Backup, type PullRequest, type RemoteBranch, type Stash, type Summary, type Worktree } from "../lib/api";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { MoreButton } from "../ui/MoreButton";
@@ -15,6 +15,7 @@ import { confirm } from "../ui/Confirm";
 import { toastError, withToast } from "../ui/Toast";
 import { dot, folderHint, worktreeOptions } from "../lib/worktrees";
 import { overlayOpen } from "../lib/keys";
+import { forcePush } from "../lib/forcePush";
 import type { Overlap } from "../lib/api";
 
 type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; prs?: PullRequest[] | null; prByBranch?: Record<string, PullRequest>; overlaps?: Overlap[] };
@@ -116,6 +117,9 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     const a = await confirm({ title: "Set upstream", body: <>The remote branch <span className="font-mono">{name}</span> pulls from and pushes to.</>, action: "Set upstream", input: { label: "Upstream", value: current ?? `origin/${name}`, mono: true } });
     if (a.ok) await run("Setting upstream…", `Upstream set to ${a.value}`, () => api.branchSetUpstream(root, name, a.value));
   }
+  async function force(b: Branch) {
+    if (await forcePush(root, b)) await refresh();
+  }
   async function repairWorktree(row: WtRow) {
     const a = await confirm({ title: "Repair worktree", body: <>Git can't find the folder for <span className="font-mono">{row.label}</span>. If you moved or renamed it, say where it is now. Nothing inside it changes.</>, action: "Repair worktree", input: { label: "Where the folder is now", value: row.worktree.path, mono: true } });
     if (a.ok) await run("Repairing worktree…", `Repaired worktree ${row.label}`, () => api.worktreeRepair(root, a.value.trim()));
@@ -152,8 +156,11 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       ...(term ? [{ label: `Open in ${term}`, onClick: () => openTerminal(row.worktree.path) }] : []),
       sep,
     ];
-    if (b?.upstream) items.push({ label: "Pull", onClick: () => run(`Pulling ${b.name}…`, `Pulled ${b.name}`, () => api.branchPull(row.worktree.path)) });
-    if (b) items.push({ label: b.upstream ? "Push" : "Push to origin", onClick: () => run(`Pushing ${b.name}…`, `Pushed ${b.name}`, () => api.branchPush(root, b.name)) });
+    if (b?.upstream_rewritten) items.push({ label: "Force push…", onClick: () => force(b) });
+    else {
+      if (b?.upstream) items.push({ label: "Pull", onClick: () => run(`Pulling ${b.name}…`, `Pulled ${b.name}`, () => api.branchPull(row.worktree.path)) });
+      if (b) items.push({ label: b.upstream ? "Push" : "Push to origin", onClick: () => run(`Pushing ${b.name}…`, `Pushed ${b.name}`, () => api.branchPush(root, b.name)) });
+    }
     if (!row.isMain && row.branch) items.push({ label: "Merge…", onClick: () => setMerging(row.branch!) });
     if (changed(row.status) > 0) items.push({ label: "Stash changes…", onClick: () => stashChanges(row) });
     items.push(sep);
@@ -177,7 +184,9 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     { label: "Add worktree…", onClick: () => setCreating({ branch: r.branch.name }) },
     { label: "Merge…", onClick: () => setMerging(r) },
     { label: "Switch main worktree to this branch", onClick: () => switchMain(r.branch.name) },
-    { label: r.branch.upstream ? "Push" : "Push to origin", onClick: () => run(`Pushing ${r.branch.name}…`, `Pushed ${r.branch.name}`, () => api.branchPush(root, r.branch.name)) },
+    r.branch.upstream_rewritten
+      ? { label: "Force push…", onClick: () => force(r.branch) }
+      : { label: r.branch.upstream ? "Push" : "Push to origin", onClick: () => run(`Pushing ${r.branch.name}…`, `Pushed ${r.branch.name}`, () => api.branchPush(root, r.branch.name)) },
     sep,
     { label: "Rename…", onClick: () => rename(r.branch.name) },
     { label: "Set upstream…", onClick: () => setUpstream(r.branch.name, r.branch.upstream) },
@@ -435,7 +444,9 @@ function SyncCounts({ b }: { b?: import("../lib/api").Branch }) {
   if (!b?.upstream) return null;
   const up = b.ahead ?? 0, down = b.behind ?? 0;
   if (!up && !down) return null;
-  const tip = [up && `${up} to push`, down && `${down} to pull`].filter(Boolean).join(", ") + ` (${b.upstream})`;
+  const tip = b.upstream_rewritten
+    ? `Rewritten here. Force push to update ${b.upstream}.`
+    : [up && `${up} to push`, down && `${down} to pull`].filter(Boolean).join(", ") + ` (${b.upstream})`;
   return <span title={tip}>{" · "}{up ? `↑${up}` : ""}{up && down ? " " : ""}{down ? `↓${down}` : ""}</span>;
 }
 

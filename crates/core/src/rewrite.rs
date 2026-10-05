@@ -1,6 +1,7 @@
 //! Clean up a branch's own commits before a pull request: reword, squash, drop.
 //!
-//! Only commits that haven't been pushed and aren't on the base can change.
+//! Only a branch's own commits can change: ones on no other remote branch and
+//! not on the base. Ones already on its own upstream need a force push after.
 //! Reword and squash rebuild commits without touching any files, so they work
 //! with uncommitted changes and on a branch with no worktree. Drop changes
 //! files, so it's a real rebase in the branch's worktree and can pause on
@@ -59,30 +60,80 @@ fn tip(repo: &Repo, branch: &str) -> Result<String> {
 }
 
 /// The repository's base, when it's a local branch other than this one.
-/// (A remote base is covered by "anything already pushed".)
 fn local_base(repo: &Repo, branch: &str) -> Option<String> {
     merge::compare_base(repo).filter(|b| b != branch && !b.starts_with("origin/"))
 }
 
-/// The commits on `branch` that can be reworded, squashed or dropped, newest
-/// first: not pushed to any remote, and not on the base.
-pub fn editable(repo: &Repo, branch: &str) -> Result<Vec<String>> {
-    tip(repo, branch)?;
-    let mut args = vec![
-        "rev-list".to_string(),
-        format!("refs/heads/{branch}"),
-        "--not".into(),
-        "--remotes".into(),
-    ];
-    args.extend(local_base(repo, branch).map(|b| format!("refs/heads/{b}")));
-    Ok(git(&repo.common_git_dir, &args)?
+/// The branch's own upstream ("refs/remotes/origin/feat/x"). Commits that are
+/// only there can still change, followed by a force push. `None` when it has
+/// none, or when the upstream is the default branch: that is never rewritten.
+fn own_upstream(repo: &Repo, branch: &str) -> Option<String> {
+    let full = git_opt(
+        &repo.common_git_dir,
+        [
+            "rev-parse",
+            "--symbolic-full-name",
+            &format!("{branch}@{{upstream}}"),
+        ],
+    )?;
+    let short = full.strip_prefix("refs/remotes/")?;
+    let theirs = short.split_once('/').map(|(_, b)| b)?;
+    (repo.default_branch.as_deref() != Some(theirs)).then_some(full)
+}
+
+/// `rev-list <tip>` minus what must not change: every remote branch except
+/// the branch's own upstream, and the local base.
+fn unshared(repo: &Repo, branch: &str, tip: &str) -> Result<Vec<String>> {
+    let dir = &repo.common_git_dir;
+    let own = own_upstream(repo, branch);
+    let mut input = format!("{tip}\n");
+    for r in git(dir, ["for-each-ref", "--format=%(refname)", "refs/remotes"])?.lines() {
+        if Some(r) != own.as_deref() {
+            input.push_str(&format!("^{r}\n"));
+        }
+    }
+    if let Some(b) = local_base(repo, branch) {
+        input.push_str(&format!("^refs/heads/{b}\n"));
+    }
+    // On stdin: a repository can have thousands of remote branches.
+    let (code, out, err) = crate::cmd::git_stdin(dir, ["rev-list", "--stdin"], input.as_bytes())?;
+    if code != 0 {
+        return Err(Error::Git {
+            cmd: "rev-list".into(),
+            stderr: err,
+        });
+    }
+    Ok(String::from_utf8_lossy(&out)
         .lines()
         .map(str::to_string)
         .collect())
 }
 
-/// Where a commit already lives, for the refusal: "origin/feat/x" or "main".
+/// The commits on `branch` that can be reworded, squashed or dropped, newest
+/// first: on no remote branch but its own upstream, and not on the base.
+pub fn editable(repo: &Repo, branch: &str) -> Result<Vec<String>> {
+    tip(repo, branch)?;
+    unshared(repo, branch, &format!("refs/heads/{branch}"))
+}
+
+/// The editable commits that are already on the branch's upstream. Changing
+/// one means a force push afterwards.
+pub fn pushed(repo: &Repo, branch: &str) -> Result<Vec<String>> {
+    let Some(own) = own_upstream(repo, branch) else {
+        return Ok(vec![]);
+    };
+    let there: std::collections::HashSet<String> =
+        unshared(repo, branch, &own)?.into_iter().collect();
+    Ok(editable(repo, branch)?
+        .into_iter()
+        .filter(|id| there.contains(id))
+        .collect())
+}
+
+/// Where a commit already lives, for the refusal: "origin/main" or "main".
 fn shared_on(repo: &Repo, branch: &str, id: &str) -> String {
+    let own = own_upstream(repo, branch);
+    let own = own.as_deref().and_then(|o| o.strip_prefix("refs/remotes/"));
     let remote = git_opt(
         &repo.common_git_dir,
         [
@@ -95,11 +146,11 @@ fn shared_on(repo: &Repo, branch: &str, id: &str) -> String {
     )
     .and_then(|o| {
         o.lines()
-            .find(|l| !l.ends_with("/HEAD"))
+            .find(|l| !l.ends_with("/HEAD") && Some(*l) != own)
             .map(str::to_string)
     });
     match remote {
-        Some(r) => format!("already pushed to {r}"),
+        Some(r) => format!("on {r}"),
         None => format!(
             "on {}",
             local_base(repo, branch).unwrap_or_else(|| "the base".into())
@@ -151,7 +202,7 @@ fn target(repo: &Repo, branch: &str, ids: &[&str]) -> Result<Target> {
         .0 == 0;
         return msg(if on_branch {
             format!(
-                "{} is {}. Pando only changes commits that haven't been pushed.",
+                "{} is {}, which others build on. Pando only changes commits that are yours alone.",
                 short(id),
                 shared_on(repo, branch, id)
             )
@@ -164,6 +215,27 @@ fn target(repo: &Repo, branch: &str, ids: &[&str]) -> Result<Target> {
         return msg(format!(
             "{branch} has a rebase or merge in progress. Continue or abort it first."
         ));
+    }
+    // Changing a pushed commit ends in a force push. That's only safe when
+    // the upstream holds nothing this branch hasn't had.
+    if let Some(own) = own_upstream(repo, branch) {
+        let dir = &repo.common_git_dir;
+        let is_in = |id: &str, of: &str| -> Result<bool> {
+            Ok(crate::cmd::git_raw(dir, ["merge-base", "--is-ancestor", id, of])?.0 == 0)
+        };
+        let mut touches_pushed = false;
+        for id in ids {
+            touches_pushed |= is_in(id, &own)?;
+        }
+        if touches_pushed
+            && !is_in(&own, &old_tip)?
+            && !crate::branch::had_before(repo, branch, &own)
+        {
+            return msg(format!(
+                "{} has commits you haven't pulled. Pull first, then change pushed commits.",
+                own.trim_start_matches("refs/remotes/")
+            ));
+        }
     }
     Ok(Target { old_tip, wt })
 }

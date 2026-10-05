@@ -20,6 +20,10 @@ pub struct Branch {
     pub upstream: Option<String>,
     pub ahead: Option<u32>,
     pub behind: Option<u32>,
+    /// Ahead and behind, and everything the upstream has that this branch
+    /// doesn't was on this branch before: it was rewritten here (reword,
+    /// squash, drop, amend, rebase). Force push is the way forward, not pull.
+    pub upstream_rewritten: bool,
     /// Worktree that has this branch checked out, if any.
     pub checked_out_in: Option<PathBuf>,
     pub last_commit: Option<CommitInfo>,
@@ -62,6 +66,7 @@ pub fn list(repo: &Repo) -> Result<Vec<Branch>> {
             upstream: None,
             ahead: None,
             behind: None,
+            upstream_rewritten: false,
             checked_out_in: checked_out.get(&name).cloned(),
             last_commit: commit::info(&g, tip).ok(),
         };
@@ -80,6 +85,9 @@ pub fn list(repo: &Repo) -> Result<Vec<Branch>> {
                     let up_id = up_id.detach();
                     b.ahead = Some(count_only_in(&g, tip, up_id)?);
                     b.behind = Some(count_only_in(&g, up_id, tip)?);
+                    b.upstream_rewritten = b.ahead > Some(0)
+                        && b.behind > Some(0)
+                        && had_before(repo, &name, &track_name);
                 }
             }
         }
@@ -207,6 +215,92 @@ pub fn push(repo: &Repo, name: &str, remote: &str, force_with_lease: bool) -> Re
     }
     args.extend([remote, name]);
     git(&repo.root, &args)?;
+    Ok(())
+}
+
+/// True when everything on `upstream` (a full ref name) was on `branch` at
+/// some point, going by the branch's reflog. Commits someone else pushed
+/// were never here, so they make this false.
+pub(crate) fn had_before(repo: &Repo, branch: &str, upstream: &str) -> bool {
+    let dir = &repo.common_git_dir;
+    let head = format!("refs/heads/{branch}");
+    let Some(log) =
+        crate::cmd::git_opt(dir, ["log", "-g", "--format=%H", "-n", "500", &head, "--"])
+    else {
+        return false;
+    };
+    let mut seen = std::collections::HashSet::new();
+    let mut args = vec![
+        "rev-list".to_string(),
+        "--count".into(),
+        upstream.to_string(),
+    ];
+    args.extend(
+        log.lines()
+            .filter(|l| seen.insert(*l))
+            .map(|l| format!("^{l}")),
+    );
+    args.push("--".into());
+    crate::cmd::git_opt(dir, &args).as_deref() == Some("0")
+}
+
+/// Make the branch's upstream match the branch, replacing commits there.
+/// Only when those commits were on this branch before (so nobody else's work
+/// goes), and never on the default branch. The upstream's old tip is kept
+/// reachable under `refs/pando/snapshots/force-push/`.
+pub fn force_push(repo: &Repo, name: &str) -> Result<()> {
+    let dir = &repo.common_git_dir;
+    let cfg = |key: &str| crate::cmd::git_opt(dir, ["config", &format!("branch.{name}.{key}")]);
+    let (Some(remote), Some(merge)) = (cfg("remote"), cfg("merge")) else {
+        return Err(crate::Error::Msg(format!(
+            "{name} has no upstream yet. Use Push."
+        )));
+    };
+    let theirs = merge
+        .strip_prefix("refs/heads/")
+        .unwrap_or(&merge)
+        .to_string();
+    if repo.default_branch.as_deref() == Some(theirs.as_str()) {
+        return Err(crate::Error::Msg(format!(
+            "Pando doesn't force push {theirs}. Others build on it."
+        )));
+    }
+    let tracking = format!("refs/remotes/{remote}/{theirs}");
+    let Some(old) = crate::cmd::git_opt(dir, ["rev-parse", "--verify", "-q", &tracking]) else {
+        return Err(crate::Error::Msg(format!(
+            "{remote}/{theirs} isn't known here yet. Fetch first."
+        )));
+    };
+    // Nothing to replace: a plain push does it.
+    let ahead_only = crate::cmd::git_raw(
+        dir,
+        [
+            "merge-base",
+            "--is-ancestor",
+            &old,
+            &format!("refs/heads/{name}"),
+        ],
+    )?
+    .0 == 0;
+    if ahead_only {
+        return push(repo, name, &remote, false);
+    }
+    if !had_before(repo, name, &tracking) {
+        return Err(crate::Error::Msg(format!(
+            "{remote}/{theirs} has commits this branch never had. Someone else may have pushed. Pull first, or look at them."
+        )));
+    }
+    crate::backup::keep_commit(repo, "force-push", &old)?;
+    git(
+        &repo.root,
+        [
+            "push",
+            "--force-with-lease",
+            "--force-if-includes",
+            &remote,
+            &format!("refs/heads/{name}:refs/heads/{theirs}"),
+        ],
+    )?;
     Ok(())
 }
 

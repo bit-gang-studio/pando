@@ -19,11 +19,11 @@ export function wt(path: string, branch: string | null, extra: Partial<Worktree>
   return { path, kind: path === ROOT ? "main" : "linked", head: sha(), branch, detached: branch === null, bare: false, locked: null, prunable: null, ...extra };
 }
 
-export function row(name: string, opts: { worktree?: Worktree | null; status?: Summary | null; ahead?: number; upstream?: string | null; merged?: boolean; up?: [number, number] } = {}): BranchRow {
+export function row(name: string, opts: { worktree?: Worktree | null; status?: Summary | null; ahead?: number; upstream?: string | null; merged?: boolean; up?: [number, number]; rewritten?: boolean } = {}): BranchRow {
   const worktree = opts.worktree === undefined ? null : opts.worktree;
   return {
     branch: {
-      name, tip: sha(), upstream: opts.upstream ?? null, ahead: opts.up?.[0] ?? 0, behind: opts.up?.[1] ?? 0, checked_out_in: worktree?.path ?? null,
+      name, tip: sha(), upstream: opts.upstream ?? null, ahead: opts.up?.[0] ?? 0, behind: opts.up?.[1] ?? 0, upstream_rewritten: opts.rewritten ?? false, checked_out_in: worktree?.path ?? null,
       last_commit: { id: sha(), summary: `Work on ${name}`, author: "Sam", time: NOW - 3600 },
     },
     worktree,
