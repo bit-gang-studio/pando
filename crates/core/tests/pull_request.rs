@@ -1,17 +1,7 @@
 //! Opening a pull request: the prefilled form, and the call to gh.
 mod common;
 use common::*;
-use pando_core::github::{self, NewPullRequest};
-
-fn req(branch: &str, base: &str, title: &str, body: &str) -> NewPullRequest {
-    NewPullRequest {
-        branch: branch.into(),
-        base: base.into(),
-        title: title.into(),
-        body: body.into(),
-        draft: false,
-    }
-}
+use pando_core::github;
 
 #[test]
 fn one_commit_prefills_its_message() {
@@ -77,8 +67,19 @@ fn nothing_ahead_and_odd_names() {
 #[cfg(unix)]
 mod with_gh {
     use super::*;
+    use pando_core::github::NewPullRequest;
     use std::os::unix::fs::PermissionsExt;
     use std::path::{Path, PathBuf};
+
+    fn req(branch: &str, base: &str, title: &str, body: &str) -> NewPullRequest {
+        NewPullRequest {
+            branch: branch.into(),
+            base: base.into(),
+            title: title.into(),
+            body: body.into(),
+            draft: false,
+        }
+    }
 
     fn fake_gh(r: &Repo, out: &str, err: &str, code: i32) -> PathBuf {
         let dir = r.base.join("fake-gh");

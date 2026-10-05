@@ -44,7 +44,9 @@ export function overview(parts: Partial<Overview> = {}): Overview {
   return {
     repo, base: "main",
     branches: [row("main", { worktree: wt(ROOT, "main") })],
-    detached: [], remote_only: [], status_loaded: true, compare_base: "main", fetched_at: NOW - 240,
+    detached: [], remote_only: [], status_loaded: true, compare_base: "main",
+    // Fresh each time: NOW is fixed when this file loads, and a long run would drift a minute.
+    fetched_at: Math.floor(Date.now() / 1000) - 240,
     ...parts,
   };
 }
