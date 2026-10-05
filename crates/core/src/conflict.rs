@@ -77,14 +77,7 @@ pub fn file(wt: &Path, path: &str) -> Result<ConflictFile> {
         _ => None,
     };
     let mut parts = if binary { vec![] } else { parse(&working) };
-    if let (Some(o), Some(t), Some(b)) = (&ours, &theirs, &base) {
-        if parts
-            .iter()
-            .any(|p| matches!(p, Part::Conflict { base: None, .. }))
-        {
-            fill_bases(wt, &mut parts, o, b, t);
-        }
-    }
+    with_bases(wt, &mut parts, &ours, &base, &theirs);
     Ok(ConflictFile {
         path: path.to_string(),
         ours: ours.unwrap_or_default(),
@@ -95,6 +88,22 @@ pub fn file(wt: &Path, path: &str) -> Result<ConflictFile> {
         parts,
         deleted,
     })
+}
+
+/// Give each conflict its original lines, when the markers don't have them.
+fn with_bases(
+    wt: &Path,
+    parts: &mut [Part],
+    ours: &Option<String>,
+    base: &Option<String>,
+    theirs: &Option<String>,
+) {
+    let missing = parts
+        .iter()
+        .any(|p| matches!(p, Part::Conflict { base: None, .. }));
+    if let (true, Some(o), Some(b), Some(t)) = (missing, ours, base, theirs) {
+        fill_bases(wt, parts, o, b, t);
+    }
 }
 
 /// Number of conflicts left in the working copy.
@@ -240,7 +249,16 @@ fn fill_bases(wt: &Path, parts: &mut [Part], ours: &str, base: &str, theirs: &st
 /// Refuses if the file changed since it was read.
 pub fn choose(wt: &Path, path: &str, choices: &[Choice]) -> Result<()> {
     let working = std::fs::read_to_string(wt.join(path))?;
-    let parts = parse(&working);
+    let mut parts = parse(&working);
+    // "Keep original" needs the original, which the default markers leave out.
+    if choices.contains(&Choice::Base) {
+        let (ours, base, theirs) = (
+            stage(wt, 2, path)?,
+            stage(wt, 1, path)?,
+            stage(wt, 3, path)?,
+        );
+        with_bases(wt, &mut parts, &ours, &base, &theirs);
+    }
     let conflicts = parts
         .iter()
         .filter(|p| matches!(p, Part::Conflict { .. }))

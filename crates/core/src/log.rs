@@ -99,8 +99,14 @@ pub fn search(
             .collect())
     };
     // git ANDs --grep with --author, so ask twice and join the answers.
-    let mut found = run(format!("--grep={query}"))?;
-    found.extend(run(format!("--author={query}"))?);
+    // Each is a pass over the whole history, so run the two side by side.
+    let (by_message, by_author) = std::thread::scope(|s| {
+        let m = s.spawn(|| run(format!("--grep={query}")));
+        let a = run(format!("--author={query}"));
+        (m.join(), a)
+    });
+    let mut found = by_message.map_err(|_| crate::Error::Msg("Search failed.".into()))??;
+    found.extend(by_author?);
     // Newest first. The sort is stable, so commits made in the same second
     // keep git's own order.
     let mut seen = std::collections::HashSet::new();

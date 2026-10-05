@@ -166,3 +166,135 @@ fn an_empty_message_falls_back_to_a_default() {
     assert!(res.merged);
     assert_eq!(subjects(&r, 1), ["Merge branch 'feat/x'"]);
 }
+
+/// A base branch with a slash in its name ("release/1.0") is a local branch,
+/// not a branch "1.0" on a remote called "release".
+fn onto_slashed_base() -> (Repo, std::path::PathBuf, std::path::PathBuf) {
+    let r = repo();
+    let base = add_worktree(&r, "release/1.0", "wt-release");
+    commit(&base, "rel.txt", "r\n");
+    let wt = r.base.join("wt-fix");
+    git(
+        &r.root,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "fix/thing",
+            wt.to_str().unwrap(),
+            "release/1.0",
+        ],
+    );
+    commit(&wt, "fix.txt", "f\n");
+    (r, base, wt)
+}
+
+#[test]
+fn merging_into_a_base_with_a_slash_in_its_name() {
+    for strategy in [Strategy::MergeCommit, Strategy::Squash, Strategy::Rebase] {
+        let (r, base, wt) = onto_slashed_base();
+        let core = r.core();
+        let p = merge::preflight(&core, Some(&wt), "fix/thing", "release/1.0").unwrap();
+        assert_eq!(p.base_local, "release/1.0");
+        assert_eq!(p.base_checked_out_in.as_deref(), Some(base.as_path()));
+        assert!(p.problems.is_empty(), "{strategy:?}: {:?}", p.problems);
+        let out = merge::run(
+            &core,
+            Some(&wt),
+            &MergePlan {
+                branch: "fix/thing".into(),
+                base: "release/1.0".into(),
+                strategy,
+                message: Some("Merge fix".into()),
+            },
+        )
+        .unwrap();
+        assert!(out.merged, "{strategy:?}: {:?}", out.steps);
+        assert_eq!(
+            read(&base, "fix.txt"),
+            "f\n",
+            "{strategy:?}: the base's worktree has the file"
+        );
+        assert!(
+            !git_ok(&r.root, &["rev-parse", "--verify", "-q", "refs/heads/1.0"]),
+            "no branch named 1.0 appeared"
+        );
+        assert_eq!(
+            r.tip("main"),
+            r.tip("origin/main"),
+            "main was never touched"
+        );
+    }
+}
+
+#[test]
+fn a_conflict_says_which_branches_clash_and_leaves_both_alone() {
+    for strategy in [Strategy::MergeCommit, Strategy::Squash, Strategy::Rebase] {
+        let (r, base, wt) = onto_slashed_base();
+        commit(&base, "same.txt", "base side\n");
+        commit(&wt, "same.txt", "fix side\n");
+        let (a, b) = (r.tip("release/1.0"), r.tip("fix/thing"));
+        let out = merge::run(
+            &r.core(),
+            Some(&wt),
+            &MergePlan {
+                branch: "fix/thing".into(),
+                base: "release/1.0".into(),
+                strategy,
+                message: Some("m".into()),
+            },
+        )
+        .unwrap();
+        assert!(!out.merged);
+        let said = &out.steps.iter().find(|s| !s.ok).unwrap().output;
+        assert!(
+            said.contains("fix/thing and release/1.0 change the same lines"),
+            "{said}"
+        );
+        assert!(said.contains("Use Sync with release/1.0"), "{said}");
+        // Git's own progress text stays out of it.
+        assert!(
+            !said.contains("Rebasing (")
+                && !said.contains("could not apply")
+                && !said.contains('\r'),
+            "{said}"
+        );
+        assert_eq!(
+            (r.tip("release/1.0"), r.tip("fix/thing")),
+            (a.clone(), b.clone())
+        );
+        assert_eq!(git(&wt, &["status", "--porcelain"]), "");
+    }
+}
+
+#[test]
+fn a_conflict_with_the_base_not_checked_out_says_the_same_and_moves_nothing() {
+    let (r, base, wt) = onto_slashed_base();
+    commit(&base, "same.txt", "base side\n");
+    commit(&wt, "same.txt", "fix side\n");
+    pando_core::worktree::remove(&r.core(), &base, false).unwrap();
+    let (a, b) = (r.tip("release/1.0"), r.tip("fix/thing"));
+    let got = merge::run(
+        &r.core(),
+        Some(&wt),
+        &MergePlan {
+            branch: "fix/thing".into(),
+            base: "release/1.0".into(),
+            strategy: Strategy::MergeCommit,
+            message: Some("m".into()),
+        },
+    );
+    let said = match got {
+        Ok(out) => {
+            assert!(!out.merged);
+            out.steps.iter().find(|s| !s.ok).unwrap().output.clone()
+        }
+        Err(e) => e.to_string(),
+    };
+    assert!(
+        said.contains("fix/thing and release/1.0 change the same lines"),
+        "{said}"
+    );
+    assert_eq!((r.tip("release/1.0"), r.tip("fix/thing")), (a, b));
+}

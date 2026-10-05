@@ -1,7 +1,7 @@
 //! Things done to a repo behind Pando's back: in a terminal or in Finder.
 mod common;
 use common::*;
-use pando_core::{overview, worktree};
+use pando_core::{detail, merge, overview, status, worktree};
 
 #[test]
 fn a_worktree_moved_by_hand_is_missing_then_repair_reconnects_it() {
@@ -133,4 +133,36 @@ fn a_branch_switched_in_a_terminal_moves_the_worktree_to_that_branch() {
         .unwrap()
         .worktree
         .is_none());
+}
+
+#[test]
+fn a_worktree_whose_folder_is_gone_says_so_everywhere() {
+    let r = repo();
+    let wt = add_worktree(&r, "feat/x", "work-feat-x");
+    std::fs::remove_dir_all(&wt).unwrap();
+    let core = r.core();
+    let missing = |e: String| {
+        assert!(
+            e.contains("is missing. It may have been moved or deleted."),
+            "{e}"
+        );
+        assert!(e.contains("work-feat-x"), "{e}");
+        assert!(!e.contains("os error"), "{e}");
+    };
+    missing(detail::load(&core, &wt).unwrap_err().to_string());
+    missing(status::files(&wt).unwrap_err().to_string());
+    missing(
+        merge::preflight(&core, Some(&wt), "feat/x", "main")
+            .unwrap_err()
+            .to_string(),
+    );
+    // The rest of the repo still loads, with the worktree marked.
+    let o = overview::load(&core).unwrap();
+    let row = o
+        .branches
+        .iter()
+        .find(|b| b.branch.name == "feat/x")
+        .unwrap();
+    assert!(row.worktree.as_ref().unwrap().prunable.is_some());
+    assert!(row.status.is_none());
 }

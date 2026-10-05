@@ -388,3 +388,26 @@ fn a_whole_merge_resolved_card_by_card_then_continue() {
         "a merge commit"
     );
 }
+
+#[test]
+fn keep_original_works_with_gits_default_markers() {
+    // The default markers leave the original lines out. "Keep original"
+    // used to fail with "no original version" unless diff3 was configured.
+    let (_t, root) = paused_merge();
+    let marked = std::fs::read_to_string(root.join("many.txt")).unwrap();
+    assert!(
+        !marked.contains("|||||||"),
+        "default style has no base section"
+    );
+    conflict::choose(
+        &root,
+        "many.txt",
+        &[Choice::Base, Choice::Ours, Choice::Base],
+    )
+    .unwrap();
+    let got = std::fs::read_to_string(root.join("many.txt")).unwrap();
+    assert!(got.contains("line 4\nbase 5\nline 6\n"), "{got}");
+    assert!(got.contains("line 14\nfeat 15\nline 16\n"));
+    assert!(got.contains("line 24\nbase 25\nline 26\n"));
+    assert!(!got.contains("<<<<<<<"));
+}

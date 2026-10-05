@@ -575,3 +575,92 @@ fn an_amend_in_a_terminal_counts_as_a_rewrite_too() {
         "amended in a terminal"
     );
 }
+
+#[test]
+fn unpushed_commits_on_the_local_default_branch_belong_to_it() {
+    // main has a commit that isn't pushed. A branch made from it must not
+    // offer that commit for rewording: it isn't the branch's own.
+    let r = repo();
+    commit(&r.root, "local-only.txt", "x\n");
+    let on_main = r.tip("main");
+    let wt = add_worktree(&r, "feat/x", "work-feat-x");
+    commit(&wt, "mine.txt", "m\n");
+    let mine = git(&wt, &["rev-parse", "HEAD"]);
+    let core = r.core();
+    assert_eq!(rewrite::editable(&core, "feat/x").unwrap(), vec![mine]);
+    let e = err(rewrite::reword(&core, "feat/x", &on_main, "x"));
+    assert!(e.contains("is on main"), "{e}");
+    assert_eq!(r.tip("main"), on_main);
+    // On main itself it is editable: that's where it lives.
+    assert_eq!(rewrite::editable(&core, "main").unwrap(), vec![on_main]);
+}
+
+#[test]
+fn rewording_deep_in_a_long_branch_keeps_every_commit_exact_and_is_quick() {
+    let r = repo();
+    let wt = add_worktree(&r, "feat/long", "work-long");
+    for i in 0..120 {
+        write(&wt, "f.txt", &format!("{i}\n"));
+        git(&wt, &["add", "."]);
+        // Odd messages and authors, to prove they survive the rebuild.
+        let msg = match i % 4 {
+            0 => format!("Plain {i}"),
+            1 => format!("With body {i}\n\nLine one.\n\n- bullet\n# not a comment"),
+            2 => format!("ünï \"quoted\" 🎉 {i}"),
+            _ => format!("-m flag-like {i}"),
+        };
+        git(
+            &wt,
+            &[
+                "-c",
+                &format!("user.name=Author {}", i % 3),
+                "-c",
+                &format!("user.email=a{}@e", i % 3),
+                "commit",
+                "-q",
+                "--date",
+                &format!("2020-01-01T00:{:02}:{:02}", i / 60, i % 60),
+                "-m",
+                &msg,
+            ],
+        );
+    }
+    let fmt = "--format=%an|%ae|%ad|%T|%B";
+    let before = git(&wt, &["log", fmt, "origin/main..HEAD~1"]);
+    let before_first = git(&wt, &["log", "-1", "--format=%an|%ae|%ad|%T", "HEAD~119"]);
+    let first = git(&wt, &["rev-parse", "HEAD~119"]);
+    let start = std::time::Instant::now();
+    rewrite::reword(&r.core(), "feat/long", &first, "Reworded first").unwrap();
+    let took = start.elapsed();
+    // Everything after the reworded commit is identical but for its id.
+    assert_eq!(
+        git(&wt, &["log", fmt, "origin/main..HEAD~1"]).replace("Reworded first", "Plain 0"),
+        before
+    );
+    assert_eq!(
+        git(&wt, &["log", "-1", "--format=%an|%ae|%ad|%T", "HEAD~119"]),
+        before_first
+    );
+    assert_eq!(
+        git(&wt, &["log", "-1", "--format=%s", "HEAD~119"]),
+        "Reworded first"
+    );
+    assert_eq!(git(&wt, &["status", "--porcelain"]), "");
+    // Four git calls per commit took 8 seconds here; one does it in about 2.
+    assert!(took.as_secs_f32() < 6.0, "reword took {took:?}");
+    // Squashing the lot is one call to list them, not one per commit.
+    let (older, newer) = (
+        git(&wt, &["rev-parse", "HEAD~119"]),
+        git(&wt, &["rev-parse", "HEAD"]),
+    );
+    let tree = git(&wt, &["rev-parse", "HEAD^{tree}"]);
+    let start = std::time::Instant::now();
+    rewrite::squash(&r.core(), "feat/long", &older, &newer, "All").unwrap();
+    assert!(
+        start.elapsed().as_secs_f32() < 3.0,
+        "squash took {:?}",
+        start.elapsed()
+    );
+    assert_eq!(git(&wt, &["rev-list", "--count", "origin/main..HEAD"]), "1");
+    assert_eq!(git(&wt, &["rev-parse", "HEAD^{tree}"]), tree);
+}

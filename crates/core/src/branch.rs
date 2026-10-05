@@ -50,6 +50,7 @@ pub fn list(repo: &Repo) -> Result<Vec<Branch>> {
 
     let g = repo.open_gix()?;
     let refs = g.references().map_err(gix_err)?;
+    let counts = upstream_counts(repo);
     let mut out = Vec::new();
     for r in refs.local_branches().map_err(gix_err)? {
         let r = r.map_err(gix_err)?;
@@ -80,14 +81,12 @@ pub fn list(repo: &Repo) -> Result<Vec<Branch>> {
                     .unwrap_or(&track_name)
                     .to_string(),
             );
-            if let Ok(up) = g.find_reference(track.as_ref()) {
-                if let Ok(up_id) = up.into_fully_peeled_id() {
-                    let up_id = up_id.detach();
-                    b.ahead = Some(count_only_in(&g, tip, up_id)?);
-                    b.behind = Some(count_only_in(&g, up_id, tip)?);
-                    b.upstream_rewritten = b.ahead > Some(0)
-                        && b.behind > Some(0)
-                        && had_before(repo, &name, &track_name);
+            if g.find_reference(track.as_ref()).is_ok() {
+                if let Some((ahead, behind)) = counts.get(&name) {
+                    b.ahead = Some(*ahead);
+                    b.behind = Some(*behind);
+                    b.upstream_rewritten =
+                        *ahead > 0 && *behind > 0 && had_before(repo, &name, &track_name);
                 }
             }
         }
@@ -98,8 +97,16 @@ pub fn list(repo: &Repo) -> Result<Vec<Branch>> {
 }
 
 pub fn list_remote(repo: &Repo) -> Result<Vec<RemoteBranch>> {
-    let tracked: std::collections::HashSet<String> =
-        list(repo)?.into_iter().filter_map(|b| b.upstream).collect();
+    // Which remote branches some local branch tracks. Asked of git directly:
+    // building the whole local list again just for this doubled the work.
+    let tracked: std::collections::HashSet<String> = git(
+        &repo.common_git_dir,
+        ["for-each-ref", "--format=%(upstream:short)", "refs/heads"],
+    )?
+    .lines()
+    .filter(|l| !l.is_empty())
+    .map(str::to_string)
+    .collect();
     let g = repo.open_gix()?;
     let refs = g.references().map_err(gix_err)?;
     let mut out = Vec::new();
@@ -127,23 +134,107 @@ pub fn list_remote(repo: &Repo) -> Result<Vec<RemoteBranch>> {
     Ok(out)
 }
 
-/// Commits reachable from `from` but not from `hide`.
-pub(crate) fn count_only_in(
-    g: &gix::Repository,
-    from: gix::ObjectId,
-    hide: gix::ObjectId,
-) -> Result<u32> {
-    let walk = g
-        .rev_walk([from])
-        .with_hidden([hide])
-        .all()
-        .map_err(gix_err)?;
-    let mut n = 0u32;
-    for c in walk {
-        c.map_err(gix_err)?;
-        n += 1;
+/// How many commits each local branch has that `base` doesn't, by branch name.
+///
+/// One git call finds the branches with anything ahead; most branches in a
+/// big repo have nothing. Only those few are counted, a handful at a time.
+/// Walking every branch's history ourselves took 34 seconds on a repo with
+/// 80,000 commits and 300 branches.
+pub(crate) fn ahead_of(repo: &Repo, base: &str, branches: &[Branch]) -> HashMap<String, u32> {
+    let dir = &repo.common_git_dir;
+    let listed = crate::cmd::git_raw(
+        dir,
+        [
+            "for-each-ref",
+            "--format=%(refname)",
+            &format!("--no-merged={base}"),
+            "refs/heads",
+        ],
+    );
+    // If that failed, count every branch rather than guess.
+    let ahead: Option<std::collections::HashSet<&str>> = match &listed {
+        Ok((0, out, _)) => Some(
+            out.lines()
+                .filter_map(|l| l.strip_prefix("refs/heads/"))
+                .collect(),
+        ),
+        _ => None,
+    };
+    let to_count: Vec<&Branch> = branches
+        .iter()
+        .filter(|b| ahead.as_ref().is_none_or(|a| a.contains(b.name.as_str())))
+        .collect();
+    let mut out: HashMap<String, u32> = branches.iter().map(|b| (b.name.clone(), 0)).collect();
+    for chunk in to_count.chunks(8) {
+        let counted: Vec<(String, Option<u32>)> = std::thread::scope(|s| {
+            let jobs: Vec<_> = chunk
+                .iter()
+                .map(|b| {
+                    let range = format!("{base}..{}", b.tip);
+                    (
+                        b.name.clone(),
+                        s.spawn(move || {
+                            crate::cmd::git_opt(dir, ["rev-list", "--count", &range, "--"])
+                                .and_then(|n| n.parse().ok())
+                        }),
+                    )
+                })
+                .collect();
+            jobs.into_iter()
+                .map(|(n, j)| (n, j.join().ok().flatten()))
+                .collect()
+        });
+        for (name, n) in counted {
+            match n {
+                Some(n) => out.insert(name, n),
+                None => out.remove(&name),
+            };
+        }
     }
-    Ok(n)
+    out
+}
+
+/// Commits reachable from `from` but not from `hide`. Git does the walk:
+/// it stops as soon as the two histories meet, where walking it ourselves
+/// read the whole history each time.
+pub(crate) fn count_only_in(repo: &Repo, from: &str, hide: &str) -> Result<u32> {
+    let out = git(
+        &repo.common_git_dir,
+        ["rev-list", "--count", &format!("{hide}..{from}"), "--"],
+    )?;
+    Ok(out.trim().parse().unwrap_or(0))
+}
+
+/// Ahead and behind of its upstream, for every local branch that has one, by
+/// branch name. One git call for all of them.
+fn upstream_counts(repo: &Repo) -> HashMap<String, (u32, u32)> {
+    let Some(out) = crate::cmd::git_opt(
+        &repo.common_git_dir,
+        [
+            "for-each-ref",
+            "--format=%(refname)%00%(upstream:track,nobracket)",
+            "refs/heads",
+        ],
+    ) else {
+        return HashMap::new();
+    };
+    out.lines()
+        .filter_map(|l| {
+            let (name, track) = l.split_once('\0')?;
+            let name = name.strip_prefix("refs/heads/")?;
+            // "", "ahead 2", "behind 3", "ahead 2, behind 3" or "gone".
+            if track == "gone" {
+                return None;
+            }
+            let n = |word: &str| {
+                track
+                    .split(", ")
+                    .find_map(|p| p.strip_prefix(word)?.trim().parse().ok())
+                    .unwrap_or(0)
+            };
+            Some((name.to_string(), (n("ahead"), n("behind"))))
+        })
+        .collect()
 }
 
 // ---- mutations -----------------------------------------------------------
@@ -154,14 +245,36 @@ pub fn switch_in_main(repo: &Repo, name: &str) -> Result<()> {
     Ok(())
 }
 
+/// Refuse a name git would reject, or accept and regret: `@` and `HEAD` are
+/// other words for the current commit, and a leading `-` reads as an option.
+/// `kind` is "branch" or "tag".
+pub fn check_name(name: &str, kind: &str) -> Result<()> {
+    let own_rule = name.is_empty() || name.starts_with('-') || name == "@" || name == "HEAD";
+    let space = if kind == "tag" { "tags" } else { "heads" };
+    let valid = !own_rule
+        && crate::cmd::git_raw(
+            &std::env::temp_dir(),
+            ["check-ref-format", &format!("refs/{space}/{name}")],
+        )
+        .is_ok_and(|r| r.0 == 0);
+    if valid {
+        return Ok(());
+    }
+    Err(crate::Error::Msg(format!(
+        "\"{name}\" isn't a valid {kind} name. Names can't have spaces, \"..\", ~ ^ : ? * [ or \\, start with - or /, or end with / or .lock."
+    )))
+}
+
 /// `git switch -c <name>` in worktree `wt`. Used to leave a detached HEAD.
 pub fn create_and_switch(wt: &Path, name: &str) -> Result<()> {
+    check_name(name, "branch")?;
     git(wt, ["switch", "-c", name])?;
     Ok(())
 }
 
 /// Create a local branch from `base` (default HEAD) without checking it out.
 pub fn create(repo: &Repo, name: &str, base: Option<&str>) -> Result<()> {
+    check_name(name, "branch")?;
     let mut args = vec!["branch", name];
     if let Some(b) = base {
         args.push(b);
@@ -172,11 +285,13 @@ pub fn create(repo: &Repo, name: &str, base: Option<&str>) -> Result<()> {
 
 /// Create a local branch that tracks `remote_branch` (e.g. `origin/feat/x`).
 pub fn track_remote(repo: &Repo, remote_branch: &str, local: &str) -> Result<()> {
+    check_name(local, "branch")?;
     git(&repo.root, ["branch", "--track", local, remote_branch])?;
     Ok(())
 }
 
 pub fn rename(repo: &Repo, old: &str, new: &str) -> Result<()> {
+    check_name(new, "branch")?;
     backup::write(repo, old)?;
     git(&repo.root, ["branch", "-m", old, new])?;
     Ok(())

@@ -3,7 +3,9 @@
 export function errorParts(e: unknown): { message: string; detail: string } {
   const detail = String(e).replace(/^Error:\s*/, "").trim();
   const body = detail.replace(/^git .*? failed:\s*/s, "");
-  const line = body.split("\n").map((l) => l.trim()).find((l) => l && !/^hint:/i.test(l)) ?? body;
+  const lines = body.split("\n").map((l) => l.trim()).filter((l) => l && !/^hint:/i.test(l));
+  // Git often prints progress first ("Preparing worktree…") and the reason after, marked fatal: or error:.
+  const line = lines.find((l) => /^(fatal|error):/i.test(l)) ?? lines[0] ?? body;
   const hint = LOGIN_HINTS.find(([re]) => re.test(detail))?.[1];
   if (hint) return { message: hint, detail };
   const message = line.replace(/^(fatal|error):\s*/i, "");

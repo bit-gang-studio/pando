@@ -28,6 +28,7 @@ pub fn list(repo: &Repo) -> Result<Vec<Tag>> {
 
 /// Create a tag on `target`. With a message it is an annotated tag.
 pub fn create(repo: &Repo, name: &str, target: &str, message: Option<&str>) -> Result<()> {
+    crate::branch::check_name(name, "tag")?;
     match message.filter(|m| !m.trim().is_empty()) {
         Some(m) => crate::cmd::git(&repo.root, ["tag", "-a", name, target, "-m", m])?,
         None => crate::cmd::git(&repo.root, ["tag", name, target])?,

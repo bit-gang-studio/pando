@@ -19,9 +19,8 @@ pub struct SyncResult {
 /// stays paused so the user can resolve it. A backup ref is written first.
 pub fn rebase_onto(repo: &Repo, worktree: &Path, branch: &str, base: &str) -> Result<SyncResult> {
     backup::write(repo, branch)?;
-    if base.contains('/') {
-        let remote = base.split('/').next().unwrap_or("origin");
-        let _ = git(worktree, ["fetch", "-q", remote]);
+    if let Some((remote, _)) = crate::merge::remote_of(repo, base) {
+        let _ = git(worktree, ["fetch", "-q", &remote]);
     }
     match git(worktree, ["rebase", base]) {
         Ok(_) => Ok(SyncResult {

@@ -71,7 +71,11 @@ pub fn default_path(repo: &Repo, branch: &str) -> PathBuf {
         .map(Path::to_path_buf)
         .unwrap_or_else(|| repo.root.clone());
     // Different branches can share a slug (`a/b-c`, `a-b/c`): never reuse a folder.
-    let first = parent.join(format!("{name}-{}", branch_slug(branch)));
+    // A name with no letters or digits (an emoji) has no slug.
+    let slug = Some(branch_slug(branch))
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "worktree".into());
+    let first = parent.join(format!("{name}-{slug}"));
     let mut path = first.clone();
     let mut n = 2;
     while path.exists() {
@@ -98,6 +102,9 @@ pub fn branch_slug(branch: &str) -> String {
 }
 
 pub fn create(repo: &Repo, req: &CreateWorktree) -> Result<Created> {
+    if !req.existing_branch {
+        crate::branch::check_name(&req.branch, "branch")?;
+    }
     let path = req
         .path
         .clone()
@@ -169,8 +176,9 @@ pub struct Removed {
 
 pub fn remove(repo: &Repo, path: &Path, force: bool) -> Result<Removed> {
     let want = canon(path);
-    let w = list(repo)?.into_iter().find(|w| w.path == want);
-    let branch = w.as_ref().and_then(|w| w.branch.clone());
+    // Check first: the snapshot below must only ever run in one of our worktrees.
+    let w = ours(repo, &want, "removed")?;
+    let branch = w.branch.clone();
     if let Some(b) = &branch {
         backup::write(repo, b)?;
     }
@@ -190,7 +198,7 @@ pub fn remove(repo: &Repo, path: &Path, force: bool) -> Result<Removed> {
     Ok(Removed {
         path: want,
         branch,
-        head: w.and_then(|w| w.head),
+        head: w.head,
         snapshot,
     })
 }
@@ -268,6 +276,7 @@ pub fn move_to(repo: &Repo, from: &Path, to: &Path) -> Result<()> {
             to.display()
         )));
     }
+    ours(repo, &canon(from), "moved")?;
     if let Some(parent) = to.parent() {
         std::fs::create_dir_all(parent)?;
     }
@@ -277,6 +286,29 @@ pub fn move_to(repo: &Repo, from: &Path, to: &Path) -> Result<()> {
     );
     git(&repo.root, ["worktree", "move", &f, &t])?;
     Ok(())
+}
+
+/// The linked worktree at `path`, if it can be removed or moved.
+fn ours(repo: &Repo, path: &Path, verb: &str) -> Result<Worktree> {
+    let msg = |m: String| Err(crate::Error::Msg(m));
+    let Some(w) = list(repo)?.into_iter().find(|w| w.path == path) else {
+        return msg(format!(
+            "{} isn't a worktree of this repository.",
+            path.display()
+        ));
+    };
+    if w.kind == WorktreeKind::Main {
+        return msg(format!("The main worktree can't be {verb}."));
+    }
+    if let Some(reason) = &w.locked {
+        let why = if reason.trim().is_empty() {
+            String::new()
+        } else {
+            format!(" ({})", reason.trim())
+        };
+        return msg(format!("This worktree is locked{why}. Unlock it first."));
+    }
+    Ok(w)
 }
 
 pub fn lock(repo: &Repo, path: &Path, reason: Option<&str>) -> Result<()> {

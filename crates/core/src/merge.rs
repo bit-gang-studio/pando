@@ -69,11 +69,29 @@ pub struct MergeResult {
     pub backup_refs: Vec<String>,
 }
 
-fn local_name(base: &str) -> String {
-    match base.split_once('/') {
-        Some((_, rest)) => rest.to_string(),
-        None => base.to_string(),
+/// The remote a base lives on, if it's a remote branch: "origin/main" is
+/// ("origin", "main"). A local branch with a slash in its name, like
+/// "release/1.0", is not: taking it for one merged into a branch named "1.0".
+pub(crate) fn remote_of(repo: &Repo, base: &str) -> Option<(String, String)> {
+    let dir = &repo.common_git_dir;
+    let exists =
+        |r: String| crate::cmd::git_opt(dir, ["rev-parse", "--verify", "-q", &r]).is_some();
+    if exists(format!("refs/heads/{base}")) || !exists(format!("refs/remotes/{base}")) {
+        return None;
     }
+    base.split_once('/')
+        .map(|(r, b)| (r.to_string(), b.to_string()))
+}
+
+/// What to say when a merge can't go through cleanly. Nothing has changed.
+fn clash(branch: &str, base: &str) -> String {
+    format!("{branch} and {base} change the same lines, so it was left as it was. Use Sync with {base} to resolve the conflicts, then merge.")
+}
+
+fn local_name(repo: &Repo, base: &str) -> String {
+    remote_of(repo, base)
+        .map(|(_, b)| b)
+        .unwrap_or_else(|| base.to_string())
 }
 
 /// The base a branch merges into: the repo's default branch.
@@ -106,8 +124,8 @@ pub fn preflight(repo: &Repo, wt: Option<&Path>, branch: &str, base: &str) -> Re
     let g = repo.open_gix()?;
     let tip = g.rev_parse_single(branch).map_err(gix_err)?.detach();
     let base_id = g.rev_parse_single(base).map_err(gix_err)?.detach();
-    let ahead = count_only_in(&g, tip, base_id)?;
-    let behind = count_only_in(&g, base_id, tip)?;
+    let ahead = count_only_in(repo, &tip.to_string(), &base_id.to_string())?;
+    let behind = count_only_in(repo, &base_id.to_string(), &tip.to_string())?;
     let summary = wt.map(status::summary).transpose()?.unwrap_or_default();
     let clean = summary.is_clean();
     let last_summary = g
@@ -137,7 +155,7 @@ pub fn preflight(repo: &Repo, wt: Option<&Path>, branch: &str, base: &str) -> Re
         vec![]
     };
 
-    let base_local = local_name(base);
+    let base_local = local_name(repo, base);
     let wts = worktree::list(repo)?;
     let base_wt = wts
         .iter()
@@ -257,7 +275,7 @@ fn run_in(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
 
     let branch = plan.branch.as_str();
     let base = plan.base.as_str();
-    let base_local = local_name(base);
+    let base_local = local_name(repo, base);
     step!("Check", {
         let ahead = git(
             &repo.common_git_dir,
@@ -292,16 +310,14 @@ fn run_in(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
     match plan.strategy {
         Strategy::Rebase | Strategy::Squash => {
             step!(format!("Rebase onto {base}"), {
-                if let Some((remote, _)) = base.split_once('/') {
-                    let _ = git(wt, ["fetch", "-q", remote]);
+                if let Some((remote, _)) = remote_of(repo, base) {
+                    let _ = git(wt, ["fetch", "-q", &remote]);
                 }
                 match git(wt, ["rebase", base]) {
                     Ok(o) => Ok(o),
-                    Err(e) => {
+                    Err(_) => {
                         let _ = git(wt, ["rebase", "--abort"]);
-                        Err(crate::Error::Msg(format!(
-                            "Rebase hit conflicts and was undone. Use Sync with base to resolve. {e}"
-                        )))
+                        Err(crate::Error::Msg(clash(branch, base)))
                     }
                 }
             });
@@ -337,11 +353,9 @@ fn run_in(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
                     Some(w) => {
                         match git(&w.path, ["merge", "--no-ff", "-q", "-m", &message, branch]) {
                             Ok(o) => Ok(o),
-                            Err(e) => {
+                            Err(_) => {
                                 let _ = git(&w.path, ["merge", "--abort"]);
-                                Err(crate::Error::Msg(format!(
-                                "Merge hit conflicts and was undone. Use Sync with base to resolve. {e}"
-                            )))
+                                Err(crate::Error::Msg(clash(branch, base)))
                             }
                         }
                     }
@@ -351,9 +365,23 @@ fn run_in(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
                             &repo.common_git_dir,
                             ["merge-tree", "--write-tree", &base_local, branch],
                         )?;
-                        if code != 0 {
-                            return Err(crate::Error::Msg(format!("Merge would conflict. {err}")));
+                        // 1 means conflicts; anything else is a real failure.
+                        if code == 1 {
+                            return Err(crate::Error::Msg(clash(branch, base)));
                         }
+                        if code != 0 {
+                            return Err(crate::Error::Git {
+                                cmd: "merge-tree".into(),
+                                stderr: err.trim().to_string(),
+                            });
+                        }
+                        // Only move the base if it's still where the merge was built.
+                        let was = git(
+                            &repo.common_git_dir,
+                            ["rev-parse", &format!("refs/heads/{base_local}")],
+                        )?
+                        .trim()
+                        .to_string();
                         let tree = out.lines().next().unwrap_or("").trim().to_string();
                         let commit = git(
                             &repo.common_git_dir,
@@ -361,7 +389,7 @@ fn run_in(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
                                 "commit-tree",
                                 &tree,
                                 "-p",
-                                &base_local,
+                                &was,
                                 "-p",
                                 branch,
                                 "-m",
@@ -372,7 +400,12 @@ fn run_in(repo: &Repo, wt: &Path, plan: &MergePlan) -> Result<MergeResult> {
                         .to_string();
                         git(
                             &repo.common_git_dir,
-                            ["update-ref", &format!("refs/heads/{base_local}"), &commit],
+                            [
+                                "update-ref",
+                                &format!("refs/heads/{base_local}"),
+                                &commit,
+                                &was,
+                            ],
                         )?;
                         Ok(format!("{base_local} -> {}", &commit[..7]))
                     }

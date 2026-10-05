@@ -67,12 +67,29 @@ fn stopped_on_conflicts(worktree: &std::path::Path) -> bool {
         .unwrap_or(false)
 }
 
+/// A merge has two sides, and git needs to be told which one to keep. Pando
+/// doesn't ask that, so it says no plainly instead of passing on git's error.
+fn not_a_merge(repo: &crate::repo::Repo, id: &str, verb: &str) -> Result<()> {
+    let line = crate::cmd::git_opt(
+        &repo.common_git_dir,
+        ["rev-list", "--parents", "-n", "1", id, "--"],
+    );
+    if line.is_some_and(|l| l.split_whitespace().count() > 2) {
+        return Err(crate::Error::Msg(format!(
+            "{} is a merge commit. Pando can't {verb} a merge.",
+            &id[..7.min(id.len())]
+        )));
+    }
+    Ok(())
+}
+
 /// `git cherry-pick <id>` in `worktree`. A backup ref is written first.
 pub fn cherry_pick(
     repo: &crate::repo::Repo,
     worktree: &std::path::Path,
     id: &str,
 ) -> Result<Applied> {
+    not_a_merge(repo, id, "cherry-pick")?;
     backup_current(repo, worktree)?;
     match crate::cmd::git(worktree, ["cherry-pick", id]) {
         Ok(_) => Ok(Applied::Done),
@@ -86,6 +103,7 @@ pub fn cherry_pick(
 
 /// `git revert --no-edit <id>` in `worktree`. A backup ref is written first.
 pub fn revert(repo: &crate::repo::Repo, worktree: &std::path::Path, id: &str) -> Result<Applied> {
+    not_a_merge(repo, id, "revert")?;
     backup_current(repo, worktree)?;
     match crate::cmd::git(worktree, ["revert", "--no-edit", id]) {
         Ok(_) => Ok(Applied::Done),

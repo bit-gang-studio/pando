@@ -110,16 +110,14 @@ fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
         .unwrap_or(0);
 
     let mut rows = Vec::new();
-    for b in branch::list(repo)? {
+    let branches = branch::list(repo)?;
+    let ahead = base_id
+        .map(|bid| branch::ahead_of(repo, &bid.to_string(), &branches))
+        .unwrap_or_default();
+    for b in branches {
         let wt = worktrees.get(&b.name).cloned();
         let st = wt.as_ref().and_then(|w| statuses.get(&w.path).copied());
-        let ahead_of_base = match base_id {
-            Some(bid) => {
-                let tip = gix::ObjectId::from_hex(b.tip.as_bytes()).ok();
-                tip.map(|t| branch::count_only_in(&g, t, bid)).transpose()?
-            }
-            None => None,
-        };
+        let ahead_of_base = ahead.get(&b.name).copied();
         let idle_days = b
             .last_commit
             .as_ref()
@@ -131,12 +129,11 @@ fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
             .unwrap_or(false);
         // Only worth asking for worktrees: they're what "merged" helps you clean up.
         // Merged into either counts: pushed (origin/main) or merged locally (main).
-        let tip_id = gix::ObjectId::from_hex(b.tip.as_bytes()).ok();
         let in_local = || {
             local_base_id
                 .filter(|l| Some(*l) != base_id)
                 .is_some_and(|lid| {
-                    let ahead = tip_id.and_then(|t| branch::count_only_in(&g, t, lid).ok());
+                    let ahead = branch::count_only_in(repo, &b.tip, &lid.to_string()).ok();
                     already_in_base(repo, &lid.to_string(), &b.tip, ahead)
                 })
         };

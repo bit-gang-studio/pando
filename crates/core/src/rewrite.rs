@@ -10,7 +10,7 @@
 use crate::cmd::{git, git_bytes, git_env, git_opt, git_stdin_env};
 use crate::error::{Error, Result};
 use crate::repo::Repo;
-use crate::{backup, merge, operation, worktree};
+use crate::{backup, operation, worktree};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ffi::OsStr;
@@ -59,9 +59,15 @@ fn tip(repo: &Repo, branch: &str) -> Result<String> {
     .ok_or_else(|| Error::Msg(format!("No branch named {branch}.")))
 }
 
-/// The repository's base, when it's a local branch other than this one.
+/// The repository's local default branch, when it isn't this one. Its
+/// commits aren't this branch's to change, pushed or not.
 fn local_base(repo: &Repo, branch: &str) -> Option<String> {
-    merge::compare_base(repo).filter(|b| b != branch && !b.starts_with("origin/"))
+    let b = repo.default_branch.clone().filter(|b| b != branch)?;
+    git_opt(
+        &repo.common_git_dir,
+        ["rev-parse", "--verify", "-q", &format!("refs/heads/{b}")],
+    )
+    .map(|_| b)
 }
 
 /// The branch's own upstream ("refs/remotes/origin/feat/x"). Commits that are
@@ -252,17 +258,6 @@ fn parents(repo: &Repo, id: &str) -> Result<Vec<String>> {
         .collect())
 }
 
-/// A commit's message, exactly as stored.
-fn message(repo: &Repo, id: &str) -> Result<Vec<u8>> {
-    let raw = git_bytes(&repo.common_git_dir, ["cat-file", "commit", id])?;
-    let at = raw
-        .windows(2)
-        .position(|w| w == b"\n\n")
-        .map(|i| i + 2)
-        .unwrap_or(raw.len());
-    Ok(raw[at..].to_vec())
-}
-
 /// A new commit with `author_of`'s author and date, this tree, these parents.
 fn recommit(
     repo: &Repo,
@@ -271,9 +266,8 @@ fn recommit(
     parents: &[String],
     message: &[u8],
 ) -> Result<String> {
-    let dir = &repo.common_git_dir;
     let who = git(
-        dir,
+        &repo.common_git_dir,
         [
             "log",
             "-1",
@@ -283,24 +277,41 @@ fn recommit(
         ],
     )?;
     let mut who = who.trim_end_matches('\n').split('\0');
-    let (name, email, date) = (
+    let author = (
         who.next().unwrap_or_default(),
         who.next().unwrap_or_default(),
         who.next().unwrap_or_default(),
     );
+    commit_tree(repo, author, tree, parents, message, signs(repo))
+}
+
+/// Whether the user signs their commits. Asked once per rewrite.
+fn signs(repo: &Repo) -> bool {
+    git_opt(&repo.common_git_dir, ["config", "--bool", "commit.gpgsign"]).as_deref() == Some("true")
+}
+
+/// `git commit-tree`, with the given author (name, email, date).
+fn commit_tree(
+    repo: &Repo,
+    author: (&str, &str, &str),
+    tree: &str,
+    parents: &[String],
+    message: &[u8],
+    sign: bool,
+) -> Result<String> {
     let mut args = vec!["commit-tree".to_string(), tree.to_string()];
     for p in parents {
         args.extend(["-p".to_string(), p.clone()]);
     }
-    if git_opt(dir, ["config", "--bool", "commit.gpgsign"]).as_deref() == Some("true") {
+    if sign {
         args.push("-S".into());
     }
     let env: [(&str, &OsStr); 3] = [
-        ("GIT_AUTHOR_NAME", OsStr::new(name)),
-        ("GIT_AUTHOR_EMAIL", OsStr::new(email)),
-        ("GIT_AUTHOR_DATE", OsStr::new(date)),
+        ("GIT_AUTHOR_NAME", OsStr::new(author.0)),
+        ("GIT_AUTHOR_EMAIL", OsStr::new(author.1)),
+        ("GIT_AUTHOR_DATE", OsStr::new(author.2)),
     ];
-    let (code, out, err) = git_stdin_env(dir, &env, &args, message)?;
+    let (code, out, err) = git_stdin_env(&repo.common_git_dir, &env, &args, message)?;
     if code != 0 {
         return Err(Error::Git {
             cmd: "commit-tree".into(),
@@ -325,20 +336,27 @@ fn tree(repo: &Repo, id: &str) -> Result<String> {
 fn replay(repo: &Repo, from: &str, replacement: &str, tip: &str) -> Result<String> {
     let mut map: HashMap<String, String> = HashMap::new();
     map.insert(from.to_string(), replacement.to_string());
-    let list = git(
+    // Everything about every commit to rebuild, in one call. Asking git about
+    // each commit separately made a reword 300 commits deep take 21 seconds.
+    let out = git_bytes(
         &repo.common_git_dir,
         [
-            "rev-list",
+            "log",
             "--reverse",
             "--topo-order",
-            "--parents",
+            "--date=raw",
+            "--format=%H%x00%P%x00%T%x00%an%x00%ae%x00%ad%x00%B%x00",
             &format!("{from}..{tip}"),
+            "--",
         ],
     )?;
-    for line in list.lines() {
-        let mut ids = line.split_whitespace();
-        let Some(id) = ids.next() else { continue };
-        let old: Vec<&str> = ids.collect();
+    let text = String::from_utf8_lossy(&out);
+    let fields: Vec<&str> = text.split('\0').collect();
+    let sign = signs(repo);
+    for c in fields.chunks(7).filter(|c| c.len() == 7) {
+        // Records are joined by a newline, which lands in front of the next id.
+        let id = c[0].trim_start_matches('\n');
+        let old: Vec<&str> = c[1].split_whitespace().collect();
         let new: Vec<String> = old
             .iter()
             .map(|p| map.get(*p).cloned().unwrap_or_else(|| p.to_string()))
@@ -346,7 +364,15 @@ fn replay(repo: &Repo, from: &str, replacement: &str, tip: &str) -> Result<Strin
         if new.iter().map(String::as_str).eq(old.iter().copied()) {
             continue;
         }
-        let made = recommit(repo, id, &tree(repo, id)?, &new, &message(repo, id)?)?;
+        let message = format!("{}\n", c[6].trim_end_matches('\n'));
+        let made = commit_tree(
+            repo,
+            (c[3], c[4], c[5]),
+            c[2],
+            &new,
+            message.as_bytes(),
+            sign,
+        )?;
         map.insert(id.to_string(), made);
     }
     Ok(map.get(tip).cloned().unwrap_or_else(|| tip.to_string()))
@@ -414,22 +440,34 @@ pub fn squash(
         return msg("Pick at least two commits to squash.".into());
     }
     // Walk down from the newer commit: one parent each, until the older one.
+    // One call lists every commit on the way with its parents.
+    let listed = git(
+        &repo.common_git_dir,
+        ["rev-list", "--parents", &newer, &format!("^{older}"), "--"],
+    )?;
+    let parents_of: HashMap<&str, Vec<&str>> = listed
+        .lines()
+        .filter_map(|l| {
+            let mut ids = l.split_whitespace();
+            Some((ids.next()?, ids.collect()))
+        })
+        .collect();
     let mut run = vec![newer.clone()];
-    let mut at = newer.clone();
+    let mut at = newer.as_str();
     while at != older {
-        let p = parents(repo, &at)?;
-        if p.len() != 1 || run.len() > 5000 {
+        let p = parents_of.get(at).map(Vec::as_slice).unwrap_or_default();
+        if p.len() != 1 {
             return msg(if p.len() > 1 {
                 format!(
                     "{} is a merge. Squash only works on a run of plain commits.",
-                    short(&at)
+                    short(at)
                 )
             } else {
                 format!("{} doesn't lead to {}.", short(&older), short(&newer))
             });
         }
-        at = p[0].clone();
-        run.push(at.clone());
+        at = p[0];
+        run.push(at.to_string());
     }
     let base = parents(repo, &older)?;
     if base.len() > 1 {

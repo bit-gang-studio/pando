@@ -20,6 +20,21 @@ fn base(cwd: &Path) -> Command {
     c
 }
 
+/// Why git couldn't start. The system says "No such file or directory" both
+/// when the folder is gone and when git isn't installed: say which.
+fn spawn_err(cwd: &Path, e: std::io::Error) -> Error {
+    if !cwd.is_dir() {
+        return Error::Msg(format!(
+            "The folder {} is missing. It may have been moved or deleted.",
+            cwd.display()
+        ));
+    }
+    if e.kind() == std::io::ErrorKind::NotFound {
+        return Error::Msg("Git isn't installed, or isn't on your PATH.".into());
+    }
+    Error::Io(e)
+}
+
 /// Run git and return stdout as a string. Fails on non-zero exit.
 pub(crate) fn git<I, S>(cwd: &Path, args: I) -> Result<String>
 where
@@ -40,7 +55,10 @@ where
         .into_iter()
         .map(|a| a.as_ref().to_os_string())
         .collect();
-    let out = base(cwd).args(&args).output()?;
+    let out = base(cwd)
+        .args(&args)
+        .output()
+        .map_err(|e| spawn_err(cwd, e))?;
     if out.status.success() {
         Ok(out.stdout)
     } else {
@@ -73,7 +91,10 @@ where
     I: IntoIterator<Item = S>,
     S: AsRef<OsStr>,
 {
-    let out = base(cwd).args(args).output()?;
+    let out = base(cwd)
+        .args(args)
+        .output()
+        .map_err(|e| spawn_err(cwd, e))?;
     Ok((
         out.status.code().unwrap_or(-1),
         String::from_utf8_lossy(&out.stdout).into_owned(),
@@ -112,7 +133,8 @@ where
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()?;
+        .spawn()
+        .map_err(|e| spawn_err(cwd, e))?;
     let mut stdin = child.stdin.take().expect("piped stdin");
     let input = input.to_vec();
     let writer = std::thread::spawn(move || stdin.write_all(&input));
@@ -139,7 +161,7 @@ where
     for (k, v) in env {
         c.env(k, v);
     }
-    let out = c.args(&args).output()?;
+    let out = c.args(&args).output().map_err(|e| spawn_err(cwd, e))?;
     if out.status.success() {
         Ok(String::from_utf8_lossy(&out.stdout).into_owned())
     } else {
