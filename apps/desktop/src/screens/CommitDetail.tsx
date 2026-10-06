@@ -16,11 +16,13 @@ type Props = {
   onRange?: (ids: string[]) => void;
   onPickBase?: (e: React.MouseEvent) => void;
   onBack?: () => void;
+  /// Right-click on a file in the list.
+  onFileMenu?: (e: React.MouseEvent, path: string) => void;
 };
 
 /// One commit's changes; with `compare` a whole branch against its base
 /// (what a pull request shows as "Files changed"); with `span` several commits.
-export function CommitDetail({ root, id = "", compare, span, onRange, onPickBase, onBack }: Props) {
+export function CommitDetail({ root, id = "", compare, span, onRange, onPickBase, onBack, onFileMenu }: Props) {
   const [c, setC] = useState<CommitDiff | Compare | Range | null>(null);
   const [sel, setSel] = useState<string | null>(null);
   const [diff, setDiff] = useState<FileDiff | null>(null);
@@ -87,7 +89,7 @@ export function CommitDetail({ root, id = "", compare, span, onRange, onPickBase
           {"message" in c && <pre className="whitespace-pre-wrap border-b border-stone-200 p-3 font-sans text-body dark:border-stone-700">{c.message}</pre>}
           {c.files.length === 0 && <div className="p-3 text-stone-500">No changes.</div>}
           {c.files.map((f) => (
-            <button key={f.path} data-selected={sel === f.path} tabIndex={-1} onClick={() => setSel(f.path)} className={`flex items-center gap-2 px-3 py-1.5 text-left ${sel === f.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
+            <button key={f.path} data-selected={sel === f.path} tabIndex={-1} onClick={() => setSel(f.path)} onContextMenu={(e) => { if (onFileMenu) { e.preventDefault(); onFileMenu(e, f.path); } }} className={`flex items-center gap-2 px-3 py-1.5 text-left ${sel === f.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
               <span className="grow truncate font-mono text-body" title={f.path}>{f.path}</span>
               <span className="shrink-0 font-mono text-label text-teal-700">+{f.added}</span>
               <span className="shrink-0 font-mono text-label text-red-700">−{f.deleted}</span>

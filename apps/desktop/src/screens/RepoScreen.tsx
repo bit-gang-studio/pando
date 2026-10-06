@@ -15,6 +15,7 @@ import { ErrorState, Loading } from "../ui/State";
 import { toastDone, toastError, withToast } from "../ui/Toast";
 import { MessageDialog } from "../dialogs/MessageDialog";
 import { PullRequestDialog } from "../dialogs/PullRequestDialog";
+import { FileView, type FileTarget } from "./FileView";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Rewritten } from "../lib/api";
 import { errorParts } from "../lib/errors";
@@ -51,8 +52,10 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   // Several commits picked with shift-click, shown as one diff.
   const [span, setSpan] = useState<Span | null>(null);
   const [spanIds, setSpanIds] = useState<string[] | null>(null); // the commits it adds up, once known
-  const pickSpan = (s: Span | null) => { setSpan(s); setSpanIds(null); };
-  useEffect(() => { setSpan(null); setSpanIds(null); }, [root, worktree, branch, commit]);
+  // One file's history or blame, shown in place of the details.
+  const [fileView, setFileView] = useState<FileTarget | null>(null);
+  const pickSpan = (s: Span | null) => { setSpan(s); setSpanIds(null); setFileView(null); };
+  useEffect(() => { setSpan(null); setSpanIds(null); setFileView(null); }, [root, worktree, branch, commit]);
   const picked = useMemo(() => (span ? new Set(spanIds ?? [span.older, span.newer]) : undefined), [span, spanIds]);
   useEffect(() => { setWtCommit(null); setWtCompare(false); }, [worktree]);
   useEffect(() => { setBrCommit(null); setBrFirst(null); setBrCompare(true); }, [branch]);
@@ -198,6 +201,24 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
     }
     return items;
   }
+  // ---- right-click on a file: its history, or who changed each line ---------------
+  const fileMenu = (rev: string | null, wt: string | null) => (e: React.MouseEvent, path: string) => {
+    // History needs a commit to start from: a worktree's own HEAD, not the main one's.
+    const from = rev ?? data?.branches.find((b) => b.worktree?.path === wt)?.worktree?.head ?? data?.detached.find((d) => d.worktree.path === wt)?.worktree.head ?? null;
+    setMenu({ x: e.clientX, y: e.clientY, items: [
+      { label: "File history", onClick: () => setFileView({ path, rev: from, worktree: null, mode: "history" }) },
+      { label: "Blame", onClick: () => setFileView({ path, rev, worktree: rev ? null : wt, mode: "blame" }) },
+      { divider: true },
+      { label: "Copy path", onClick: () => navigator.clipboard.writeText(path) },
+    ] });
+  };
+  /// Open a commit from the file view, wherever we are.
+  const showCommit = (id: string) => {
+    setFileView(null);
+    if (branch) { setBrCompare(false); setBrCommit(id); }
+    else if (worktree) { setWtCompare(false); setWtCommit(id); }
+    else navigate({ kind: "commit", root, id });
+  };
   const commitMenu = (e: React.MouseEvent, entry: LogEntry) => {
     const sep: MenuItem = { divider: true };
     setMenu({ x: e.clientX, y: e.clientY, items: [
@@ -335,23 +356,25 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
       </div>
       <SplitHandle axis="y" onMouseDown={split.start} handleRef={split.handle} />
       <div className="flex min-h-0 min-w-0 grow">
-        {span ? (
-          <CommitDetail key={`span-${span.older}-${span.newer}`} root={root} span={span} onRange={setSpanIds} onBack={() => pickSpan(null)} />
+        {fileView ? (
+          <FileView root={root} target={fileView} onMode={(mode) => setFileView({ ...fileView, mode })} onBack={() => setFileView(null)} onOpenCommit={showCommit} />
+        ) : span ? (
+          <CommitDetail key={`span-${span.older}-${span.newer}`} root={root} span={span} onRange={setSpanIds} onBack={() => pickSpan(null)} onFileMenu={fileMenu(span.newer, null)} />
         ) : branch ? (
-          canCompare && brCompare ? <CommitDetail key={`cmp-${head}`} root={root} compare={{ base: base!, head: head! }} onPickBase={pickBase} />
-          : brCommit ?? brFirst ? <CommitDetail root={root} id={(brCommit ?? brFirst)!} /> : <Loading />
+          canCompare && brCompare ? <CommitDetail key={`cmp-${head}`} root={root} compare={{ base: base!, head: head! }} onPickBase={pickBase} onFileMenu={fileMenu(head!, null)} />
+          : brCommit ?? brFirst ? <CommitDetail root={root} id={(brCommit ?? brFirst)!} onFileMenu={fileMenu((brCommit ?? brFirst)!, null)} /> : <Loading />
         ) : worktree ? (
           canCompare && wtCompare ? (
-            <CommitDetail key={`cmp-${head}`} root={root} compare={{ base: base!, head: head! }} onPickBase={pickBase} onBack={() => setWtCompare(false)} />
+            <CommitDetail key={`cmp-${head}`} root={root} compare={{ base: base!, head: head! }} onPickBase={pickBase} onBack={() => setWtCompare(false)} onFileMenu={fileMenu(head!, null)} />
           ) : wtCommit ? (
-            <CommitDetail root={root} id={wtCommit} onBack={() => setWtCommit(null)} />
+            <CommitDetail root={root} id={wtCommit} onBack={() => setWtCommit(null)} onFileMenu={fileMenu(wtCommit, null)} />
           ) : (
-            <Detail root={root} path={worktree} onBack={() => navigate({ kind: "repo", root })} onChanged={refresh} onCreatePr={canPrHere ? () => setPrFor(wtB!.name) : undefined} />
+            <Detail root={root} path={worktree} onBack={() => navigate({ kind: "repo", root })} onChanged={refresh} onCreatePr={canPrHere ? () => setPrFor(wtB!.name) : undefined} onFileMenu={fileMenu(null, worktree)} />
           )
         ) : showUncommitted && dirtyPaths.length > 0 ? (
           <UncommittedPanel root={root} worktrees={dirtyPaths} refreshKey={tick} />
         ) : shown ? (
-          <CommitDetail root={root} id={shown} />
+          <CommitDetail root={root} id={shown} onFileMenu={fileMenu(shown, null)} />
         ) : (
           <div className="flex grow items-center justify-center text-body text-stone-500">No commits yet.</div>
         )}

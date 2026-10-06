@@ -8,11 +8,11 @@ mod terminal;
 pub mod dev_bridge;
 
 use pando_core::{
-    backup, branch, commit, conflict, detail, diff, github, history, index, log, merge, operation,
-    overlap, overview, rewrite, rewrite::Rewritten, stash, sync, tag, user_config, watch, worktree,
-    Applied, Backup, Choice, CommitDiff, ConflictFile, CreateWorktree, Created, Detail, FileDiff,
-    Hunk, Log, MergePlan, MergeResult, Operation, Overview, Preflight, Repo, Side, Stash,
-    SyncResult, UserConfig,
+    backup, branch, commit, conflict, detail, diff, file, github, history, index, log, merge,
+    operation, overlap, overview, rewrite, rewrite::Rewritten, stash, sync, tag, user_config,
+    watch, worktree, Applied, Backup, Choice, CommitDiff, ConflictFile, CreateWorktree, Created,
+    Detail, FileDiff, Hunk, Log, MergePlan, MergeResult, Operation, Overview, Preflight, Repo,
+    Side, Stash, SyncResult, UserConfig,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -460,6 +460,33 @@ async fn log_search(
     .await
 }
 
+/// The commits that changed one file, following renames.
+#[tauri::command]
+async fn file_history(
+    root: PathBuf,
+    rev: Option<String>,
+    path: String,
+    skip: usize,
+    limit: usize,
+) -> R<file::FileHistory> {
+    blocking(move || file::history(&repo(&root)?, rev.as_deref(), &path, skip, limit).map_err(err))
+        .await
+}
+
+/// Who last changed each line of a file: at `rev`, or the working copy in `worktree`.
+#[tauri::command]
+async fn file_blame(
+    root: PathBuf,
+    worktree: Option<PathBuf>,
+    rev: Option<String>,
+    path: String,
+) -> R<file::Blame> {
+    blocking(move || {
+        file::blame(&repo(&root)?, worktree.as_deref(), rev.as_deref(), &path).map_err(err)
+    })
+    .await
+}
+
 #[tauri::command]
 async fn commit_diff(root: PathBuf, id: String) -> R<CommitDiff> {
     blocking(move || history::commit_diff(&repo(&root)?, &id).map_err(err)).await
@@ -731,6 +758,8 @@ pub fn run() {
             open_editor,
             log_list,
             log_search,
+            file_history,
+            file_blame,
             commit_diff,
             commit_file_diff,
             compare,

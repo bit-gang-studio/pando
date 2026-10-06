@@ -565,3 +565,33 @@ test("the Tags section lists the real tag; delete it, Undo brings it back", asyn
   expect(git(ROOT, "rev-parse v1")).toBe(at);
   await expect(sidebar(page).getByRole("button", { name: /TAGS/ })).toBeVisible({ timeout: 10_000 });
 });
+
+test("a real file's history and blame, from a commit and from a worktree's working copy", async ({ page }) => {
+  const files = page.locator("aside").last();
+  await boot(page, `#/branch?root=${encodeURIComponent(ROOT)}&name=feat%2Flogin`);
+  await logRow(page, "Improve login").click();
+  await files.locator("button[data-selected]", { hasText: "login.js" }).click({ button: "right" });
+  await page.getByRole("menuitem", { name: "File history" }).click();
+  // login.js at that commit: added, then improved. "Rewrite login" is on another branch.
+  await expect(page.getByText("2 commits changed this file")).toBeVisible();
+  await expect(files.locator("button[data-selected]")).toHaveText([/Improve login/, /Add login.*added/]);
+  await files.locator("button[data-selected]").nth(1).click();
+  await expect(page.getByText("login v1")).toBeVisible();
+  await page.getByRole("button", { name: "Blame", exact: true }).click();
+  const table = page.getByRole("table", { name: "Blame for login.js" });
+  await expect(table.locator("[data-line='1']")).toContainText("Improve login");
+  await expect(table.locator("[data-line='1']")).toContainText("login v2");
+
+  // On the worktree page the working copy is blamed: the unsaved line isn't committed.
+  await worktreePage(page, "feat/login");
+  await page.locator("div.group", { hasText: "app.js" }).first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Blame" }).click();
+  const wc = page.getByRole("table", { name: "Blame for app.js" });
+  await expect(wc.locator("[data-line='1']")).toContainText("Add app");
+  await expect(wc.locator("[data-line='2']")).toContainText("Not committed yet");
+  await expect(wc.locator("[data-line='2']")).toContainText("unsaved");
+  // notes.txt is brand new: nothing to show history for.
+  await page.getByRole("button", { name: "‹ Back" }).click();
+  await page.locator("div.group", { hasText: "notes.txt" }).first().click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "File history" })).toHaveCount(0);
+});

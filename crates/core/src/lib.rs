@@ -11,6 +11,7 @@ pub mod conflict;
 pub mod detail;
 pub mod diff;
 pub mod error;
+pub mod file;
 pub mod git;
 pub mod github;
 pub mod history;

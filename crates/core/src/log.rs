@@ -51,7 +51,7 @@ pub fn list(repo: &Repo, branch: Option<&str>, skip: usize, limit: usize) -> Res
     Ok(Log { entries, truncated })
 }
 
-const FORMAT: &str = "--format=%H%x1f%P%x1f%an%x1f%ct%x1f%s%x1f%D";
+pub(crate) const FORMAT: &str = "--format=%H%x1f%P%x1f%an%x1f%ct%x1f%s%x1f%D";
 
 /// Commits whose message or author contains `query` (any case, taken
 /// literally), or whose id starts with it. Newest first. `branch = None`
@@ -151,7 +151,7 @@ fn by_id(repo: &Repo, branch: Option<&str>, query: &str) -> Option<LogEntry> {
         .and_then(parse_entry)
 }
 
-fn parse_entry(e: &str) -> Option<LogEntry> {
+pub(crate) fn parse_entry(e: &str) -> Option<LogEntry> {
     let mut f = e.split('\x1f');
     let id = f.next()?.trim().to_string();
     let parents = f.next()?.split_whitespace().map(str::to_string).collect();

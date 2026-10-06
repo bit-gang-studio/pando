@@ -15,13 +15,13 @@ import { useArrowKeys } from "../lib/useArrowKeys";
 import { forcePush } from "../lib/forcePush";
 
 const STATUS_LABEL: Record<string, string> = { M: "Modified", A: "Added", D: "Deleted", R: "Renamed", C: "Copied", T: "Type changed", U: "Conflict", "?": "Untracked (new, not tracked by git yet)" };
-type Props = { root: string; path: string; onBack: () => void; onChanged: () => void; /** Set when this branch can get a pull request. */ onCreatePr?: () => void };
+type Props = { root: string; path: string; onBack: () => void; onChanged: () => void; /** Set when this branch can get a pull request. */ onCreatePr?: () => void; /** Right-click on a changed file. */ onFileMenu?: (e: React.MouseEvent, path: string) => void };
 type Sel = { path: string; staged: boolean; untracked: boolean } | null;
 
 const btn = "h-8 rounded-lg border border-stone-300 bg-white px-3 text-body hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 const small = "h-5.5 rounded border border-stone-300 bg-white px-2 text-label dark:border-stone-600 dark:bg-stone-700";
 
-export function Detail({ root, path, onBack, onChanged, onCreatePr }: Props) {
+export function Detail({ root, path, onBack, onChanged, onCreatePr, onFileMenu }: Props) {
   const [d, setD] = useState<DetailData | null>(null);
   const [sel, setSel] = useState<Sel>(null);
   const [diff, setDiff] = useState<FileDiff | null>(null);
@@ -163,7 +163,7 @@ export function Detail({ root, path, onBack, onChanged, onCreatePr }: Props) {
     const active = sel?.path === f.path && sel.staged === stagedSide;
     const code = stagedSide ? f.staged : f.untracked ? "?" : f.unstaged;
     return (
-      <div key={`${stagedSide}-${f.path}`} data-selected={active} onClick={() => setSel({ path: f.path, staged: stagedSide, untracked: f.untracked })} className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${active ? "bg-teal-100 dark:bg-teal-900/40" : "hover:bg-stone-100 dark:hover:bg-stone-700"}`}>
+      <div key={`${stagedSide}-${f.path}`} data-selected={active} onClick={() => setSel({ path: f.path, staged: stagedSide, untracked: f.untracked })} onContextMenu={(e) => { if (onFileMenu && !f.untracked) { e.preventDefault(); onFileMenu(e, f.path); } }} className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 ${active ? "bg-teal-100 dark:bg-teal-900/40" : "hover:bg-stone-100 dark:hover:bg-stone-700"}`}>
         <input type="checkbox" checked={stagedSide} onChange={() => run("stage", () => (stagedSide ? api.unstagePaths(wt, [f.path]) : api.stagePaths(wt, [f.path])))} onClick={(e) => e.stopPropagation()} aria-label={stagedSide ? `Unstage ${f.path}` : `Stage ${f.path}`} className="m-0" />
         <span title={STATUS_LABEL[String(f.conflicted ? "U" : code)] ?? ""} className={`w-3 shrink-0 cursor-help text-center font-mono text-label ${f.conflicted ? "text-red-700" : "text-stone-500"}`}>{f.conflicted ? "U" : code}</span>
         <span className="min-w-0 grow truncate font-mono text-body" title={f.path}>{f.path}</span>
