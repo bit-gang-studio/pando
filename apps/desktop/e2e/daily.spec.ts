@@ -294,3 +294,62 @@ test("no editor opens when the worktree couldn't be created, or for a branch wit
   await expect(dlg.getByText("already exists", { exact: false })).toBeVisible();
   expect(await callsTo(page, "open_editor")).toHaveLength(0);
 });
+
+// ---- Switch branch in any worktree ------------------------------------------------
+
+const switchRows = () => overview({ branches: [
+  row("main", { worktree: wt(ROOT, "main") }),
+  row("feat/login", { worktree: wt(WT, "feat/login") }),
+  row("spike/old"), row("docs/readme"),
+] });
+
+test("a linked worktree can switch to a free branch, and Undo switches back", async ({ page }) => {
+  await open(page, { overview_load: switchRows(), worktree_switch: { $seq: ["feat/login", "spike/old"] } });
+  await sidebar(page).locator("div.group", { hasText: "feat/login" }).first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Switch branch…" }).click();
+  const dlg = page.getByRole("alertdialog");
+  await expect(dlg).toContainText("Check out another branch in proj-feat-login. feat/login stays as a branch, without a worktree.");
+  // Only branches with no worktree are offered: not main, not itself.
+  await expect(dlg.getByRole("combobox").locator("option")).toHaveText(["spike/old", "docs/readme"]);
+  await dlg.getByRole("combobox").selectOption("spike/old");
+  await dlg.getByRole("button", { name: "Switch branch" }).click();
+  await expect.poll(() => callsTo(page, "worktree_switch")).toEqual([{ root: ROOT, path: WT, name: "spike/old" }]);
+  const toast = page.getByRole("status").filter({ hasText: "Switched proj-feat-login to spike/old" });
+  await toast.getByRole("button", { name: "Undo" }).click();
+  await expect.poll(async () => (await callsTo(page, "worktree_switch"))[1]).toEqual({ root: ROOT, path: WT, name: "feat/login" });
+});
+
+test("the main worktree switches the same way; Escape switches nothing", async ({ page }) => {
+  await open(page, { overview_load: switchRows(), worktree_switch: "main" });
+  await sidebar(page).locator("div.group", { hasText: "main worktree" }).first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Switch branch…" }).click();
+  await expect(page.getByRole("alertdialog")).toContainText("Check out another branch in the main worktree.");
+  await page.keyboard.press("Escape");
+  expect(await callsTo(page, "worktree_switch")).toHaveLength(0);
+  await sidebar(page).locator("div.group", { hasText: "main worktree" }).first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Switch branch…" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Switch branch" }).click();
+  await expect.poll(() => callsTo(page, "worktree_switch")).toEqual([{ root: ROOT, path: ROOT, name: "spike/old" }]);
+  await expect(page.getByRole("status").filter({ hasText: "Switched the main worktree to spike/old" })).toBeVisible();
+});
+
+test("a refused switch says why and offers no Undo", async ({ page }) => {
+  await open(page, { overview_load: switchRows(), worktree_switch: { $error: "Your uncommitted changes to a.txt would be lost. Commit or stash them first." } });
+  await sidebar(page).locator("div.group", { hasText: "feat/login" }).first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Switch branch…" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Switch branch" }).click();
+  await expect(page.getByRole("alert")).toContainText("Your uncommitted changes to a.txt would be lost.");
+  await expect(page.getByRole("button", { name: "Undo" })).toHaveCount(0);
+});
+
+test("with every branch in a worktree there's nothing to switch to, and a missing folder has no Switch", async ({ page }) => {
+  const gone = wt(`${ROOT}-fix-typo`, "fix/typo", { prunable: "gone" });
+  await open(page, { overview_load: overview({ branches: [row("main", { worktree: wt(ROOT, "main") }), row("feat/login", { worktree: wt(WT, "feat/login") }), row("fix/typo", { worktree: gone })] }) });
+  await sidebar(page).locator("div.group", { hasText: "feat/login" }).first().click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Switch branch…" }).click();
+  await expect(page.getByRole("alert")).toContainText("Every local branch already has a worktree.");
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await sidebar(page).locator("div.group", { hasText: "fix/typo" }).first().click({ button: "right" });
+  await expect(page.getByRole("menuitem", { name: "Repair worktree…" })).toBeVisible();
+  await expect(page.getByRole("menuitem", { name: "Switch branch…" })).toHaveCount(0);
+});

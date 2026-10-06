@@ -210,6 +210,12 @@ async fn branch_switch(root: PathBuf, name: String) -> R<()> {
     blocking(move || branch::switch_in_main(&repo(&root)?, &name).map_err(err)).await
 }
 
+/// Check out another local branch in any worktree. Returns the branch it was on.
+#[tauri::command]
+async fn worktree_switch(root: PathBuf, path: PathBuf, name: String) -> R<Option<String>> {
+    blocking(move || branch::switch_in(&repo(&root)?, &path, &name).map_err(err)).await
+}
+
 /// `git switch -c <name>` in a worktree, e.g. to leave a detached HEAD.
 #[tauri::command]
 async fn branch_create_and_switch(path: PathBuf, name: String) -> R<()> {
@@ -670,6 +676,7 @@ pub fn run() {
             worktree_prune,
             worktree_repair,
             branch_switch,
+            worktree_switch,
             branch_create_and_switch,
             watch_repo,
             branch_rename,

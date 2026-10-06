@@ -127,6 +127,7 @@ export const api = {
   branchDeleteRemote: (root: string, name: string) => invoke<void>("branch_delete_remote", { root, name }),
   branchCreateAndSwitch: (path: string, name: string) => invoke<void>("branch_create_and_switch", { path, name }),
   branchSwitch: (root: string, name: string) => invoke<void>("branch_switch", { root, name }),
+  worktreeSwitch: (root: string, path: string, name: string) => invoke<string | null>("worktree_switch", { root, path, name }),
   branchRename: (root: string, old: string, new_: string) => invoke<void>("branch_rename", { root, old, new: new_ }),
   branchSetUpstream: (root: string, name: string, upstream: string) => invoke<void>("branch_set_upstream", { root, name, upstream }),
   worktreeMove: (root: string, from: string, to: string) => invoke<void>("worktree_move", { root, from, to }),

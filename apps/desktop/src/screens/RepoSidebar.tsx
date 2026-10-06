@@ -102,11 +102,22 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   async function switchMain(name: string) {
     await run(`Switching to ${name}…`, `Switched main worktree to ${name}`, () => api.branchSwitch(root, name));
   }
-  async function switchMainPicker() {
+  /// Check out another branch in a worktree. Only branches with no worktree
+  /// are offered: git allows a branch in one worktree at a time.
+  async function switchPicker(row: WtRow) {
     const free = data?.branches.filter((b) => !b.worktree).map((b) => ({ value: b.branch.name, label: b.branch.name })) ?? [];
     if (free.length === 0) { toastError("Every local branch already has a worktree."); return; }
-    const a = await confirm({ title: "Switch branch", body: "Check out another branch in the main worktree. Uncommitted changes must be committed or stashed first.", action: "Switch branch", select: { label: "Branch", options: free } });
-    if (a.ok) await switchMain(a.choice);
+    const folder = row.worktree.path.split(/[/\\]/).filter(Boolean).pop();
+    const now = row.worktree.branch;
+    const a = await confirm({
+      title: "Switch branch",
+      body: <>Check out another branch in {row.isMain ? "the main worktree" : <span className="font-mono">{folder}</span>}.{now ? <> <span className="font-mono">{now}</span> stays as a branch, without a worktree.</> : null} Uncommitted changes come along if they don't clash.</>,
+      action: "Switch branch",
+      select: { label: "Branch", options: free },
+    });
+    if (!a.ok) return;
+    const path = row.worktree.path;
+    await run(`Switching to ${a.choice}…`, `Switched ${row.isMain ? "the main worktree" : folder} to ${a.choice}`, () => api.worktreeSwitch(root, path, a.choice), (was) => (was ? () => api.worktreeSwitch(root, path, was) : null));
   }
   async function createHere(row: WtRow) {
     const a = await confirm({ title: "Create branch", body: <>Create a branch at <span className="font-mono">{row.worktree.head?.slice(0, 7)}</span> and switch this worktree to it.</>, action: "Create branch", input: { label: "Branch name", placeholder: "feat/my-change", mono: true } });
@@ -172,7 +183,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     if (changed(row.status) > 0) items.push({ label: "Stash changes…", onClick: () => stashChanges(row) });
     items.push(sep);
     if (!b) items.push({ label: "Create branch here…", onClick: () => createHere(row) });
-    if (row.isMain) items.push({ label: "Switch branch…", onClick: () => switchMainPicker() });
+    if (!row.worktree.prunable) items.push({ label: "Switch branch…", onClick: () => switchPicker(row) });
     if (b) items.push({ label: "Rename branch…", onClick: () => rename(b.name) });
     if (b) items.push({ label: "Set upstream…", onClick: () => setUpstream(b.name, b.upstream) });
     if (!row.isMain) {

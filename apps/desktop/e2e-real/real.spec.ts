@@ -525,3 +525,25 @@ test("search real commits by message, author and id, inside the branch", async (
   await expect(logRow(page, "Improve login")).toHaveCount(0);
   await expect(page.getByText("1 commit matches “login” on feat/collide")).toBeVisible();
 });
+
+test("switch a real linked worktree to another branch, keep its changes, and Undo", async ({ page }) => {
+  const wt = wtPath("feat/dirty");
+  await repoPage(page);
+  await rowOf(page, "feat/dirty").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Switch branch…" }).click();
+  const dlg = page.getByRole("alertdialog");
+  // feat/login has a worktree, so it isn't offered; spike/old is free.
+  await expect(dlg.getByRole("combobox").locator("option", { hasText: "feat/login" })).toHaveCount(0);
+  await dlg.getByRole("combobox").selectOption("spike/old");
+  await dlg.getByRole("button", { name: "Switch branch" }).click();
+  await expect(toast(page, "Switched shop-feat-dirty to spike/old")).toBeVisible();
+  expect(git(wt, "branch --show-current")).toBe("spike/old");
+  // Its uncommitted work came along, and the row now names the folder.
+  expect(execSync(`cat "${wt}/wip.txt"`, { encoding: "utf8" })).toBe("precious\n");
+  await expect(rowOf(page, "spike/old").getByText("in shop-feat-dirty")).toBeVisible({ timeout: 10_000 });
+  expect(gitOk(ROOT, "rev-parse --verify feat/dirty")).toBe(true);
+  await toast(page, "Switched shop-feat-dirty to spike/old").getByRole("button", { name: "Undo" }).click();
+  await expect(toast(page, "Undone")).toBeVisible();
+  expect(git(wt, "branch --show-current")).toBe("feat/dirty");
+  expect(execSync(`cat "${wt}/wip.txt"`, { encoding: "utf8" })).toBe("precious\n");
+});

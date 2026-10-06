@@ -241,8 +241,75 @@ fn upstream_counts(repo: &Repo) -> HashMap<String, (u32, u32)> {
 
 /// Check out `name` in the main worktree. Fails if the tree is dirty and git refuses.
 pub fn switch_in_main(repo: &Repo, name: &str) -> Result<()> {
-    git(&repo.root, ["switch", name])?;
-    Ok(())
+    switch_in(repo, &repo.root, name).map(|_| ())
+}
+
+/// Check out the local branch `name` in the worktree at `wt` (`git switch`).
+/// Uncommitted changes come along when they don't clash; when they do, git
+/// refuses and nothing changes. Returns the branch it was on before, if any.
+pub fn switch_in(repo: &Repo, wt: &Path, name: &str) -> Result<Option<String>> {
+    let msg = |m: String| Err(crate::Error::Msg(m));
+    let folder = |p: &Path| {
+        p.file_name()
+            .map(|f| f.to_string_lossy().into_owned())
+            .unwrap_or_else(|| p.display().to_string())
+    };
+    let want = crate::repo::canon(wt);
+    let all = worktree::list(repo)?;
+    let Some(here) = all.iter().find(|w| w.path == want) else {
+        return msg(format!(
+            "{} isn't a worktree of this repository.",
+            wt.display()
+        ));
+    };
+    if here.branch.as_deref() == Some(name) {
+        return Ok(here.branch.clone());
+    }
+    let exists = crate::cmd::git_opt(
+        &repo.common_git_dir,
+        ["rev-parse", "--verify", "-q", &format!("refs/heads/{name}")],
+    )
+    .is_some();
+    if name.is_empty() || name.starts_with('-') || !exists {
+        return msg(format!("No local branch named {name}."));
+    }
+    // Git's rule: a branch can be checked out in one worktree at a time.
+    if let Some(other) = all.iter().find(|w| w.branch.as_deref() == Some(name)) {
+        return msg(format!(
+            "{name} is checked out in {}. A branch can be in one worktree at a time.",
+            folder(&other.path)
+        ));
+    }
+    if crate::operation::detect(&here.path)?.is_some() {
+        return msg(format!(
+            "{} has a rebase or merge in progress. Continue or abort it first.",
+            folder(&here.path)
+        ));
+    }
+    match git(&here.path, ["switch", name]) {
+        Ok(_) => Ok(here.branch.clone()),
+        Err(e) => {
+            let text = e.to_string();
+            if !text.contains("would be overwritten") {
+                return Err(e);
+            }
+            // Git lists the files, indented, between its two sentences.
+            let files: Vec<&str> = text
+                .lines()
+                .filter(|l| l.starts_with('\t') || l.starts_with("    "))
+                .map(str::trim)
+                .collect();
+            let which = match files.as_slice() {
+                [] => "some files".to_string(),
+                [one] => (*one).to_string(),
+                [a, b] => format!("{a} and {b}"),
+                [a, rest @ ..] => format!("{a} and {} more files", rest.len()),
+            };
+            msg(format!(
+                "Your uncommitted changes to {which} would be lost. Commit or stash them first."
+            ))
+        }
+    }
 }
 
 /// Refuse a name git would reject, or accept and regret: `@` and `HEAD` are
