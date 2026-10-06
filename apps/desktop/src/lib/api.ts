@@ -42,7 +42,7 @@ export type BranchRow = {
   merged: boolean;
 };
 export type DetachedRow = { worktree: Worktree; is_main_worktree: boolean; status: Summary | null };
-export type Overview = { repo: Repo; base: string | null; branches: BranchRow[]; detached: DetachedRow[]; remote_only: RemoteBranch[]; status_loaded: boolean; compare_base: string | null; fetched_at: number | null };
+export type Overview = { repo: Repo; base: string | null; branches: BranchRow[]; detached: DetachedRow[]; remote_only: RemoteBranch[]; status_loaded: boolean; compare_base: string | null; fetched_at: number | null; /** Changes when any ref or worktree HEAD moves. */ refs_key?: string };
 
 export type CreateWorktree = { branch: string; base: string | null; path: string | null; existing_branch: boolean };
 export type Created = { worktree: Worktree };

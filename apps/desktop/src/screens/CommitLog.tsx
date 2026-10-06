@@ -54,6 +54,7 @@ type Props = {
 export type Span = { anchor: string; other: string; older: string; newer: string };
 
 const PAGE = 200;
+const MAX_LANES = 12;
 
 export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, prByBranch = {}, detachedDots = {}, heads, compare, compareSelected, onCompare, range, picked, spanEnd, onSpan, onCommitMenu, onLoaded, refreshKey }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
@@ -63,35 +64,59 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
   const [ownCount, setOwnCount] = useState<number | null>(null);
   const own = range?.own ?? null, rest = range?.rest ?? null;
 
-  const load = useCallback(async (skip: number) => {
+  // Only the newest request may change the list: a slow answer to an older
+  // one (a second click, a refresh landing mid-load) would add rows twice.
+  const request = useRef(0);
+  const loadedCount = useRef(0);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const load = useCallback(async (skip: number, keep = false) => {
+    const mine = ++request.current;
     try {
       let l;
+      let ownLen: number | null = null;
+      // A refresh keeps as many rows as were loaded, so "Load more" isn't undone.
+      const page = keep ? Math.max(PAGE, loadedCount.current) : PAGE;
       if (own) {
         // The branch's own commits (all of them), then shared history, paged.
         if (skip === 0) {
-          const mine = await api.log(root, own, 0, 2000);
-          const earlier = rest ? await api.log(root, rest, 0, PAGE) : { entries: [], truncated: false };
-          setOwnCount(mine.entries.length);
-          l = { entries: [...mine.entries, ...earlier.entries], truncated: earlier.truncated };
+          const ownLog = await api.log(root, own, 0, 2000);
+          const earlier = rest ? await api.log(root, rest, 0, Math.max(PAGE, page - ownLog.entries.length)) : { entries: [], truncated: false };
+          ownLen = ownLog.entries.length;
+          l = { entries: [...ownLog.entries, ...earlier.entries], truncated: earlier.truncated };
         } else {
           l = rest ? await api.log(root, rest, skip - (ownCount ?? 0), PAGE) : { entries: [], truncated: false };
         }
       } else {
-        setOwnCount(null);
-        l = await api.log(root, scope || null, skip, PAGE);
+        l = await api.log(root, scope || null, skip, page);
       }
-      setEntries((prev) => (skip === 0 ? l.entries : [...prev, ...l.entries]));
+      if (mine !== request.current) return;
+      if (!own) setOwnCount(null);
+      else if (ownLen !== null) setOwnCount(ownLen);
+      setEntries((prev) => {
+        const seen = new Set(skip === 0 ? [] : prev.map((e) => e.id));
+        const next = skip === 0 ? l.entries : [...prev, ...l.entries.filter((e) => !seen.has(e.id))];
+        loadedCount.current = next.length;
+        return next;
+      });
       setTruncated(l.truncated);
       setError(null);
       setLoaded(true);
       if (skip === 0) onLoaded?.(l.entries[0]?.id ?? null);
     } catch (e) {
-      setError(String(e));
+      if (mine === request.current) setError(String(e));
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [root, scope, own, rest, onLoaded]);
+  async function loadMore() {
+    if (loadingMore) return;
+    setLoadingMore(true);
+    try { await load(entries.length); } finally { setLoadingMore(false); }
+  }
 
-  useEffect(() => { load(0); }, [load, refreshKey]);
+  // A new repo or branch starts from one page; a refresh of the same one keeps what's loaded.
+  const first = useRef(true);
+  useEffect(() => { first.current = true; loadedCount.current = 0; }, [load]);
+  useEffect(() => { load(0, !first.current); first.current = false; }, [load, refreshKey]);
 
   // ---- search: message, author or commit id, in this scope -----------------------
   const [query, setQuery] = useState("");
@@ -149,7 +174,10 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
     const list = e.currentTarget;
     requestAnimationFrame(() => list.querySelector(`[data-row="${to}"]`)?.scrollIntoView({ block: "nearest" }));
   };
-  const maxLanes = Math.max(1, ...graph.map((g) => g.lanes));
+  // A history with many branches side by side can be dozens of lanes wide.
+  // Cap the graph so the commit text always stays on screen; lanes past the
+  // cap are cut off, and a commit out there gets its dot at the edge.
+  const maxLanes = Math.min(MAX_LANES, Math.max(1, ...graph.map((g) => g.lanes)));
   const graphW = maxLanes * LANE_W + 6;
 
   return (
@@ -243,7 +271,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
           <button onClick={() => search(q, results.entries.length)} className="m-2 rounded-md border border-stone-300 bg-white px-3 py-1 text-body dark:border-stone-600 dark:bg-stone-700">Load {PAGE} more</button>
         )}
         {!searching && truncated && (
-          <button onClick={() => load(entries.length)} className="m-2 rounded-md border border-stone-300 bg-white px-3 py-1 text-body dark:border-stone-600 dark:bg-stone-700">Load {PAGE} more</button>
+          <button onClick={loadMore} disabled={loadingMore} className="m-2 rounded-md border border-stone-300 bg-white px-3 py-1 text-body disabled:opacity-50 dark:border-stone-600 dark:bg-stone-700">{loadingMore ? "Loading…" : `Load ${PAGE} more`}</button>
         )}
       </div>
     </div>
@@ -269,19 +297,21 @@ function RefChip({ name, dot }: { name: string; dot?: string }) {
 
 function GraphCell({ row, width, head }: { row: GraphRow; width: number; head: boolean }) {
   const x = (lane: number) => lane * LANE_W + LANE_W / 2 + 2;
+  // This commit's dot never leaves the visible lanes.
+  const dotX = Math.min(x(row.lane), width - LANE_W / 2);
   const mid = ROW_H / 2;
   // Lines overrun the row by a pixel each way so rows never show a seam when zoomed.
   const T = -1;
   const B = ROW_H + 1;
   return (
-    <svg width={width} height={ROW_H} className="shrink-0" style={{ overflow: "visible" }} aria-hidden="true">
+    <svg width={width} height={ROW_H + 2} viewBox={`0 -1 ${width} ${ROW_H + 2}`} className="-my-px shrink-0" data-lane={row.lane} aria-hidden="true">
       {row.through.map((l) => <line key={`t${l}`} x1={x(l)} y1={T} x2={x(l)} y2={B} style={{ stroke: colorFor(l) }} strokeWidth={2} />)}
       {row.into.map((l) => <path key={`i${l}`} d={`M ${x(l)} ${T} C ${x(l)} ${mid} ${x(row.lane)} ${mid} ${x(row.lane)} ${mid}`} fill="none" style={{ stroke: colorFor(l) }} strokeWidth={2} />)}
       {row.top && <line x1={x(row.lane)} y1={T} x2={x(row.lane)} y2={mid} style={{ stroke: colorFor(row.lane) }} strokeWidth={2} />}
       {row.down.map((d, k) => d.from === d.to
         ? <line key={`d${k}`} x1={x(d.to)} y1={mid} x2={x(d.to)} y2={B} style={{ stroke: colorFor(d.to) }} strokeWidth={2} />
         : <path key={`d${k}`} d={`M ${x(d.from)} ${mid} C ${x(d.from)} ${ROW_H} ${x(d.to)} ${mid} ${x(d.to)} ${B}`} fill="none" style={{ stroke: colorFor(d.to) }} strokeWidth={2} />)}
-      <circle cx={x(row.lane)} cy={mid} r={head ? 5 : 4} style={{ fill: head ? "var(--graph-bg)" : colorFor(row.lane), stroke: colorFor(row.lane) }} strokeWidth={2} />
+      <circle cx={dotX} cy={mid} r={head ? 5 : 4} style={{ fill: head ? "var(--graph-bg)" : colorFor(row.lane), stroke: colorFor(row.lane) }} strokeWidth={2} />
     </svg>
   );
 }

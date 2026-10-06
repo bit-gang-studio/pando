@@ -18,14 +18,14 @@ import { overlayOpen } from "../lib/keys";
 import { forcePush } from "../lib/forcePush";
 import type { Overlap } from "../lib/api";
 
-type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; /** Open the Create pull request dialog for a branch. */ onCreatePr?: (branch: string) => void; prs?: PullRequest[] | null; prByBranch?: Record<string, PullRequest>; overlaps?: Overlap[] };
+type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; /** Open the Create pull request dialog for a branch. */ onCreatePr?: (branch: string) => void; /** Goes up when a ref moved: stashes and backups reload then. */ refreshKey?: number; prs?: PullRequest[] | null; prByBranch?: Record<string, PullRequest>; overlaps?: Overlap[] };
 
 const small = "h-6 rounded border border-stone-300 bg-white px-1.5 text-label hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
 const iconBtn = "inline-flex h-6 items-center rounded px-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100";
 
 type WtRow = { key: string; label: string; worktree: Worktree; status: Summary | null; branch: BranchRow | null; isMain: boolean; ahead: number | null; stale: boolean; time: number | null };
 
-export function RepoSidebar({ root, data, current = null, currentBranch = null, onOpenBranch, onOpenRepo, onRefresh: refresh, onOpenWorktree, onCreatePr, prs = null, prByBranch = {}, overlaps = [] }: Props) {
+export function RepoSidebar({ root, data, current = null, currentBranch = null, onOpenBranch, onOpenRepo, onRefresh: refresh, onOpenWorktree, onCreatePr, refreshKey, prs = null, prByBranch = {}, overlaps = [] }: Props) {
   const [busy, setBusy] = useState<string | null>(null);
   const [creating, setCreating] = useState<{ branch?: string; remote?: string } | null>(null);
   const [merging, setMerging] = useState<BranchRow | null>(null);
@@ -41,11 +41,13 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [stashes, setStashes] = useState<Stash[]>([]);
 
-  useEffect(() => { api.stashList(root).then(setStashes).catch(() => setStashes([])); }, [root, data]);
+  // With a refreshKey, reload when refs moved; without one, on every refresh as before.
+  const reloadOn = refreshKey ?? data;
+  useEffect(() => { api.stashList(root).then(setStashes).catch(() => setStashes([])); }, [root, reloadOn]);
   const term = useTerminalName();
   const editors = useEditors();
   const [backups, setBackups] = useState<Backup[]>([]);
-  useEffect(() => { api.backupsList(root).then((b) => setBackups(b ?? [])).catch(() => setBackups([])); }, [root, data]);
+  useEffect(() => { api.backupsList(root).then((b) => setBackups(b ?? [])).catch(() => setBackups([])); }, [root, reloadOn]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -323,7 +325,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
               <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body font-medium">{r.label}</span>{prByBranch[r.label] && <PrBadge pr={prByBranch[r.label]} />}<OverlapMark path={r.worktree.path} overlaps={overlaps} labelFor={labelFor} /></div>
               <div className="truncate text-label text-stone-500">
                 {r.isMain ? "main worktree" : null}
-                {r.isMain && (n > 0 || r.ahead) ? " · " : ""}
+                {r.isMain && (pending || r.worktree.prunable || conflicts || n > 0) ? " · " : ""}
                 {pending ? "checking…" : r.worktree.prunable ? "folder missing" : conflicts ? `${conflicts} conflicts` : n > 0 ? `${n} changed` : r.isMain ? "" : "clean"}
                 {!r.isMain && r.branch?.merged ? <> · <span className="text-teal-700" title={`Everything on this branch is in ${data?.base ?? "the base"}`}>merged</span></> : !r.isMain && r.ahead ? ` · ${r.ahead} ahead` : ""}
                 <SyncCounts b={r.branch?.branch} />

@@ -30,6 +30,10 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadedRef = useRef(false);
   const [tick, setTick] = useState(0);
+  // Goes up only when a branch, tag or worktree HEAD moved. The commit list and
+  // everything else that depends on refs reloads on this, not on every file change.
+  const [refsTick, setRefsTick] = useState(0);
+  const refsKey = useRef<string | null>(null);
   const [wtCommit, setWtCommit] = useState<string | null>(null); // selected commit while on a worktree
   const [firstId, setFirstId] = useState<string | null>(null); // newest commit, shown by default on the repo page
   // null = not chosen yet: show uncommitted changes if there are any, else the newest commit.
@@ -59,9 +63,13 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
 
   const refresh = useCallback(async () => {
     try {
+      const show = (next: OverviewData) => {
+        setData(next);
+        if (!next.refs_key || next.refs_key !== refsKey.current) { refsKey.current = next.refs_key ?? null; setRefsTick((t) => t + 1); }
+      };
       // First load: show branches and worktrees at once, then fill in changes.
-      if (!loadedRef.current) { setData(await api.overview(root, true)); loadedRef.current = true; setTick((t) => t + 1); }
-      setData(await api.overview(root)); setLoadError(null); setTick((t) => t + 1);
+      if (!loadedRef.current) { show(await api.overview(root, true)); loadedRef.current = true; }
+      show(await api.overview(root)); setLoadError(null); setTick((t) => t + 1);
     }
     catch (e) { setLoadError(String(e)); }
   }, [root]);
@@ -253,7 +261,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
     api.rewriteEditable(root, head).then((ids) => { if (live) setEditable(new Set(ids ?? [])); }).catch(() => { if (live) setEditable(new Set()); });
     api.rewritePushed(root, head).then((ids) => { if (live) setPushed(new Set(ids ?? [])); }).catch(() => { if (live) setPushed(new Set()); });
     return () => { live = false; };
-  }, [root, head, tick]);
+  }, [root, head, refsTick]);
   const [cmp, setCmp] = useState<{ key: string; mergeBase: string | null; ahead: number } | null>(null);
   const cmpKey = canCompare ? `${base}...${head}` : "";
   useEffect(() => {
@@ -261,7 +269,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
     let live = true;
     api.compare(root, base!, head!).then((c) => { if (live) setCmp({ key: cmpKey, mergeBase: c.merge_base, ahead: c.ahead }); }).catch(() => { if (live) setCmp(null); });
     return () => { live = false; };
-  }, [root, cmpKey, tick]);
+  }, [root, cmpKey, refsTick]);
   const cmpNow = cmp?.key === cmpKey ? cmp : null;
   const pickBase = (e: React.MouseEvent) => {
     if (!head) return;
@@ -289,7 +297,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
         />
       )}
       <div style={{ width: side.size }} className="flex shrink-0 flex-col">
-        <RepoSidebar root={root} data={data} current={worktree} currentBranch={branch} onOpenBranch={(name) => navigate({ kind: "branch", root, name })} onOpenRepo={() => navigate({ kind: "repo", root })} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} onCreatePr={setPrFor} prs={prs} prByBranch={prByBranch} overlaps={overlaps} />
+        <RepoSidebar root={root} data={data} current={worktree} currentBranch={branch} onOpenBranch={(name) => navigate({ kind: "branch", root, name })} onOpenRepo={() => navigate({ kind: "repo", root })} onRefresh={refresh} onOpenWorktree={(path) => navigate({ kind: "worktree", root, path })} onCreatePr={setPrFor} refreshKey={refsTick} prs={prs} prByBranch={prByBranch} overlaps={overlaps} />
       </div>
       <SplitHandle axis="x" onMouseDown={side.start} handleRef={side.handle} />
     <div ref={split.box} className="flex min-h-0 min-w-0 grow flex-col">
@@ -322,7 +330,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
           prByBranch={prByBranch}
           detachedDots={detachedDots}
           heads={heads}
-          refreshKey={tick}
+          refreshKey={refsTick}
         />
       </div>
       <SplitHandle axis="y" onMouseDown={split.start} handleRef={split.handle} />

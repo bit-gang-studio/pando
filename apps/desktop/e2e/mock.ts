@@ -26,7 +26,8 @@ export async function mockTauri(page: Page, handlers: Handlers) {
     const reply = async (cmd: string, args: Record<string, unknown>): Promise<unknown> => {
       const all = w.__handlers as Handlers;
       let r = all[cmd] as Reply;
-      if (r && typeof r === "object" && "$by" in r) {
+      // A choice can lead to another choice (by skip, then by limit).
+      while (r && typeof r === "object" && "$by" in r) {
         const b = r as { $by: string; cases: Record<string, unknown>; otherwise?: unknown };
         const key = String(args?.[b.$by]);
         r = key in b.cases ? b.cases[key] : b.otherwise;

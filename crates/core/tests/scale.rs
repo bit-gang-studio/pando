@@ -185,3 +185,98 @@ fn the_first_screen_stays_fast_with_many_branches_and_a_long_history() {
     // Generous, so a slow CI machine passes and a return to that doesn't.
     assert!(took.as_secs_f32() < 6.0, "overview took {took:?}");
 }
+
+#[test]
+fn merged_means_the_worktree_can_go_so_never_with_uncommitted_changes() {
+    let r = repo();
+    // Never worked on; main is about to move past it.
+    let idle = add_worktree(&r, "feat/idle", "work-idle");
+    // Squash-merged into main: everything on it is in the base.
+    let done = add_worktree(&r, "feat/done", "work-done");
+    commit(&done, "done.txt", "d\n");
+    git(&r.root, &["merge", "-q", "--squash", "feat/done"]);
+    git(&r.root, &["commit", "-q", "-m", "Squash feat/done"]);
+    // The same, but with work that isn't committed.
+    let busy = r.base.join("work-busy");
+    git(
+        &r.root,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "feat/busy",
+            busy.to_str().unwrap(),
+            "feat/idle",
+        ],
+    );
+    write(&busy, "wip.txt", "not in main\n");
+    let also_busy = r.base.join("work-also-busy");
+    git(
+        &r.root,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "feat/also-busy",
+            also_busy.to_str().unwrap(),
+            "feat/done",
+        ],
+    );
+    write(&also_busy, "done.txt", "edited after the merge\n");
+
+    let merged = |o: &overview::Overview, n: &str| row(o, n).merged;
+    let o = overview::load(&r.core()).unwrap();
+    assert!(merged(&o, "feat/done"));
+    assert!(merged(&o, "feat/idle"));
+    assert!(!merged(&o, "feat/busy"), "an untracked file isn't in main");
+    assert!(!merged(&o, "feat/also-busy"), "an edit isn't in main");
+    // Once the work is gone or committed elsewhere, it counts again.
+    std::fs::remove_file(busy.join("wip.txt")).unwrap();
+    assert!(merged(&overview::load(&r.core()).unwrap(), "feat/busy"));
+    let _ = idle;
+    // The quick load has no status, so it never says merged.
+    assert!(!merged(
+        &overview::load_quick(&r.core()).unwrap(),
+        "feat/done"
+    ));
+}
+
+#[test]
+fn refs_key_changes_when_refs_move_and_only_then() {
+    let r = repo();
+    let wt = add_worktree(&r, "feat/x", "work-feat-x");
+    let key = || overview::load_quick(&r.core()).unwrap().refs_key;
+    let k0 = key();
+    assert_eq!(k0.len(), 16);
+    // File changes, staged or not, and a second load: the same key.
+    write(&wt, "wip.txt", "x\n");
+    write(&r.root, "README.md", "edited\n");
+    git(&wt, &["add", "wip.txt"]);
+    assert_eq!(key(), k0);
+    assert_eq!(overview::load(&r.core()).unwrap().refs_key, k0);
+    // Each of these moves a ref or a HEAD: a new key every time.
+    let mut seen = vec![k0];
+    let mut moved = |what: &str| {
+        let k = key();
+        assert!(!seen.contains(&k), "{what} didn't change the key");
+        seen.push(k);
+    };
+    git(&wt, &["commit", "-q", "-m", "work"]);
+    moved("a commit");
+    git(&r.root, &["tag", "v1"]);
+    moved("a tag");
+    git(&r.root, &["stash", "-q"]);
+    moved("a stash");
+    git(&r.root, &["branch", "other"]);
+    moved("a new branch");
+    git(&wt, &["switch", "-q", "--detach"]);
+    moved("detaching a worktree");
+    git(&wt, &["switch", "-q", "other"]);
+    moved("switching a worktree's branch");
+    git(&r.root, &["push", "-q", "origin", "feat/x"]);
+    moved("a push (the remote branch appears)");
+    git(&r.root, &["branch", "-q", "-D", "feat/x"]);
+    moved("deleting a branch");
+}

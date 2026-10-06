@@ -55,6 +55,11 @@ pub struct Overview {
     /// When the repo last fetched (unix seconds), from FETCH_HEAD.
     #[serde(default)]
     pub fetched_at: Option<i64>,
+    /// Changes whenever any branch, tag, stash, backup or worktree HEAD moves.
+    /// While it stays the same, the commit list has nothing new to show, so a
+    /// screen can skip reloading it when only files changed.
+    #[serde(default)]
+    pub refs_key: String,
 }
 
 pub fn load(repo: &Repo) -> Result<Overview> {
@@ -80,6 +85,7 @@ fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
         .and_then(|b| g.rev_parse_single(b).ok())
         .map(|id| id.detach());
     let all_worktrees = worktree::list(repo)?;
+    let refs_key = refs_key(repo, &all_worktrees);
     // `git status` is the slow part on big repos. Run one per worktree, all at once.
     let statuses: HashMap<PathBuf, Summary> = std::thread::scope(|s| {
         let jobs: Vec<_> = all_worktrees
@@ -137,9 +143,12 @@ fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
                     already_in_base(repo, &lid.to_string(), &b.tip, ahead)
                 })
         };
+        // Not with uncommitted changes: "merged" says the worktree can go,
+        // and that work isn't in the base.
         let merged = with_status
             && wt.is_some()
             && !is_main
+            && st.is_some_and(|s| s.is_clean())
             && (base_id
                 .is_some_and(|bid| already_in_base(repo, &bid.to_string(), &b.tip, ahead_of_base))
                 || in_local());
@@ -178,6 +187,7 @@ fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
         status_loaded: with_status,
         compare_base,
         fetched_at: fetched_at(repo),
+        refs_key,
     })
 }
 
@@ -204,6 +214,21 @@ fn already_in_base(repo: &Repo, base: &str, tip: &str, ahead: Option<u32>) -> bo
         Ok((0, out, _)) => out.lines().next().map(str::trim) == Some(base_tree.as_str()),
         _ => false,
     }
+}
+
+/// A short fingerprint of every ref and every worktree's HEAD.
+fn refs_key(repo: &Repo, worktrees: &[Worktree]) -> String {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    crate::cmd::git_opt(
+        &repo.common_git_dir,
+        ["for-each-ref", "--format=%(objectname) %(refname)"],
+    )
+    .hash(&mut h);
+    for w in worktrees {
+        (&w.path, &w.head, &w.branch).hash(&mut h);
+    }
+    format!("{:016x}", h.finish())
 }
 
 /// FETCH_HEAD is rewritten on every fetch, so its age is the last fetch.
