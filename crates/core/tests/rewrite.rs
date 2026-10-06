@@ -595,6 +595,15 @@ fn unpushed_commits_on_the_local_default_branch_belong_to_it() {
     assert_eq!(rewrite::editable(&core, "main").unwrap(), vec![on_main]);
 }
 
+/// How long one small git call takes on this machine, right now.
+fn git_call_cost(dir: &Path) -> std::time::Duration {
+    let start = std::time::Instant::now();
+    for _ in 0..20 {
+        git(dir, &["rev-parse", "HEAD"]);
+    }
+    start.elapsed() / 20
+}
+
 #[test]
 fn rewording_deep_in_a_long_branch_keeps_every_commit_exact_and_is_quick() {
     let r = repo();
@@ -646,8 +655,15 @@ fn rewording_deep_in_a_long_branch_keeps_every_commit_exact_and_is_quick() {
         "Reworded first"
     );
     assert_eq!(git(&wt, &["status", "--porcelain"]), "");
-    // Four git calls per commit took 8 seconds here; one does it in about 2.
-    assert!(took.as_secs_f32() < 6.0, "reword took {took:?}");
+    // One git call per commit, plus a few. It used to be five per commit.
+    // Measured against this machine's own speed at starting git, because a
+    // fixed number of seconds fails on a slow CI machine and proves nothing
+    // on a fast one.
+    let per_call = git_call_cost(&wt);
+    assert!(
+        took < per_call * (120 * 3),
+        "reword took {took:?}; a git call costs {per_call:?} here, so that's more than 3 per commit"
+    );
     // Squashing the lot is one call to list them, not one per commit.
     let (older, newer) = (
         git(&wt, &["rev-parse", "HEAD~119"]),
@@ -656,9 +672,10 @@ fn rewording_deep_in_a_long_branch_keeps_every_commit_exact_and_is_quick() {
     let tree = git(&wt, &["rev-parse", "HEAD^{tree}"]);
     let start = std::time::Instant::now();
     rewrite::squash(&r.core(), "feat/long", &older, &newer, "All").unwrap();
+    // A handful of calls in all, where it used to be one per commit (120).
     assert!(
-        start.elapsed().as_secs_f32() < 3.0,
-        "squash took {:?}",
+        start.elapsed() < per_call * 60,
+        "squash took {:?}; a git call costs {per_call:?} here",
         start.elapsed()
     );
     assert_eq!(git(&wt, &["rev-list", "--count", "origin/main..HEAD"]), "1");
