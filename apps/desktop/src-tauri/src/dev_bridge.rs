@@ -96,6 +96,10 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
         "commit_revert" => {
             out(super::commit_revert(arg(&a, "root")?, arg(&a, "worktree")?, arg(&a, "id")?).await)
         }
+        "tag_list" => out(super::tag_list(arg(&a, "root")?).await),
+        "tag_restore" => {
+            out(super::tag_restore(arg(&a, "root")?, arg(&a, "name")?, arg(&a, "object")?).await)
+        }
         "tag_delete" => out(super::tag_delete(arg(&a, "root")?, arg(&a, "name")?).await),
         "tag_push" => out(super::tag_push(arg(&a, "root")?, arg(&a, "name")?).await),
         "remote_repos" => Ok(Value::Null),

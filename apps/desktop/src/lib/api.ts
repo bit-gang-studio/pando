@@ -100,6 +100,7 @@ export type NewPullRequest = { branch: string; base: string; title: string; body
 export type PullRequests = { state: "ok"; prs: PullRequest[] } | { state: "no_gh" } | { state: "signed_out" } | { state: "not_git_hub" };
 export type Overlap = { a: string; b: string; files: string[] };
 export type Removed = { path: string; branch: string | null; head: string | null; snapshot: string | null };
+export type Tag = { name: string; target: string; object: string; annotated: boolean; time: number; summary: string };
 export type BackupKind = "branch" | "discard" | "remove_worktree" | "restore" | "stash";
 export type Backup = { refname: string; kind: BackupKind; branch: string | null; id: string; time: number; files: string[]; branch_exists: boolean };
 
@@ -138,6 +139,8 @@ export const api = {
   revert: (root: string, worktree: string, id: string) => invoke<Applied>("commit_revert", { root, worktree, id }),
   tagCreate: (root: string, name: string, target: string, message: string | null, push: boolean) => invoke<void>("tag_create", { root, name, target, message, push }),
   tagDelete: (root: string, name: string) => invoke<void>("tag_delete", { root, name }),
+  tagList: (root: string) => invoke<Tag[]>("tag_list", { root }),
+  tagRestore: (root: string, name: string, object: string) => invoke<void>("tag_restore", { root, name, object }),
   tagPush: (root: string, name: string) => invoke<void>("tag_push", { root, name }),
   remoteRepos: () => invoke<RemoteRepo[] | null>("remote_repos"),
   repoClone: (source: string, parent: string) => invoke<UserConfig>("repo_clone", { source, parent }),

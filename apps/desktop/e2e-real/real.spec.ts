@@ -547,3 +547,21 @@ test("switch a real linked worktree to another branch, keep its changes, and Und
   expect(git(wt, "branch --show-current")).toBe("feat/dirty");
   expect(execSync(`cat "${wt}/wip.txt"`, { encoding: "utf8" })).toBe("precious\n");
 });
+
+test("the Tags section lists the real tag; delete it, Undo brings it back", async ({ page }) => {
+  const at = git(ROOT, "rev-parse v1");
+  await repoPage(page);
+  await sidebar(page).getByRole("button", { name: /TAGS/ }).click();
+  const row = sidebar(page).locator("div.group", { hasText: "v1" }).filter({ hasText: at.slice(0, 7) });
+  await expect(row).toBeVisible();
+  await row.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Delete tag…" }).click();
+  await page.getByRole("alertdialog").getByRole("button", { name: "Delete tag" }).click();
+  await expect(toast(page, "Deleted tag v1")).toBeVisible();
+  expect(gitOk(ROOT, "rev-parse --verify -q refs/tags/v1")).toBe(false);
+  await expect(sidebar(page).getByText("TAGS")).toHaveCount(0, { timeout: 10_000 });
+  await toast(page, "Deleted tag v1").getByRole("button", { name: "Undo" }).click();
+  await expect(toast(page, "Undone")).toBeVisible();
+  expect(git(ROOT, "rev-parse v1")).toBe(at);
+  await expect(sidebar(page).getByRole("button", { name: /TAGS/ })).toBeVisible({ timeout: 10_000 });
+});

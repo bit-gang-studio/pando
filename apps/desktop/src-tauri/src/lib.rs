@@ -288,6 +288,17 @@ async fn commit_revert(root: PathBuf, worktree: PathBuf, id: String) -> R<Applie
 }
 
 #[tauri::command]
+async fn tag_list(root: PathBuf) -> R<Vec<tag::Tag>> {
+    blocking(move || tag::list(&repo(&root)?).map_err(err)).await
+}
+
+/// Undo a tag delete: point it back at what it held.
+#[tauri::command]
+async fn tag_restore(root: PathBuf, name: String, object: String) -> R<()> {
+    blocking(move || tag::restore(&repo(&root)?, &name, &object).map_err(err)).await
+}
+
+#[tauri::command]
 async fn tag_delete(root: PathBuf, name: String) -> R<()> {
     blocking(move || tag::delete(&repo(&root)?, &name).map_err(err)).await
 }
@@ -691,6 +702,8 @@ pub fn run() {
             rewrite_undo,
             tag_create,
             tag_delete,
+            tag_list,
+            tag_restore,
             tag_push,
             remote_repos,
             repo_clone,

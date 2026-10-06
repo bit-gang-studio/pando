@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ago, api, changed, type Branch, type BranchRow, type DetachedRow, type Overview as OverviewData, type Backup, type PullRequest, type RemoteBranch, type Stash, type Summary, type Worktree } from "../lib/api";
+import { ago, api, changed, type Branch, type BranchRow, type DetachedRow, type Overview as OverviewData, type Backup, type PullRequest, type RemoteBranch, type Stash, type Summary, type Tag, type Worktree } from "../lib/api";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { MoreButton } from "../ui/MoreButton";
@@ -38,6 +38,8 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     return n;
   });
   const [remoteQuery, setRemoteQuery] = useState("");
+  const [tags, setTags] = useState<Tag[]>([]);
+  const [tagQuery, setTagQuery] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [stashes, setStashes] = useState<Stash[]>([]);
 
@@ -48,6 +50,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const editors = useEditors();
   const [backups, setBackups] = useState<Backup[]>([]);
   useEffect(() => { api.backupsList(root).then((b) => setBackups(b ?? [])).catch(() => setBackups([])); }, [root, reloadOn]);
+  useEffect(() => { api.tagList(root).then((t) => setTags(t ?? [])).catch(() => setTags([])); }, [root, reloadOn]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -239,6 +242,17 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     });
     if (a.ok) await run("Restoring…", "Restored files", () => api.backupRestoreFiles(root, b.refname, a.choice));
   }
+  const showTag = (t: Tag) => navigate({ kind: "commit", root, id: t.target });
+  const tagMenu = (e: React.MouseEvent, t: Tag) => show(e, [
+    { label: "Show commit", onClick: () => showTag(t) },
+    { label: "Copy tag name", onClick: () => navigator.clipboard.writeText(t.name) },
+    { label: "Push tag", onClick: () => run(`Pushing ${t.name}…`, `Pushed ${t.name}`, () => api.tagPush(root, t.name)) },
+    sep,
+    { label: "Delete tag…", danger: true, onClick: async () => {
+      const a = await confirm({ title: "Delete tag", body: <>Delete <span className="font-mono">{t.name}</span> here? It stays on the remote if it was pushed. You can undo this.</>, action: "Delete tag", danger: true });
+      if (a.ok) await run(`Deleting ${t.name}…`, `Deleted tag ${t.name}`, () => api.tagDelete(root, t.name), () => () => api.tagRestore(root, t.name, t.object));
+    } },
+  ]);
   const backupMenu = (e: React.MouseEvent, b: Backup) => show(e, [
     { label: b.kind === "branch" ? "Restore branch…" : "Restore files…", onClick: () => restoreBackup(b) },
     { label: "Show commit", onClick: () => navigate({ kind: "commit", root, id: b.id }) },
@@ -285,6 +299,9 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const remote = data?.remote_only ?? [];
   const q = remoteQuery.trim().toLowerCase();
   const remoteShown = q ? remote.filter((r) => r.name.toLowerCase().includes(q)) : remote.slice(0, 8);
+
+  const tq = tagQuery.trim().toLowerCase();
+  const tagsShown = tq ? tags.filter((t) => t.name.toLowerCase().includes(tq)).slice(0, 50) : tags.slice(0, 8);
 
   const head = (key: string, title: string, count: string) => (
     <button onClick={() => toggle(key)} className="mt-2 flex items-baseline gap-2 border-t border-stone-200 px-3 pb-1 pt-2.5 text-left dark:border-stone-700">
@@ -424,6 +441,27 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
           ))}
           {!q && remote.length > 8 && <div className="px-3 py-1 text-label text-stone-500">Showing 8 of {remote.length}. Type to search.</div>}
           {q && remoteShown.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No match.</div>}
+        </>
+      )}
+      {tags.length > 0 && head("tags", "TAGS", String(tags.length))}
+      {tags.length > 0 && open.tags && (
+        <>
+          {tags.length > 8 && (
+            <div className="px-3 pb-1">
+              <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder="Search" aria-label="Search tags" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-label dark:border-stone-600 dark:bg-stone-700" />
+            </div>
+          )}
+          {tagsShown.map((t) => (
+            <div key={t.name} onClick={() => showTag(t)} onContextMenu={(e) => tagMenu(e, t)} title={t.summary} className="group flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+              <div className="min-w-0 grow">
+                <div className="truncate font-mono text-body">{t.name}</div>
+                <div className="truncate text-label text-stone-500">{t.target.slice(0, 7)}{t.time ? ` · ${ago(t.time)}` : ""}{t.summary ? ` · ${t.summary}` : ""}</div>
+              </div>
+              <MoreButton onOpen={(e) => tagMenu(e, t)} label={`Actions for tag ${t.name}`} />
+            </div>
+          ))}
+          {!tq && tags.length > 8 && <div className="px-3 py-1 text-label text-stone-500">Showing the newest 8 of {tags.length}. Type to search.</div>}
+          {tq && tagsShown.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No match.</div>}
         </>
       )}
       {backups.length > 0 && head("backups", "BACKUPS", String(backups.length))}

@@ -88,6 +88,11 @@ fn matters(git_dir: &Path, roots: &[PathBuf], batch: Vec<PathBuf>) -> bool {
             continue;
         };
         let rel = p.strip_prefix(root).unwrap_or(&p).to_path_buf();
+        // The worktree's own folder is gone (deleted or moved by hand). The
+        // system may report only this one event for it, not one per file.
+        if rel.as_os_str().is_empty() && !root.exists() {
+            return true;
+        }
         // A linked worktree's `.git` is a file pointing at the git dir; skip it.
         // Git doesn't track folders; a change inside one also reports the file.
         if rel.as_os_str().is_empty() || rel.starts_with(".git") || p.is_dir() {
@@ -179,5 +184,25 @@ mod tests {
         assert!(git_dir_matters(Path::new("refs/heads/main")));
         assert!(git_dir_matters(Path::new("HEAD")));
         assert!(git_dir_matters(Path::new("worktrees/x/index")));
+    }
+
+    #[test]
+    fn a_worktree_folder_that_vanished_matters_even_as_a_single_event() {
+        let tmp = tempfile::tempdir().unwrap();
+        let base = canon(tmp.path());
+        let (git_dir, here, gone) = (base.join("repo/.git"), base.join("here"), base.join("gone"));
+        std::fs::create_dir_all(&git_dir).unwrap();
+        std::fs::create_dir_all(&here).unwrap();
+        let roots = vec![here.clone(), gone.clone()];
+        // macOS can report a deleted folder as one event for the folder itself.
+        assert!(matters(&git_dir, &roots, vec![gone.clone()]));
+        // The same event for a folder that's still there is noise.
+        assert!(!matters(&git_dir, &roots, vec![here.clone()]));
+        // A path outside every root never matters.
+        assert!(!matters(
+            &git_dir,
+            &roots,
+            vec![base.join("elsewhere/file.txt")]
+        ));
     }
 }
