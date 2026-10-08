@@ -40,6 +40,10 @@ export type BranchRow = {
   ahead_of_base: number | null;
   stale: boolean;
   merged: boolean;
+  /** Which base it's already in: origin/main, or the local main. */
+  merged_in?: string | null;
+  /** Commits on the base this branch doesn't have. Only for branches with a worktree. */
+  behind_base?: number | null;
 };
 export type DetachedRow = { worktree: Worktree; is_main_worktree: boolean; status: Summary | null };
 export type Overview = { repo: Repo; base: string | null; branches: BranchRow[]; detached: DetachedRow[]; remote_only: RemoteBranch[]; status_loaded: boolean; compare_base: string | null; fetched_at: number | null; /** Changes when any ref or worktree HEAD moves. */ refs_key?: string };

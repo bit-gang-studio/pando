@@ -12,7 +12,7 @@ const backups: Backup[] = [
 async function open(page: Page, extra: Record<string, unknown> = {}) {
   await mockTauri(page, { ...typical(), backups_list: backups, ...extra });
   await page.goto(repoUrl());
-  await expect(sidebar(page).getByText("WORKTREES")).toBeVisible();
+  await expect(sidebar(page).getByText("WORKTREES", { exact: true })).toBeVisible();
 }
 
 test("no backups, no section", async ({ page }) => {
@@ -48,7 +48,9 @@ test("restore files goes into the worktree you pick", async ({ page }) => {
   await open(page, { backup_restore_files: null });
   await sidebar(page).getByRole("button", { name: /BACKUPS/ }).click();
   await sidebar(page).getByText("Discarded changes").hover();
-  await sidebar(page).getByRole("button", { name: "Restore", exact: true }).click();
+  await expect(sidebar(page).getByRole("button", { name: "Restore", exact: true })).toHaveCount(0);
+  await sidebar(page).getByText("Discarded changes").click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Restore files…" }).click();
   const dlg = page.getByRole("alertdialog");
   await expect(dlg).toContainText("a.ts, b c.ts");
   await dlg.getByRole("combobox").selectOption({ label: "feat/login" });

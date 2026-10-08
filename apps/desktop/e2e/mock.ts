@@ -57,7 +57,8 @@ export async function mockTauri(page: Page, handlers: Handlers) {
           (listeners[args.event as string] ??= []).push(args.handler as number);
           return args.handler;
         }
-        if (cmd.startsWith("plugin:")) return null;
+        // Plugins answer nothing, unless a test says what one returns.
+        if (cmd.startsWith("plugin:") && !(cmd in (w.__handlers as Handlers))) return null;
         return reply(cmd, args);
       },
     };

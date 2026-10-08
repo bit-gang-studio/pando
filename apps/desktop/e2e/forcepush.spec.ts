@@ -28,7 +28,7 @@ function setup(rewritten: boolean, up: [number, number] = [2, 2]) {
 async function open(page: Page, handlers: Record<string, unknown>, url = wtUrl) {
   await mockTauri(page, handlers);
   await page.goto(url);
-  await expect(sidebar(page).getByText("WORKTREES")).toBeVisible();
+  await expect(sidebar(page).getByText("WORKTREES", { exact: true })).toBeVisible();
 }
 
 test("a rewritten branch offers Force push, not Pull, and names what's replaced", async ({ page }) => {

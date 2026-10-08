@@ -13,7 +13,7 @@ const section = (page: Page) => sidebar(page).getByRole("button", { name: /^▸?
 async function open(page: Page, extra: Record<string, unknown> = {}) {
   await mockTauri(page, { ...typical(), tag_list: few, tag_delete: null, tag_push: null, tag_restore: null, ...extra });
   await page.goto(repoUrl());
-  await expect(sidebar(page).getByText("WORKTREES")).toBeVisible();
+  await expect(sidebar(page).getByText("WORKTREES", { exact: true })).toBeVisible();
 }
 
 test("no tags, or a list that failed to load: no section", async ({ page }) => {

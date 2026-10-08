@@ -1,27 +1,26 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ago, api, changed, type Branch, type BranchRow, type DetachedRow, type Overview as OverviewData, type Backup, type PullRequest, type RemoteBranch, type Stash, type Summary, type Tag, type Worktree } from "../lib/api";
 import { openInNewWindow, wantsNewWindow } from "../lib/windows";
+import { BranchPicker, type PickBranch } from "../ui/BranchPicker";
 import { ContextMenu, type MenuItem } from "../ui/ContextMenu";
 import { MoreButton } from "../ui/MoreButton";
 import { navigate } from "../lib/routes";
 import { openEditor, openTerminal, reveal, REVEAL_LABEL, useEditors, useTerminalName } from "../lib/reveal";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { homeDir } from "@tauri-apps/api/path";
 import { prBranch } from "../lib/prs";
 import { ChecksMark, PrBadge } from "../ui/PrBadge";
-import { NewWindowIcon } from "../ui/icons";
 import { MergeDialog } from "../dialogs/MergeDialog";
 import { NewBranchDialog } from "../dialogs/NewBranchDialog";
 import { confirm } from "../ui/Confirm";
 import { toastError, withToast } from "../ui/Toast";
-import { dot, folderHint, worktreeOptions } from "../lib/worktrees";
+import { dot, folderName, tilde, worktreeOptions } from "../lib/worktrees";
 import { overlayOpen } from "../lib/keys";
 import { forcePush } from "../lib/forcePush";
 import type { Overlap } from "../lib/api";
 
 type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; /** Open the Create pull request dialog for a branch. */ onCreatePr?: (branch: string) => void; /** Goes up when a ref moved: stashes and backups reload then. */ refreshKey?: number; prs?: PullRequest[] | null; prByBranch?: Record<string, PullRequest>; overlaps?: Overlap[] };
 
-const small = "h-6 rounded border border-stone-300 bg-white px-1.5 text-label hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700 dark:hover:bg-stone-600";
-const iconBtn = "inline-flex h-6 items-center rounded px-1 text-stone-400 hover:bg-stone-200 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-100";
 
 type WtRow = { key: string; label: string; worktree: Worktree; status: Summary | null; branch: BranchRow | null; isMain: boolean; ahead: number | null; stale: boolean; time: number | null };
 
@@ -32,6 +31,75 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const [open, setOpen] = useState<Record<string, boolean>>(() => {
     try { return { ...DEFAULT_OPEN, ...JSON.parse(localStorage.getItem(OPEN_KEY) ?? "{}") }; } catch { return DEFAULT_OPEN; }
   });
+  // The order of the sections, and of the rows inside Worktrees and Branches, is the
+  // user's. Remembered on this computer; the rows per repository.
+  const [order, setOrderState] = useState<SectionKey[]>(loadOrder);
+  const [rowOrder, setRowOrder] = useState<Record<string, string[]>>(() => { try { return JSON.parse(localStorage.getItem(`${ROWS_KEY}:${root}`) ?? "{}") as Record<string, string[]>; } catch { return {}; } });
+  /// The keys showing in each list right now, in order. Filled in on every render.
+  const shownKeys = useRef<Record<string, string[]>>({});
+  const els = useRef<Record<string, HTMLElement | null>>({});
+  const [drag, setDrag] = useState<{ list: string; key: string; over: string | null; after: boolean } | null>(null);
+  const saveOrder = (list: string, next: string[]) => {
+    if (list === "sections") {
+      // Sections that aren't showing keep their place after the ones that are.
+      const all = [...next, ...order.filter((k) => !next.includes(k))] as SectionKey[];
+      setOrderState(all);
+      try { localStorage.setItem(ORDER_KEY, JSON.stringify(all)); } catch { /* not remembered, still moved */ }
+    } else {
+      const all = { ...rowOrder, [list]: next };
+      setRowOrder(all);
+      try { localStorage.setItem(`${ROWS_KEY}:${root}`, JSON.stringify(all)); } catch { /* not remembered, still moved */ }
+    }
+  };
+  /// Move `key` to just before or after `over`, within one list.
+  const place = (list: string, key: string, over: string, after: boolean) => {
+    if (key === over) return;
+    const rest = (shownKeys.current[list] ?? []).filter((k) => k !== key);
+    rest.splice(rest.indexOf(over) + (after ? 1 : 0), 0, key);
+    saveOrder(list, rest);
+  };
+  const nudge = (list: string, key: string, by: -1 | 1) => {
+    const shown = shownKeys.current[list] ?? [];
+    const to = shown[shown.indexOf(key) + by];
+    if (to) place(list, key, to, by === 1);
+  };
+  // Dragged with the mouse, not the browser's own drag and drop: that one is taken by file drops on Windows.
+  const startDrag = (e: React.MouseEvent, list: string, key: string) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    let at: { over: string | null; after: boolean } = { over: null, after: false };
+    const move = (m: MouseEvent) => {
+      at = { over: null, after: false };
+      for (const k of shownKeys.current[list] ?? []) {
+        const r = els.current[`${list}:${k}`]?.getBoundingClientRect();
+        if (r && m.clientY >= r.top && m.clientY < r.bottom && m.clientX >= r.left && m.clientX < r.right) { at = { over: k, after: m.clientY > r.top + r.height / 2 }; break; }
+      }
+      setDrag({ list, key, ...at });
+    };
+    const up = () => {
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
+      setDrag(null);
+      if (at.over) place(list, key, at.over, at.after);
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
+    setDrag({ list, key, over: null, after: false });
+  };
+  /// What a draggable thing needs: where it is, how it looks mid-drag, and its handle.
+  const dragCls = (list: string, key: string) => `relative ${drag?.list === list && drag.over === key && drag.key !== key ? (drag.after ? "shadow-[inset_0_-2px_0_0_var(--color-teal-600)]" : "shadow-[inset_0_2px_0_0_var(--color-teal-600)]") : ""} ${drag?.list === list && drag.key === key ? "opacity-50" : ""}`;
+  const grip = (list: string, key: string, name: string, cls: string, top: number) => (
+    <button onMouseDown={(e) => startDrag(e, list, key)} onKeyDown={(e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); nudge(list, key, e.key === "ArrowUp" ? -1 : 1); } }} onClick={(e) => e.stopPropagation()} title="Drag to move this. Or focus it and press ↑ or ↓." aria-label={`Move ${name}`} style={{ top }} className={`absolute left-0 z-[1] flex h-5 w-3 cursor-grab items-center justify-center text-label leading-none text-stone-300 hover:text-stone-600 focus:opacity-100 active:cursor-grabbing dark:text-stone-600 dark:hover:text-stone-300 ${cls}`}>⋮⋮</button>
+  );
+  /// `items` in the user's order: the ones they've placed first, new ones after, as they came.
+  const inOrder = <T,>(list: string, items: T[], keyOf: (t: T) => string): T[] => {
+    const saved = rowOrder[list] ?? [];
+    const at = (t: T) => { const i = saved.indexOf(keyOf(t)); return i < 0 ? Infinity : i; };
+    const out = items.map((t, i) => ({ t, i })).sort((a, b) => at(a.t) - at(b.t) || a.i - b.i).map((x) => x.t);
+    shownKeys.current[list] = out.map(keyOf);
+    return out;
+  };
   const toggle = (k: string) => setOpen((o) => {
     const n = { ...o, [k]: !o[k] };
     try { localStorage.setItem(OPEN_KEY, JSON.stringify(n)); } catch { /* ignore */ }
@@ -41,6 +109,9 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const [tags, setTags] = useState<Tag[]>([]);
   const [tagQuery, setTagQuery] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
+  const [picking, setPicking] = useState<{ x: number; y: number; row: WtRow } | null>(null);
+  const [home, setHome] = useState("");
+  useEffect(() => { homeDir().then((h) => { if (typeof h === "string") setHome(h); }).catch(() => {}); }, []);
   const [stashes, setStashes] = useState<Stash[]>([]);
 
   // With a refreshKey, reload when refs moved; without one, on every refresh as before.
@@ -118,10 +189,18 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
       action: "Switch branch",
       select: { label: "Branch", options: free },
     });
-    if (!a.ok) return;
-    const path = row.worktree.path;
-    await run(`Switching to ${a.choice}…`, `Switched ${row.isMain ? "the main worktree" : folder} to ${a.choice}`, () => api.worktreeSwitch(root, path, a.choice), (was) => (was ? () => api.worktreeSwitch(root, path, was) : null));
+    if (a.ok) await switchTo(row, a.choice);
   }
+  async function switchTo(row: WtRow, name: string) {
+    const path = row.worktree.path;
+    await run(`Switching to ${name}…`, `Switched ${row.isMain ? "the main worktree" : folderName(path)} to ${name}`, () => api.worktreeSwitch(root, path, name), (was) => (was ? () => api.worktreeSwitch(root, path, was) : null));
+  }
+  /// Every local branch, for the picker on a worktree's row. One that's in a
+  /// worktree can't be picked, and says which.
+  const pickable = (row: WtRow): PickBranch[] => (data?.branches ?? []).map((b) => ({
+    name: b.branch.name,
+    where: !b.worktree ? undefined : b.worktree.path === row.worktree.path ? "checked out here" : `in ${folderName(b.worktree.path)}`,
+  }));
   async function createHere(row: WtRow) {
     const a = await confirm({ title: "Create branch", body: <>Create a branch at <span className="font-mono">{row.worktree.head?.slice(0, 7)}</span> and switch this worktree to it.</>, action: "Create branch", input: { label: "Branch name", placeholder: "feat/my-change", mono: true } });
     if (a.ok) await run("Creating branch…", `Created ${a.value}`, () => api.branchCreateAndSwitch(row.worktree.path, a.value));
@@ -289,13 +368,21 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     { label: "Drop…", onClick: () => dropStash(st), danger: true },
   ]);
 
+  // What branches are compared to: origin/<default> when there's a remote, else the local default branch.
+  const base = data?.compare_base ?? data?.base ?? "the base";
+  // A base that isn't one of the local branches is a remote one: "origin/main".
+  const remoteBase = !!data?.compare_base && !data.branches.some((b) => b.branch.name === data.compare_base);
+  /// The local branch that goes with the base: "main" for "origin/main".
+  const baseLocal = remoteBase ? base.split("/").slice(1).join("/") : base;
+  const hasRemote = remoteBase || (data?.remote_only.length ?? 0) > 0 || !!data?.branches.some((b) => b.branch.upstream);
   const rows: WtRow[] = [];
   const labelFor = (path: string) => rows.find((w) => w.worktree.path === path)?.label ?? path.split(/[/\\]/).pop() ?? path;
   for (const d of data?.detached ?? []) if (d.is_main_worktree) rows.push(detachedRow(d));
   for (const b of data?.branches ?? []) if (b.worktree) rows.push({ key: b.branch.name, label: b.branch.name, worktree: b.worktree, status: b.status, branch: b, isMain: b.is_main_worktree, ahead: b.ahead_of_base, stale: b.stale, time: b.branch.last_commit?.time ?? null });
   for (const d of data?.detached ?? []) if (!d.is_main_worktree) rows.push(detachedRow(d));
 
-  const without = data?.branches.filter((r) => !r.worktree) ?? [];
+  const without = inOrder("branches", data?.branches.filter((r) => !r.worktree) ?? [], (r) => r.branch.name);
+  const wtRows = inOrder("worktrees", rows, (r) => r.worktree.path);
   const remote = data?.remote_only ?? [];
   const q = remoteQuery.trim().toLowerCase();
   const remoteShown = q ? remote.filter((r) => r.name.toLowerCase().includes(q)) : remote.slice(0, 8);
@@ -304,16 +391,191 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const tagsShown = tq ? tags.filter((t) => t.name.toLowerCase().includes(tq)).slice(0, 50) : tags.slice(0, 8);
 
   const head = (key: string, title: string, count: string) => (
-    <button onClick={() => toggle(key)} className="mt-2 flex items-baseline gap-2 border-t border-stone-200 px-3 pb-1 pt-2.5 text-left dark:border-stone-700">
+    <button onClick={() => toggle(key)} className="mt-2 flex w-full items-baseline gap-2 border-t border-stone-200 px-3 pb-1 pt-2.5 text-left dark:border-stone-700">
       <span className="w-2.5 text-label text-stone-400">{open[key] ? "▾" : "▸"}</span>
       <span className="text-label font-semibold tracking-wider text-stone-500">{title}</span>
       <span className="truncate text-label text-stone-400">{count}</span>
     </button>
   );
 
+  // Each section, by key. The order they show in is the user's: see `order`.
+  const parts: Record<SectionKey, React.ReactNode> = {
+    all: true ? (<>
+          <button onClick={onOpenRepo} className={`mt-1 flex w-full items-start gap-2 whitespace-normal! border-t border-stone-200 px-3 py-2 text-left dark:border-stone-700 ${current === null && currentBranch === null ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
+            <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full border-2 border-stone-400" />
+            <span className="min-w-0 grow">
+              <span className="block text-body font-medium">All branches</span>
+              <span className="block text-label font-normal text-stone-500">every branch in this repository, checked out or not, local and remote</span>
+            </span>
+          </button>
+    </>) : null,
+    base: !!data?.compare_base ? (<>
+          {data?.compare_base && (
+            <section aria-label="Base">
+              {head("base", "BASE", open.base ? "" : base)}
+              {open.base && <button onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: base }) : onOpenBranch(base))} title={`Show ${base}'s commits`} className={`block w-full whitespace-normal! px-3 py-1.5 pl-[30px] text-left ${currentBranch === base ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
+                <span className="block truncate font-mono text-body font-medium">{base}</span>
+                <span className="block text-label text-stone-500">
+                  {remoteBase
+                    ? <>The remote's <span className="font-mono">{baseLocal}</span>, as of your last fetch. Every branch here is compared to it.</>
+                    : <>Your local <span className="font-mono">{base}</span> branch. There's no remote copy of it, so every branch here is compared to it.</>}
+                </span>
+              </button>}
+            </section>
+          )}
+    </>) : null,
+    worktrees: true ? (<>
+          {head("worktrees", "WORKTREES", data ? String(rows.length) : "…")}
+          {open.worktrees && wtRows.map((r) => {
+            const n = changed(r.status);
+            const conflicts = r.status?.conflicts ?? 0;
+            const pending = !data?.status_loaded && !r.worktree.prunable;
+            const { cls: dotCls, tip: dotTip } = dot({ status: r.status, missing: !!r.worktree.prunable, isMain: r.isMain, loaded: !!data?.status_loaded });
+            return (
+              <div key={r.key} ref={(el) => { els.current[`worktrees:${r.worktree.path}`] = el; }} onClick={(e) => openRow(e, r.worktree.path)} onContextMenu={(e) => rowMenu(e, r)} title={r.worktree.path} className={`group flex cursor-pointer items-start gap-2 px-3 py-1.5 ${dragCls("worktrees", r.worktree.path)} ${current === r.worktree.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
+                {grip("worktrees", r.worktree.path, folderName(r.worktree.path), "opacity-0 group-hover:opacity-100", 6)}
+                <span title={dotTip} className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dotCls}`} />
+                <div className="min-w-0 grow">
+                  <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body font-medium">{folderName(r.worktree.path)}</span>{r.isMain && <span title={MAIN_WORKTREE} className="shrink-0 cursor-help rounded border border-stone-300 px-1 text-label text-stone-600 dark:border-stone-600 dark:text-stone-300">main worktree</span>}<OverlapMark path={r.worktree.path} overlaps={overlaps} labelFor={labelFor} /></div>
+                  <div data-path className="truncate font-mono text-label text-stone-500">{tilde(r.worktree.path, home)}</div>
+                  <Todo about="folder" items={[
+                    pending ? { text: "checking…" } : r.worktree.prunable ? { text: "folder missing", tone: "bad" } : conflicts ? { text: count(conflicts, "file", "with conflicts"), tone: "bad", tip: "A merge or rebase stopped here. Open the worktree to resolve them." } : n > 0 ? { text: count(n, "file", "to commit"), tip: `${count(n, "file")} edited in this folder and not committed yet.` } : null,
+                  ]} />
+                  <div className="flex items-center gap-1.5 text-label text-stone-500">
+                    {r.worktree.prunable
+                      ? <span className="truncate">{r.branch ? <>on <span className="font-mono text-stone-800 dark:text-stone-100">{r.label}</span></> : <span title={NO_BRANCH}>no branch · commit <span className="font-mono">{r.worktree.head?.slice(0, 7) ?? "?"}</span> checked out</span>}</span>
+                      : <button onClick={(e) => { e.stopPropagation(); const at = e.currentTarget.getBoundingClientRect(); setPicking({ x: at.left, y: at.bottom + 2, row: r }); }} disabled={!!busy} aria-haspopup="dialog" aria-label={`Switch branch in ${folderName(r.worktree.path)}`} title="Switch this worktree to another branch" className="flex min-w-0 items-center gap-1 rounded hover:text-stone-900 dark:hover:text-white">
+                          <span className="truncate">{r.branch ? <>on <span className="font-mono text-stone-800 dark:text-stone-100">{r.label}</span></> : <span title={NO_BRANCH}>no branch · commit <span className="font-mono">{r.worktree.head?.slice(0, 7) ?? "?"}</span> checked out</span>}</span><span className="shrink-0 text-label text-stone-400">▾</span>
+                        </button>}
+                    {prByBranch[r.label] && <PrBadge pr={prByBranch[r.label]} />}
+                  </div>
+                  <Todo about="branch" items={r.branch ? [
+                    ...syncTodo(r.branch.branch, hasRemote),
+                    ...(r.branch.branch.name === baseLocal ? [] : baseTodo(r.branch, base)),
+                  ] : []} />
+                </div>
+                <MoreButton onOpen={(e) => rowMenu(e, r)} label={`Actions for ${r.label}`} />
+              </div>
+            );
+          })}
+    </>) : null,
+    branches: true ? (<>
+          {head("branches", "BRANCHES", data ? `${without.length} without a worktree` : "")}
+          {open.branches && without.map((r) => (
+            <div key={r.branch.name} ref={(el) => { els.current[`branches:${r.branch.name}`] = el; }} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.branch.name }) : onOpenBranch(r.branch.name))} onContextMenu={(e) => branchMenu(e, r)} title={r.branch.last_commit?.summary} className={`group flex cursor-pointer items-start gap-2 px-3 py-1.5 ${dragCls("branches", r.branch.name)} ${currentBranch === r.branch.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
+              {grip("branches", r.branch.name, r.branch.name, "opacity-0 group-hover:opacity-100", 6)}
+              <div className="min-w-0 grow">
+                <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body font-medium">{r.branch.name}</span>{prByBranch[r.branch.name] && <PrBadge pr={prByBranch[r.branch.name]} />}</div>
+                <Todo about="branch" items={[...syncTodo(r.branch, hasRemote), ...(r.branch.name === baseLocal ? [] : baseTodo(r, base))]} />
+              </div>
+              <MoreButton onOpen={(e) => branchMenu(e, r)} label={`Actions for ${r.branch.name}`} />
+            </div>
+          ))}
+          {open.branches && data && without.length === 0 && <div className="px-3 py-1 text-label text-stone-500">Every local branch has a worktree.</div>}
+    </>) : null,
+    prs: !!prs ? (<>
+          {prs && head("prs", "PULL REQUESTS", String(prs.length))}
+          {prs && open.prs && prs.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No open pull requests.</div>}
+          {prs && open.prs && prs.map((pr) => {
+            const wtRow = rows.find((w) => w.branch?.branch.name === prBranch(pr));
+            const see = (e: React.MouseEvent) => {
+              if (wtRow) openRow(e, wtRow.worktree.path);
+              else if (!pr.from_fork) onOpenBranch(`origin/${pr.head}`);
+              else openUrl(pr.url).catch(toastError);
+            };
+            return (
+              <div key={pr.number} onClick={see} onContextMenu={(e) => prMenu(e, pr, wtRow?.worktree.path)} title={`${pr.title}\n${pr.url}`} className="group flex cursor-pointer items-start gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+                {wtRow ? <span title="Has a worktree" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot({ status: wtRow.status, missing: !!wtRow.worktree.prunable, isMain: wtRow.isMain, loaded: !!data?.status_loaded }).cls}`} /> : null}
+                <div className="min-w-0 grow">
+                  <div className="flex items-baseline gap-1.5"><span className="shrink-0 font-mono text-label text-stone-500">#{pr.number}</span><span className="min-w-0 break-words font-medium">{pr.title}</span></div>
+                  <div className="flex items-center gap-1 truncate text-label text-stone-500">
+                    <ChecksMark checks={pr.checks} />
+                    <span className="truncate">{pr.author}{pr.draft ? " · draft" : ""}{REVIEW[pr.review] ? ` · ${REVIEW[pr.review]}` : ""}{pr.from_fork ? " · from a fork" : ""}</span>
+                  </div>
+                </div>
+                <MoreButton onOpen={(e) => prMenu(e, pr, wtRow?.worktree.path)} label={`Actions for #${pr.number}`} />
+              </div>
+            );
+          })}
+    </>) : null,
+    stashes: stashes.length > 0 ? (<>
+          {stashes.length > 0 && head("stashes", "STASHES", String(stashes.length))}
+          {open.stashes && stashes.map((st) => (
+            <div key={st.index} onContextMenu={(e) => stashMenu(e, st)} title={st.message} className="group flex items-start gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+              <div className="min-w-0 grow">
+                <div className="truncate font-medium">{st.message.replace(/^On [^:]+: /, "").replace(/^WIP on [^:]+: /, "")}</div>
+                <div className="truncate text-label text-stone-500">{st.branch ? `from ${st.branch} · ` : ""}{ago(st.time)}</div>
+              </div>
+              <MoreButton onOpen={(e) => stashMenu(e, st)} label="Stash actions" />
+            </div>
+          ))}
+    </>) : null,
+    remote: true ? (<>
+          {head("remote", "REMOTE BRANCHES", data ? String(remote.length) : "")}
+          {open.remote && (
+            <>
+              <div className="px-3 pb-1">
+                <input value={remoteQuery} onChange={(e) => setRemoteQuery(e.target.value)} placeholder="Search" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-label dark:border-stone-600 dark:bg-stone-700" />
+              </div>
+              {remoteShown.map((r: RemoteBranch) => (
+                <div key={r.name} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.name }) : onOpenBranch(r.name))} onContextMenu={(e) => remoteMenu(e, r)} title={r.last_commit?.summary} className={`group flex cursor-pointer items-start gap-2 px-3 py-1.5 ${currentBranch === r.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
+                  <div className="min-w-0 grow">
+                    <div className="truncate font-mono text-body font-medium">{r.name}</div>
+                    <div className="truncate text-label text-stone-500">{r.last_commit ? `${r.last_commit.author} · ${ago(r.last_commit.time)}` : ""}</div>
+                  </div>
+                  <MoreButton onOpen={(e) => remoteMenu(e, r)} label={`Actions for ${r.name}`} />
+                </div>
+              ))}
+              {!q && remote.length > 8 && <div className="px-3 py-1 text-label text-stone-500">Showing 8 of {remote.length}. Type to search.</div>}
+              {q && remoteShown.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No match.</div>}
+            </>
+          )}
+    </>) : null,
+    tags: tags.length > 0 ? (<>
+          {tags.length > 0 && head("tags", "TAGS", String(tags.length))}
+          {tags.length > 0 && open.tags && (
+            <>
+              {tags.length > 8 && (
+                <div className="px-3 pb-1">
+                  <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder="Search" aria-label="Search tags" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-label dark:border-stone-600 dark:bg-stone-700" />
+                </div>
+              )}
+              {tagsShown.map((t) => (
+                <div key={t.name} onClick={() => showTag(t)} onContextMenu={(e) => tagMenu(e, t)} title={t.summary} className="group flex cursor-pointer items-start gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+                  <div className="min-w-0 grow">
+                    <div className="truncate font-mono text-body font-medium">{t.name}</div>
+                    <div className="truncate text-label text-stone-500">{t.target.slice(0, 7)}{t.time ? ` · ${ago(t.time)}` : ""}{t.summary ? ` · ${t.summary}` : ""}</div>
+                  </div>
+                  <MoreButton onOpen={(e) => tagMenu(e, t)} label={`Actions for tag ${t.name}`} />
+                </div>
+              ))}
+              {!tq && tags.length > 8 && <div className="px-3 py-1 text-label text-stone-500">Showing the newest 8 of {tags.length}. Type to search.</div>}
+              {tq && tagsShown.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No match.</div>}
+            </>
+          )}
+    </>) : null,
+    backups: backups.length > 0 ? (<>
+          {backups.length > 0 && head("backups", "BACKUPS", String(backups.length))}
+          {open.backups && backups.map((b) => (
+            <div key={b.refname} onContextMenu={(e) => backupMenu(e, b)} title={b.files.join("\n") || b.id} className="group flex items-start gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+              <div className="min-w-0 grow">
+                <div className={`truncate font-medium ${b.kind === "branch" ? "font-mono" : ""}`}>{b.kind === "branch" ? b.branch : backupTitle(b)}</div>
+                <div className="truncate text-label text-stone-500">
+                  {b.kind === "branch" ? (b.branch_exists ? "branch before a change" : "deleted branch") : `${b.files.length} ${b.files.length === 1 ? "file" : "files"}`} · {ago(b.time)}
+                </div>
+              </div>
+              <MoreButton onOpen={(e) => backupMenu(e, b)} label={`Actions for backup ${b.branch ?? backupTitle(b)}`} />
+            </div>
+          ))}
+    </>) : null,
+  };
+
+  const shownSections = order.filter((k) => parts[k]);
+  shownKeys.current.sections = shownSections;
   return (
     <aside className="flex min-h-0 flex-col overflow-y-auto bg-stone-50 text-body dark:bg-stone-900">
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
+      {picking && <BranchPicker x={picking.x} y={picking.y} branches={pickable(picking.row)} hint="Uncommitted changes come along if they don't clash." onPick={(name) => switchTo(picking.row, name)} onClose={() => setPicking(null)} />}
       {creating && data && (
         <NewBranchDialog root={root} base={data.base} initialBranch={creating.branch ?? null} remote={creating.remote ?? null} onClose={() => setCreating(null)} onCreated={refresh} />
       )}
@@ -331,150 +593,10 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
         </span>
       </div>
 
-      <button onClick={onOpenRepo} className={`my-1 flex items-center gap-2 px-3 py-1.5 text-left ${current === null && currentBranch === null ? "bg-teal-50 font-medium dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
-        <span className="h-2 w-2 shrink-0 rounded-full border-2 border-stone-400" />
-        <span className="grow text-body">All branches</span>
-        {data && (() => {
-          const n = data.branches.reduce((t, b) => t + changed(b.status), 0) + data.detached.reduce((t, d) => t + changed(d.status), 0);
-          return n > 0 ? <span className="text-label text-amber-700">{n} uncommitted</span> : null;
-        })()}
-      </button>
-
-      {head("worktrees", "WORKTREES", data ? String(rows.length) : "…")}
-      {open.worktrees && rows.map((r) => {
-        const n = changed(r.status);
-        const conflicts = r.status?.conflicts ?? 0;
-        const pending = !data?.status_loaded && !r.worktree.prunable;
-        const { cls: dotCls, tip: dotTip } = dot({ status: r.status, missing: !!r.worktree.prunable, isMain: r.isMain, loaded: !!data?.status_loaded });
-        return (
-          <div key={r.key} onClick={(e) => openRow(e, r.worktree.path)} onContextMenu={(e) => rowMenu(e, r)} title={r.worktree.path} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${current === r.worktree.path ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
-            <span title={dotTip} className={`h-2 w-2 shrink-0 rounded-full ${dotCls}`} />
-            <div className="min-w-0 grow">
-              <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body font-medium">{r.label}</span>{prByBranch[r.label] && <PrBadge pr={prByBranch[r.label]} />}<OverlapMark path={r.worktree.path} overlaps={overlaps} labelFor={labelFor} /></div>
-              <div className="truncate text-label text-stone-500">
-                {r.isMain ? "main worktree" : null}
-                {r.isMain && (pending || r.worktree.prunable || conflicts || n > 0) ? " · " : ""}
-                {pending ? "checking…" : r.worktree.prunable ? "folder missing" : conflicts ? `${conflicts} conflicts` : n > 0 ? `${n} changed` : r.isMain ? "" : "clean"}
-                {!r.isMain && r.branch?.merged ? <> · <span className="text-teal-700" title={`Everything on this branch is already in ${data?.base ?? "the base"}. The worktree can be removed.`}>merged into {data?.base ?? "the base"}</span></> : !r.isMain && r.ahead ? <> · <span title={`${r.ahead} ${r.ahead === 1 ? "commit" : "commits"} on this branch that ${data?.base ?? "the base"} doesn't have`}>{r.ahead} not in {data?.base ?? "base"}</span></> : ""}
-                <SyncCounts b={r.branch?.branch} />
-                {r.stale ? " · stale" : ""}
-                {r.time ? ` · ${ago(r.time)}` : ""}
-                {!r.isMain && folderHint(r.worktree.path, r.worktree.branch) && ` · in ${folderHint(r.worktree.path, r.worktree.branch)}`}
-              </div>
-            </div>
-            <div className="hidden shrink-0 items-center gap-1 group-hover:flex" onClick={(e) => e.stopPropagation()}>
-              {!r.isMain && r.branch && (r.branch.merged
-                ? <button onClick={() => removeWorktree(r)} disabled={!!busy} title="Deletes the folder. The branch stays." className={small}>Remove worktree</button>
-                : <button onClick={() => setMerging(r.branch)} disabled={!!busy} className={`${small} border-teal-700 text-teal-700`}>Merge</button>)}
-              <button onClick={() => openWin(r.worktree.path)} title="Open in new window" aria-label={`Open ${r.label} in new window`} className={iconBtn}><NewWindowIcon /></button>
-            </div>
-            <MoreButton onOpen={(e) => rowMenu(e, r)} label={`Actions for ${r.label}`} />
-          </div>
-        );
-      })}
-
-      {head("branches", "BRANCHES", data ? `${without.length} without a worktree` : "")}
-      {open.branches && without.map((r) => (
-        <div key={r.branch.name} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.branch.name }) : onOpenBranch(r.branch.name))} onContextMenu={(e) => branchMenu(e, r)} title={r.branch.last_commit?.summary} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${currentBranch === r.branch.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
-          <div className="min-w-0 grow">
-            <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body">{r.branch.name}</span>{prByBranch[r.branch.name] && <PrBadge pr={prByBranch[r.branch.name]} />}</div>
-            <div className="truncate text-label text-stone-500">{r.branch.name === data?.base ? "the base" : r.ahead_of_base ? `${r.ahead_of_base} not in ${data?.base ?? "base"}` : `nothing new`}<SyncCounts b={r.branch} />{r.branch.last_commit ? ` · ${ago(r.branch.last_commit.time)}` : ""}</div>
-          </div>
-          <button onClick={(e) => { e.stopPropagation(); setCreating({ branch: r.branch.name }); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
-          <MoreButton onOpen={(e) => branchMenu(e, r)} label={`Actions for ${r.branch.name}`} />
-        </div>
-      ))}
-      {open.branches && data && without.length === 0 && <div className="px-3 py-1 text-label text-stone-500">Every local branch has a worktree.</div>}
-
-      {prs && head("prs", "PULL REQUESTS", String(prs.length))}
-      {prs && open.prs && prs.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No open pull requests.</div>}
-      {prs && open.prs && prs.map((pr) => {
-        const wtRow = rows.find((w) => w.branch?.branch.name === prBranch(pr));
-        const see = (e: React.MouseEvent) => {
-          if (wtRow) openRow(e, wtRow.worktree.path);
-          else if (!pr.from_fork) onOpenBranch(`origin/${pr.head}`);
-          else openUrl(pr.url).catch(toastError);
-        };
-        return (
-          <div key={pr.number} onClick={see} onContextMenu={(e) => prMenu(e, pr, wtRow?.worktree.path)} title={`${pr.title}\n${pr.url}`} className="group flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
-            {wtRow ? <span title="Has a worktree" className={`h-2 w-2 shrink-0 rounded-full ${dot({ status: wtRow.status, missing: !!wtRow.worktree.prunable, isMain: wtRow.isMain, loaded: !!data?.status_loaded }).cls}`} /> : null}
-            <div className="min-w-0 grow">
-              <div className="flex items-center gap-1.5"><span className="shrink-0 font-mono text-label text-stone-500">#{pr.number}</span><span className="truncate">{pr.title}</span></div>
-              <div className="flex items-center gap-1 truncate text-label text-stone-500">
-                <ChecksMark checks={pr.checks} />
-                <span className="truncate">{pr.author}{pr.draft ? " · draft" : ""}{REVIEW[pr.review] ? ` · ${REVIEW[pr.review]}` : ""}{pr.from_fork ? " · from a fork" : ""}</span>
-              </div>
-            </div>
-            {!wtRow && <button onClick={(e) => { e.stopPropagation(); addPrWorktree(pr); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>}
-            <MoreButton onOpen={(e) => prMenu(e, pr, wtRow?.worktree.path)} label={`Actions for #${pr.number}`} />
-          </div>
-        );
-      })}
-
-      {stashes.length > 0 && head("stashes", "STASHES", String(stashes.length))}
-      {open.stashes && stashes.map((st) => (
-        <div key={st.index} onContextMenu={(e) => stashMenu(e, st)} title={st.message} className="group flex items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
-          <div className="min-w-0 grow">
-            <div className="truncate">{st.message.replace(/^On [^:]+: /, "").replace(/^WIP on [^:]+: /, "")}</div>
-            <div className="truncate text-label text-stone-500">{st.branch ? `from ${st.branch} · ` : ""}{ago(st.time)}</div>
-          </div>
-          <button onClick={() => applyStash(st, true)} disabled={!!busy} className={`${small} hidden group-hover:block`}>Pop</button>
-          <MoreButton onOpen={(e) => stashMenu(e, st)} label="Stash actions" />
-        </div>
-      ))}
-
-      {head("remote", "REMOTE BRANCHES", data ? String(remote.length) : "")}
-      {open.remote && (
-        <>
-          <div className="px-3 pb-1">
-            <input value={remoteQuery} onChange={(e) => setRemoteQuery(e.target.value)} placeholder="Search" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-label dark:border-stone-600 dark:bg-stone-700" />
-          </div>
-          {remoteShown.map((r: RemoteBranch) => (
-            <div key={r.name} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.name }) : onOpenBranch(r.name))} onContextMenu={(e) => remoteMenu(e, r)} title={r.last_commit?.summary} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${currentBranch === r.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
-              <div className="min-w-0 grow">
-                <div className="truncate font-mono text-body text-stone-600 dark:text-stone-300">{r.name}</div>
-                <div className="truncate text-label text-stone-500">{r.last_commit ? `${r.last_commit.author} · ${ago(r.last_commit.time)}` : ""}</div>
-              </div>
-              <button onClick={(e) => { e.stopPropagation(); setCreating({ branch: r.short, remote: r.name }); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
-              <MoreButton onOpen={(e) => remoteMenu(e, r)} label={`Actions for ${r.name}`} />
-            </div>
-          ))}
-          {!q && remote.length > 8 && <div className="px-3 py-1 text-label text-stone-500">Showing 8 of {remote.length}. Type to search.</div>}
-          {q && remoteShown.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No match.</div>}
-        </>
-      )}
-      {tags.length > 0 && head("tags", "TAGS", String(tags.length))}
-      {tags.length > 0 && open.tags && (
-        <>
-          {tags.length > 8 && (
-            <div className="px-3 pb-1">
-              <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder="Search" aria-label="Search tags" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-label dark:border-stone-600 dark:bg-stone-700" />
-            </div>
-          )}
-          {tagsShown.map((t) => (
-            <div key={t.name} onClick={() => showTag(t)} onContextMenu={(e) => tagMenu(e, t)} title={t.summary} className="group flex cursor-pointer items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
-              <div className="min-w-0 grow">
-                <div className="truncate font-mono text-body">{t.name}</div>
-                <div className="truncate text-label text-stone-500">{t.target.slice(0, 7)}{t.time ? ` · ${ago(t.time)}` : ""}{t.summary ? ` · ${t.summary}` : ""}</div>
-              </div>
-              <MoreButton onOpen={(e) => tagMenu(e, t)} label={`Actions for tag ${t.name}`} />
-            </div>
-          ))}
-          {!tq && tags.length > 8 && <div className="px-3 py-1 text-label text-stone-500">Showing the newest 8 of {tags.length}. Type to search.</div>}
-          {tq && tagsShown.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No match.</div>}
-        </>
-      )}
-      {backups.length > 0 && head("backups", "BACKUPS", String(backups.length))}
-      {open.backups && backups.map((b) => (
-        <div key={b.refname} onContextMenu={(e) => backupMenu(e, b)} title={b.files.join("\n") || b.id} className="group flex items-center gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
-          <div className="min-w-0 grow">
-            <div className={`truncate ${b.kind === "branch" ? "font-mono" : ""}`}>{b.kind === "branch" ? b.branch : backupTitle(b)}</div>
-            <div className="truncate text-label text-stone-500">
-              {b.kind === "branch" ? (b.branch_exists ? "branch before a change" : "deleted branch") : `${b.files.length} ${b.files.length === 1 ? "file" : "files"}`} · {ago(b.time)}
-            </div>
-          </div>
-          <button onClick={() => restoreBackup(b)} disabled={!!busy} className={`${small} hidden group-hover:block`}>Restore</button>
-          <MoreButton onOpen={(e) => backupMenu(e, b)} label={`Actions for backup ${b.branch ?? backupTitle(b)}`} />
+      {shownSections.map((k) => (
+        <div key={k} ref={(el) => { els.current[`sections:${k}`] = el; }} data-section={k} className={dragCls("sections", k)}>
+          {grip("sections", k, SECTION_NAME[k], "", GRIP_TOP[k])}
+          {parts[k]}
         </div>
       ))}
       <div className="h-4" />
@@ -482,8 +604,25 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   );
 }
 
+const NO_BRANCH = "This folder has a commit checked out, not a branch. Commits made here belong to no branch and are easy to lose. Switch to a branch, or create one here.";
+const MAIN_WORKTREE = "The original folder. It holds the repository itself; the other worktrees are linked to it. It can't be removed. The name has nothing to do with the main branch.";
+type SectionKey = "base" | "worktrees" | "branches" | "all" | "prs" | "remote" | "tags" | "stashes" | "backups";
+const SECTIONS: SectionKey[] = ["base", "worktrees", "branches", "all", "prs", "remote", "tags", "stashes", "backups"];
+const SECTION_NAME: Record<SectionKey, string> = { base: "Base", worktrees: "Worktrees", branches: "Branches", all: "All branches", prs: "Pull requests", remote: "Remote branches", tags: "Tags", stashes: "Stashes", backups: "Backups" };
+/// Where the handle sits, so it lines up with each section's first line.
+const GRIP_TOP: Record<SectionKey, number> = { base: 16, all: 8, worktrees: 16, branches: 16, prs: 16, remote: 16, tags: 16, stashes: 16, backups: 16 };
+const ORDER_KEY = "pando.sidebar.order";
+const ROWS_KEY = "pando.sidebar.rows";
+/// The saved order, with any section it doesn't know put at the end.
+function loadOrder(): SectionKey[] {
+  try {
+    const saved = (JSON.parse(localStorage.getItem(ORDER_KEY) ?? "[]") as unknown[]).filter((k): k is SectionKey => SECTIONS.includes(k as SectionKey));
+    const once = [...new Set(saved)];
+    return [...once, ...SECTIONS.filter((k) => !once.includes(k))];
+  } catch { return SECTIONS; }
+}
 const OPEN_KEY = "pando.sidebar.open";
-const DEFAULT_OPEN: Record<string, boolean> = { worktrees: true, branches: true, prs: true, stashes: true, remote: false, backups: false };
+const DEFAULT_OPEN: Record<string, boolean> = { base: true, worktrees: true, branches: true, prs: true, stashes: true, remote: false, backups: false };
 const REVIEW: Record<string, string> = { APPROVED: "approved", CHANGES_REQUESTED: "changes requested", REVIEW_REQUIRED: "review required" };
 const BACKUP_TITLE: Record<string, string> = {
   discard: "Discarded changes",
@@ -496,14 +635,39 @@ function detachedRow(d: DetachedRow): WtRow {
   return { key: d.worktree.path, label: `detached at ${d.worktree.head?.slice(0, 7) ?? "?"}`, worktree: d.worktree, status: d.status, branch: null, isMain: d.is_main_worktree, ahead: null, stale: false, time: null };
 }
 
-/// " · 2 to push · 1 to pull": against the branch's own copy on the remote.
-function SyncCounts({ b }: { b?: import("../lib/api").Branch }) {
-  if (!b?.upstream) return null;
+type TodoItem = { text: string; tip?: string; tone?: "bad" | "done" | "quiet" } | null;
+const count = (n: number, one: string, then = "") => `${n} ${n === 1 ? one : `${one}s`}${then ? ` ${then}` : ""}`;
+
+/// What's left to do, each piece saying what it counts. Nothing to do: nothing shown.
+/// `about` says what the facts describe: the folder, or the branch checked out in it.
+function Todo({ items, about }: { items: TodoItem[]; about: "folder" | "branch" }) {
+  const shown = items.filter((x): x is NonNullable<TodoItem> => !!x);
+  if (shown.length === 0) return null;
+  const tone = { bad: "text-red-700 dark:text-red-400", done: "text-teal-700 dark:text-teal-400", quiet: "text-stone-400" };
+  return (
+    <div data-todo={about} className="text-label text-stone-500">
+      {shown.map((x, i) => <span key={x.text}>{i > 0 ? " · " : ""}<span title={x.tip} className={`whitespace-nowrap ${x.tone ? tone[x.tone] : ""}`}>{x.text}</span></span>)}
+    </div>
+  );
+}
+
+/// The branch against its own copy on the remote.
+function syncTodo(b: Branch, hasRemote: boolean): TodoItem[] {
+  if (!b.upstream) return hasRemote ? [{ text: "not pushed yet", tip: "This branch is only on this computer. Push to put a copy on the remote." }] : [];
   const up = b.ahead ?? 0, down = b.behind ?? 0;
-  if (!up && !down) return null;
-  if (b.upstream_rewritten) return <span title={`You rewrote commits that are on ${b.upstream}. Force push to update it.`}>{" · "}needs a force push</span>;
-  const tip = [up && `${up} ${up === 1 ? "commit" : "commits"} here that ${b.upstream} doesn't have`, down && `${down} on ${b.upstream} that you don't have here`].filter(Boolean).join("; ");
-  return <span title={tip}>{up ? ` · ${up} to push` : ""}{down ? ` · ${down} to pull` : ""}</span>;
+  if (!up && !down) return [];
+  if (b.upstream_rewritten) return [{ text: "needs a force push", tip: `You rewrote commits that are on ${b.upstream}. Force push to update it.` }];
+  return [
+    up ? { text: count(up, "commit", "to push"), tip: `${count(up, "commit")} here that ${b.upstream} doesn't have.` } : null,
+    down ? { text: count(down, "commit", "to pull"), tip: `${count(down, "commit")} on ${b.upstream} that you don't have here.` } : null,
+  ];
+}
+
+/// The branch against the base.
+function baseTodo(r: BranchRow, base: string): TodoItem[] {
+  const behind = r.behind_base ? [{ text: count(r.behind_base, "commit", `behind ${base}`), tip: `${base} has ${count(r.behind_base, "commit")} that this branch doesn't have.` }] : [];
+  if (r.merged) return [{ text: `already in ${r.merged_in ?? base}`, tone: "done", tip: `Everything on this branch is already in ${r.merged_in ?? base}. Its worktree can be removed.` }, ...behind];
+  return [...(r.ahead_of_base ? [{ text: count(r.ahead_of_base, "commit", `to merge into ${base}`), tip: `${count(r.ahead_of_base, "commit")} on this branch that ${base} doesn't have yet.` }] : []), ...behind];
 }
 
 /// ⚠ when another worktree changes the same files; hover lists them.

@@ -19,12 +19,11 @@ export function worktreeOptions(data: Overview | null) {
   ];
 }
 
-/// Same rule as core's branch_slug: what Pando names a worktree folder after.
-const slug = (branch: string) => branch.toLowerCase().replace(/[^\p{L}\p{N}._]+/gu, "-").replace(/^-+|-+$/g, "");
+/// The worktree's folder name: the last part of its path.
+export const folderName = (path: string) => path.split(/[/\\]/).filter(Boolean).pop() ?? path;
 
-/// The folder's name, when it no longer says which branch is in it
-/// (the branch was switched inside the worktree, or the folder was named by hand).
-export function folderHint(path: string, branch: string | null): string | null {
-  const name = path.split(/[/\\]/).filter(Boolean).pop() ?? path;
-  return branch && name.toLowerCase().includes(slug(branch)) ? null : name;
+/// A path the way a shell shows it: "~" for the home folder.
+export function tilde(path: string, home: string): string {
+  const h = home.replace(/[/\\]+$/, "");
+  return h && (path === h || path.startsWith(`${h}/`) || path.startsWith(`${h}\\`)) ? `~${path.slice(h.length)}` : path;
 }

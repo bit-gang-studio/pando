@@ -9,7 +9,7 @@ const menuItems = (page: Page) => page.getByRole("menuitem").allTextContents();
 async function open(page: Page, handlers: Record<string, unknown> = typical()) {
   await mockTauri(page, handlers);
   await page.goto(repoUrl());
-  await expect(sidebar(page).getByText("WORKTREES")).toBeVisible();
+  await expect(sidebar(page).getByText("WORKTREES", { exact: true })).toBeVisible();
 }
 
 test("every row's ⋯ opens exactly its right-click menu", async ({ page }) => {
@@ -116,14 +116,14 @@ test("a file change elsewhere refreshes the page; another repo's doesn't", async
   o.branches[1] = row("feat/login", { worktree: wt(`${ROOT}-feat-login`, "feat/login"), status: dirty(9) });
   await setReply(page, "overview_load", o);
   await emit(page, "repo-changed", ROOT);
-  await expect(sidebar(page).getByText("9 changed")).toBeVisible();
+  await expect(sidebar(page).getByText("9 files to commit")).toBeVisible();
 });
 
 test("first paint skips status, then fills it in", async ({ page }) => {
   const quick = { ...typical().overview_load, status_loaded: false, branches: typical().overview_load.branches.map((b) => ({ ...b, status: null })) };
   await open(page, { ...typical(), overview_load: { $seq: [quick, { $delay: 800, value: typical().overview_load }] } });
   await expect(sidebar(page).getByText("checking…").first()).toBeVisible();
-  await expect(sidebar(page).getByText("3 changed")).toBeVisible();
+  await expect(sidebar(page).getByText("3 files to commit")).toBeVisible();
   await expect(sidebar(page).getByText("checking…")).toHaveCount(0);
 });
 
@@ -132,7 +132,7 @@ test("folded sections stay folded after a reload", async ({ page }) => {
   await sidebar(page).getByRole("button", { name: /BRANCHES/ }).first().click();
   await expect(sidebar(page).getByText("spike/old")).toBeHidden();
   await page.reload();
-  await expect(sidebar(page).getByText("WORKTREES")).toBeVisible();
+  await expect(sidebar(page).getByText("WORKTREES", { exact: true })).toBeVisible();
   await expect(sidebar(page).getByText("spike/old")).toBeHidden();
 });
 

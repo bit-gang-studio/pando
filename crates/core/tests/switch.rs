@@ -179,3 +179,47 @@ fn a_detached_worktree_can_take_a_branch_and_a_paused_rebase_blocks_it() {
         "work-feat-a has a rebase or merge in progress. Continue or abort it first."
     );
 }
+
+/// How far the base has moved on without a worktree's branch. The base is
+/// origin/main as of the last fetch, not the local main; with no remote it's
+/// the local main.
+#[test]
+fn behind_base_counts_against_origin_main_then_local_main() {
+    let r = repo();
+    let wt = add_worktree(&r, "feat/a", "work-feat-a");
+    commit(&wt, "a.txt", "a\n");
+    git(&r.root, &["branch", "loose"]);
+    let row = |o: &overview::Overview, n: &str| {
+        o.branches
+            .iter()
+            .find(|b| b.branch.name == n)
+            .unwrap()
+            .clone()
+    };
+    let o = overview::load(&r.core()).unwrap();
+    assert_eq!(o.compare_base.as_deref(), Some("origin/main"));
+    assert_eq!(row(&o, "feat/a").behind_base, Some(0));
+
+    // Two commits on local main, not pushed: origin/main hasn't moved.
+    commit(&r.root, "m1.txt", "1\n");
+    commit(&r.root, "m2.txt", "2\n");
+    let o = overview::load(&r.core()).unwrap();
+    assert_eq!(row(&o, "feat/a").behind_base, Some(0));
+    assert_eq!(row(&o, "main").behind_base, Some(0));
+
+    git(&r.root, &["push", "-q", "origin", "main"]);
+    let o = overview::load(&r.core()).unwrap();
+    assert_eq!(row(&o, "feat/a").behind_base, Some(2));
+    assert_eq!(row(&o, "feat/a").ahead_of_base, Some(1));
+    // No worktree: not counted. And never on the quick load.
+    assert_eq!(row(&o, "loose").behind_base, None);
+    let q = overview::load_quick(&r.core()).unwrap();
+    assert_eq!(row(&q, "feat/a").behind_base, None);
+
+    // No remote: the local main is the base.
+    commit(&r.root, "m3.txt", "3\n");
+    git(&r.root, &["remote", "remove", "origin"]);
+    let o = overview::load(&r.core()).unwrap();
+    assert_eq!(o.compare_base.as_deref(), Some("main"));
+    assert_eq!(row(&o, "feat/a").behind_base, Some(3));
+}

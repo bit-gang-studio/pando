@@ -13,7 +13,7 @@ const list = (prs: PullRequest[]) => ({ state: "ok", prs });
 async function open(page: Page, extra: Record<string, unknown>) {
   await mockTauri(page, { ...typical(), ...extra });
   await page.goto(repoUrl());
-  await expect(sidebar(page).getByText("WORKTREES")).toBeVisible();
+  await expect(sidebar(page).getByText("WORKTREES", { exact: true })).toBeVisible();
 }
 
 for (const state of ["no_gh", "signed_out", "not_git_hub"]) {
@@ -55,8 +55,11 @@ test("no open PRs says so", async ({ page }) => {
 test("Add worktree checks out the PR and goes to it", async ({ page }) => {
   const made = { worktree: wt(`${ROOT}-feat-x`, "feat/x") };
   await open(page, { prs_list: list([pr({ number: 9, head: "feat/x" })]), pr_add_worktree: made });
+  // No button on the row to hit by accident: it's in the menu.
   await sidebar(page).getByText("A change").hover();
-  await sidebar(page).getByRole("button", { name: "Add worktree" }).click();
+  await expect(sidebar(page).getByRole("button", { name: "Add worktree" })).toHaveCount(0);
+  await sidebar(page).getByRole("button", { name: "Actions for #9" }).click();
+  await page.getByRole("menuitem", { name: "Add worktree" }).click();
   await expect.poll(async () => ((await callsTo(page, "pr_add_worktree"))[0]?.pr as PullRequest | undefined)?.number).toBe(9);
   await expect(page).toHaveURL(/#\/worktree\?/);
 });

@@ -17,7 +17,7 @@ const colorOf = (l: Locator) => l.evaluate((e) => getComputedStyle(e).color);
 test("dark mode: dark surfaces, readable text, no white panels", async ({ page }) => {
   await mockTauri(page, { ...typical(), fetch_all: { $error: "git fetch failed: fatal: offline" } });
   await page.goto(repoUrl());
-  await expect(page.getByText("WORKTREES")).toBeVisible();
+  await expect(page.getByText("WORKTREES", { exact: true })).toBeVisible();
   await page.getByRole("button", { name: "Fetch" }).click();
   await expect(page.getByRole("alert")).toBeVisible();
 
@@ -33,7 +33,7 @@ test("dark mode: dark surfaces, readable text, no white panels", async ({ page }
   }
 
   expect((await lumOf(page, await colorOf(page.getByText("feat/login").first()))).lum).toBeGreaterThan(0.7);
-  expect((await lumOf(page, await colorOf(page.getByText("3 changed", { exact: false }).first()))).lum).toBeGreaterThan(0.35);
-  expect((await lumOf(page, await colorOf(page.getByText("3 uncommitted")))).lum).toBeGreaterThan(0.5);
+  expect((await lumOf(page, await colorOf(page.getByText("3 files to commit", { exact: false }).first()))).lum).toBeGreaterThan(0.35);
+  expect((await lumOf(page, await colorOf(page.getByText("Every branch here is compared to it.", { exact: false })))).lum).toBeGreaterThan(0.35);
   expect((await lumOf(page, await colorOf(page.getByRole("alert")))).lum).toBeGreaterThan(0.7);
 });

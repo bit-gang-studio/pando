@@ -69,14 +69,14 @@ test.beforeEach(async () => {
   catch (e) { throw new Error(`setup.sh failed:\n${(e as { stderr?: string }).stderr}`); }
 });
 
-test("the repo page shows real state: merged, 2 to push, and after Fetch 1 to pull", async ({ page }) => {
+test("the repo page shows real state: already in the local main, 2 commits to push, and after Fetch 1 commit to pull", async ({ page }) => {
   await repoPage(page);
-  await expect(rowOf(page, "feat/done").getByText("merged")).toBeVisible({ timeout: 15_000 });
-  await expect(rowOf(page, "feat/dirty").getByText("merged")).toHaveCount(0);
-  await expect(rowOf(page, "feat/login").getByText("2 to push")).toBeVisible();
-  await sidebar(page).getByRole("button", { name: "Fetch" }).click();
+  await expect(rowOf(page, "feat/done").getByText("already in main", { exact: true })).toBeVisible({ timeout: 15_000 });
+  await expect(rowOf(page, "feat/dirty").getByText(/already in/)).toHaveCount(0);
+  await expect(rowOf(page, "feat/login").getByText("2 commits to push")).toBeVisible();
+  await sidebar(page).getByRole("button", { name: "Fetch", exact: true }).click();
   await expect(toast(page, "Fetched")).toBeVisible();
-  await expect(rowOf(page, "feat/behind").getByText("1 to pull")).toBeVisible();
+  await expect(rowOf(page, "feat/behind").getByText("1 commit to pull")).toBeVisible();
 });
 
 test("Pull ↓1 on the worktree page really pulls", async ({ page }) => {
@@ -155,9 +155,10 @@ test("drop stash, then Undo, puts it back in the list without applying it", asyn
 test("a merged worktree: Remove worktree, then Undo, puts the folder back", async ({ page }) => {
   await repoPage(page);
   const done = rowOf(page, "feat/done");
-  await expect(done.getByText("merged")).toBeVisible({ timeout: 15_000 });
+  await expect(done.getByText("already in main", { exact: true })).toBeVisible({ timeout: 15_000 });
   await done.hover();
-  await done.getByRole("button", { name: "Remove worktree" }).click();
+  await done.click({ button: "right" });
+  await page.getByRole("menuitem", { name: "Remove worktree (keep branch)…" }).click();
   await page.getByRole("alertdialog").getByRole("button", { name: "Remove worktree" }).click();
   await expect(toast(page, "Removed worktree feat/done")).toBeVisible();
   expect(exists(wtPath("feat/done"))).toBe(false);
@@ -203,7 +204,7 @@ test("a branch opens on All changes with the real files", async ({ page }) => {
 
 test("New branch with Open in Terminal makes a real worktree and asks for that folder", async ({ page }) => {
   await repoPage(page);
-  await expect(sidebar(page).getByText("WORKTREES")).toBeVisible();
+  await expect(sidebar(page).getByText("WORKTREES", { exact: true })).toBeVisible();
   await page.keyboard.press("ControlOrMeta+n");
   const dlg = page.getByRole("dialog");
   await dlg.getByRole("textbox").first().fill("feat/agent-task");
@@ -279,7 +280,7 @@ test("a branch switched inside a worktree from a terminal shows up, with the fol
   git(wtPath("feat/behind"), "switch -q spike/old");
   const row = sidebar(page).locator("div.group", { hasText: "spike/old" }).filter({ has: page.locator("span.rounded-full") });
   await expect(row).toBeVisible({ timeout: 10_000 });
-  await expect(row.getByText("in shop-feat-behind")).toBeVisible();
+  await expect(row.getByText("shop-feat-behind", { exact: true })).toBeVisible();
   // feat/behind no longer has a worktree, so it moves to Branches.
   await expect(sidebar(page).locator("div.group", { hasText: "feat/behind" }).filter({ has: page.locator("span.rounded-full") })).toHaveCount(0);
   // A worktree whose folder matches its branch doesn't repeat the folder.
@@ -305,7 +306,7 @@ test("a folder moved in Finder: missing, then Repair worktree reconnects it", as
   await page.getByRole("alertdialog").getByRole("button", { name: "Repair worktree" }).click();
   await expect(toast(page, "Repaired worktree feat/dirty")).toBeVisible();
   await expect(rowOf(page, "feat/dirty").getByText("folder missing")).toHaveCount(0);
-  await expect(rowOf(page, "feat/dirty").getByText("in moved somewhere")).toBeVisible();
+  await expect(rowOf(page, "feat/dirty").getByText("moved somewhere", { exact: true })).toBeVisible();
   expect(git(moved, "status --porcelain")).toContain("wip.txt");
   expect(git(ROOT, "worktree list")).toContain("moved somewhere");
 });
@@ -314,9 +315,9 @@ test("done in a terminal: a detached checkout and a renamed branch both show up"
   await repoPage(page);
   await expect(rowOf(page, "feat/behind")).toBeVisible();
   git(ROOT, "branch -m feat/behind feat/renamed");
-  await expect(rowOf(page, "feat/renamed").getByText("in shop-feat-behind")).toBeVisible({ timeout: 10_000 });
+  await expect(rowOf(page, "feat/renamed").getByText("shop-feat-behind", { exact: true })).toBeVisible({ timeout: 10_000 });
   git(wtPath("feat/behind"), "switch -q --detach");
-  await expect(sidebar(page).locator("div.group", { hasText: /detached/ }).first()).toBeVisible({ timeout: 10_000 });
+  await expect(sidebar(page).locator("div.group", { hasText: /no branch · commit \w{7} checked out/ }).first()).toBeVisible({ timeout: 10_000 });
 });
 
 test("shift-click two real commits: one diff with both commits' files", async ({ page }) => {
@@ -540,11 +541,25 @@ test("switch a real linked worktree to another branch, keep its changes, and Und
   expect(git(wt, "branch --show-current")).toBe("spike/old");
   // Its uncommitted work came along, and the row now names the folder.
   expect(execSync(`cat "${wt}/wip.txt"`, { encoding: "utf8" })).toBe("precious\n");
-  await expect(rowOf(page, "spike/old").getByText("in shop-feat-dirty")).toBeVisible({ timeout: 10_000 });
+  await expect(rowOf(page, "spike/old").getByText("shop-feat-dirty", { exact: true })).toBeVisible({ timeout: 10_000 });
   expect(gitOk(ROOT, "rev-parse --verify feat/dirty")).toBe(true);
   await toast(page, "Switched shop-feat-dirty to spike/old").getByRole("button", { name: "Undo" }).click();
   await expect(toast(page, "Undone")).toBeVisible();
   expect(git(wt, "branch --show-current")).toBe("feat/dirty");
+  expect(execSync(`cat "${wt}/wip.txt"`, { encoding: "utf8" })).toBe("precious\n");
+});
+
+test("pick a branch from the list on a worktree's row: real switch, taken branches can't be picked", async ({ page }) => {
+  const wt = wtPath("feat/dirty");
+  await repoPage(page);
+  await page.getByRole("button", { name: "Switch branch in shop-feat-dirty" }).click();
+  const list = page.getByRole("dialog", { name: "Switch branch" });
+  await expect(list.getByRole("option", { name: /feat\/login/ })).toHaveAttribute("aria-disabled", "true");
+  await expect(list.getByRole("option", { name: /feat\/login/ })).toContainText("in shop-feat-login");
+  await page.keyboard.type("spike");
+  await page.keyboard.press("Enter");
+  await expect(toast(page, "Switched shop-feat-dirty to spike/old")).toBeVisible();
+  expect(git(wt, "branch --show-current")).toBe("spike/old");
   expect(execSync(`cat "${wt}/wip.txt"`, { encoding: "utf8" })).toBe("precious\n");
 });
 

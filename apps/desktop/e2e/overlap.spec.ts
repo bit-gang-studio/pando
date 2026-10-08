@@ -14,7 +14,7 @@ const repo = overview({ branches: [
 async function open(page: Page, overlaps: unknown) {
   await mockTauri(page, { ...typical(), overview_load: repo, overlaps });
   await page.goto(repoUrl());
-  await expect(sidebar(page).getByText("WORKTREES")).toBeVisible();
+  await expect(sidebar(page).getByText("WORKTREES", { exact: true })).toBeVisible();
 }
 
 test("⚠ on both worktrees, naming the other and the files", async ({ page }) => {
@@ -52,7 +52,7 @@ test("not checked until change counts are in", async ({ page }) => {
   const quick = { ...repo, status_loaded: false, branches: repo.branches.map((b) => ({ ...b, status: null })) };
   await mockTauri(page, { ...typical(), overview_load: quick, overlaps: [] });
   await page.goto(repoUrl());
-  await expect(sidebar(page).getByText("WORKTREES")).toBeVisible();
+  await expect(sidebar(page).getByText("WORKTREES", { exact: true })).toBeVisible();
   await page.waitForTimeout(2500);
   expect(await callsTo(page, "overlaps")).toHaveLength(0);
 });

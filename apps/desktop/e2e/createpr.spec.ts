@@ -33,7 +33,7 @@ function setup(over: { upstream?: string | null; prs?: unknown; up?: [number, nu
 async function open(page: Page, handlers: Record<string, unknown>, url = wtUrl) {
   await mockTauri(page, handlers);
   await page.goto(url);
-  await expect(sidebar(page).getByText("WORKTREES")).toBeVisible();
+  await expect(sidebar(page).getByText("WORKTREES", { exact: true })).toBeVisible();
 }
 
 test("the form starts from the commits, and creating sends exactly what's shown", async ({ page }) => {

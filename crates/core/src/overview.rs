@@ -25,6 +25,14 @@ pub struct BranchRow {
     /// rebased in), so its worktree can go. Only worked out on a full load.
     #[serde(default)]
     pub merged: bool,
+    /// Which base it's already in: `origin/main`, or the local `main` when
+    /// it was merged there and not pushed.
+    #[serde(default)]
+    pub merged_in: Option<String>,
+    /// Commits on the base that this branch doesn't have. Only worked out for
+    /// branches with a worktree, on a full load.
+    #[serde(default)]
+    pub behind_base: Option<u32>,
     /// Has a worktree, is clean, and its last commit is older than `STALE_DAYS`.
     pub stale: bool,
 }
@@ -145,13 +153,22 @@ fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
         };
         // Not with uncommitted changes: "merged" says the worktree can go,
         // and that work isn't in the base.
-        let merged = with_status
-            && wt.is_some()
-            && !is_main
-            && st.is_some_and(|s| s.is_clean())
-            && (base_id
-                .is_some_and(|bid| already_in_base(repo, &bid.to_string(), &b.tip, ahead_of_base))
-                || in_local());
+        let may_merge = with_status && wt.is_some() && !is_main && st.is_some_and(|s| s.is_clean());
+        let merged_in = if !may_merge {
+            None
+        } else if base_id
+            .is_some_and(|bid| already_in_base(repo, &bid.to_string(), &b.tip, ahead_of_base))
+        {
+            compare_base.clone()
+        } else if in_local() {
+            base.clone()
+        } else {
+            None
+        };
+        let merged = merged_in.is_some();
+        let behind_base = base_id
+            .filter(|_| with_status && wt.is_some())
+            .and_then(|bid| branch::count_only_in(repo, &bid.to_string(), &b.tip).ok());
         let stale = wt.is_some()
             && !is_main
             && st.map(|s| s.is_clean()).unwrap_or(false)
@@ -162,6 +179,8 @@ fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
             status: st,
             ahead_of_base,
             merged,
+            merged_in,
+            behind_base,
             stale,
             branch: b,
         });

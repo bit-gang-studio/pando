@@ -82,7 +82,7 @@ test.describe("new branch dialog", () => {
   test("a failed create keeps the dialog and what you typed", async ({ page }) => {
     await mockTauri(page, { ...typical(), worktree_path_preview: `${ROOT}-feat-x`, worktree_add: { $error: "git worktree add failed: fatal: a branch named 'feat/x' already exists" } });
     await page.goto(repoUrl());
-    await expect(page.getByText("WORKTREES")).toBeVisible();
+    await expect(page.getByText("WORKTREES", { exact: true })).toBeVisible();
     await page.keyboard.press("ControlOrMeta+n");
     const dlg = page.getByRole("dialog");
     const name = dlg.getByRole("textbox").first();
@@ -96,7 +96,7 @@ test.describe("new branch dialog", () => {
     // Real git prints "Preparing worktree…" first and the reason after it.
     await mockTauri(page, { ...typical(), worktree_path_preview: `${ROOT}-feat-x`, worktree_add: { $error: "git worktree add -b feat/x /p/proj-feat-x main failed: Preparing worktree (new branch 'feat/x')\nfatal: a branch named 'feat/x' already exists\nhint: try another name" } });
     await page.goto(repoUrl());
-    await expect(page.getByText("WORKTREES")).toBeVisible();
+    await expect(page.getByText("WORKTREES", { exact: true })).toBeVisible();
     await page.keyboard.press("ControlOrMeta+n");
     const dlg = page.getByRole("dialog");
     await dlg.getByRole("textbox").first().fill("feat/x");
@@ -108,7 +108,7 @@ test.describe("new branch dialog", () => {
   test("unticking the worktree box creates only a branch", async ({ page }) => {
     await mockTauri(page, { ...typical(), worktree_path_preview: `${ROOT}-feat-x`, branch_create: null });
     await page.goto(repoUrl());
-    await expect(page.getByText("WORKTREES")).toBeVisible();
+    await expect(page.getByText("WORKTREES", { exact: true })).toBeVisible();
     await page.keyboard.press("ControlOrMeta+n");
     const dlg = page.getByRole("dialog");
     await dlg.getByRole("textbox").first().fill("feat/x");
