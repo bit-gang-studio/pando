@@ -17,6 +17,7 @@ import { toastError, withToast } from "../ui/Toast";
 import { dot, folderName, tilde, worktreeOptions } from "../lib/worktrees";
 import { overlayOpen } from "../lib/keys";
 import { forcePush } from "../lib/forcePush";
+import { getChosenBase, setChosenBase } from "../lib/base";
 import type { Overlap } from "../lib/api";
 
 type Props = { root: string; data: OverviewData | null; current?: string | null; currentBranch?: string | null; onOpenBranch: (name: string) => void; onOpenRepo: () => void; onRefresh: () => Promise<void>; onOpenWorktree: (path: string) => void; /** Open the Create pull request dialog for a branch. */ onCreatePr?: (branch: string) => void; /** Goes up when a ref moved: stashes and backups reload then. */ refreshKey?: number; prs?: PullRequest[] | null; prByBranch?: Record<string, PullRequest>; overlaps?: Overlap[] };
@@ -110,6 +111,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const [tagQuery, setTagQuery] = useState("");
   const [menu, setMenu] = useState<{ x: number; y: number; items: MenuItem[] } | null>(null);
   const [picking, setPicking] = useState<{ x: number; y: number; row: WtRow } | null>(null);
+  const [basePick, setBasePick] = useState<{ x: number; y: number } | null>(null);
   const [home, setHome] = useState("");
   useEffect(() => { homeDir().then((h) => { if (typeof h === "string") setHome(h); }).catch(() => {}); }, []);
   const [stashes, setStashes] = useState<Stash[]>([]);
@@ -375,6 +377,22 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   /// The local branch that goes with the base: "main" for "origin/main".
   const baseLocal = remoteBase ? base.split("/").slice(1).join("/") : base;
   const hasRemote = remoteBase || (data?.remote_only.length ?? 0) > 0 || !!data?.branches.some((b) => b.branch.upstream);
+  const chosen = getChosenBase(root) === base;
+  /// Every branch that could be the base: local ones, then remote ones.
+  const baseChoices = (): PickBranch[] => {
+    const names = [...new Set([...(data?.branches ?? []).map((b) => b.branch.name), ...(data?.branches ?? []).flatMap((b) => (b.branch.upstream ? [b.branch.upstream] : [])), ...(data?.remote_only ?? []).map((r) => r.name)])];
+    return names.map((name) => ({ name, where: name === base ? "the base now" : undefined }));
+  };
+  const setBase = async (name: string | null) => { setChosenBase(root, name); await refresh(); };
+  const baseMenu = (e: React.MouseEvent) => {
+    const at = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    show(e, [
+      { label: "Change base…", onClick: () => setBasePick({ x: at.left, y: at.bottom + 2 }) },
+      ...(getChosenBase(root) ? [{ label: "Use the usual base again", onClick: () => { void setBase(null); } }] : []),
+      { divider: true as const },
+      { label: "Copy name", onClick: () => navigator.clipboard.writeText(base) },
+    ]);
+  };
   const rows: WtRow[] = [];
   const labelFor = (path: string) => rows.find((w) => w.worktree.path === path)?.label ?? path.split(/[/\\]/).pop() ?? path;
   for (const d of data?.detached ?? []) if (d.is_main_worktree) rows.push(detachedRow(d));
@@ -413,14 +431,16 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
           {data?.compare_base && (
             <section aria-label="Base">
               {head("base", "BASE", open.base ? "" : base)}
-              {open.base && <button onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: base }) : onOpenBranch(base))} title={`Show ${base}'s commits`} className={`block w-full whitespace-normal! px-3 py-1.5 pl-[30px] text-left ${currentBranch === base ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
+              {open.base && <div onContextMenu={baseMenu} className="flex items-start gap-2 pr-3"><button onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: base }) : onOpenBranch(base))} title={`Show ${base}'s commits`} className={`block min-w-0 shrink! grow whitespace-normal! px-3 py-1.5 pl-[30px] text-left ${currentBranch === base ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
                 <span className="block truncate font-mono text-body font-medium">{base}</span>
                 <span className="block text-label text-stone-500">
-                  {remoteBase
+                  {chosen
+                    ? <>{remoteBase ? <>The remote's <span className="font-mono">{baseLocal}</span>, as of your last fetch.</> : <>Your local <span className="font-mono">{base}</span> branch.</>} You chose it as the base. Every branch here is compared to it.</>
+                    : remoteBase
                     ? <>The remote's <span className="font-mono">{baseLocal}</span>, as of your last fetch. Every branch here is compared to it.</>
                     : <>Your local <span className="font-mono">{base}</span> branch. There's no remote copy of it, so every branch here is compared to it.</>}
                 </span>
-              </button>}
+              </button><span className="pt-1.5"><MoreButton onOpen={baseMenu} label="Actions for the base" /></span></div>}
             </section>
           )}
     </>) : null,
@@ -576,6 +596,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     <aside className="flex min-h-0 flex-col overflow-y-auto bg-stone-50 text-body dark:bg-stone-900">
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
       {picking && <BranchPicker x={picking.x} y={picking.y} branches={pickable(picking.row)} hint="Uncommitted changes come along if they don't clash." onPick={(name) => switchTo(picking.row, name)} onClose={() => setPicking(null)} />}
+      {basePick && <BranchPicker x={basePick.x} y={basePick.y} label="Change base" branches={baseChoices()} hint="Every branch is compared to the base: what's ahead of it, behind it, or already in it." onPick={(name) => { void setBase(name); }} onClose={() => setBasePick(null)} />}
       {creating && data && (
         <NewBranchDialog root={root} base={data.base} initialBranch={creating.branch ?? null} remote={creating.remote ?? null} onClose={() => setCreating(null)} onCreated={refresh} />
       )}

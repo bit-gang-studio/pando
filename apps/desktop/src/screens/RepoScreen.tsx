@@ -16,6 +16,7 @@ import { toastDone, toastError, withToast } from "../ui/Toast";
 import { MessageDialog } from "../dialogs/MessageDialog";
 import { PullRequestDialog } from "../dialogs/PullRequestDialog";
 import { FileView, type FileTarget } from "./FileView";
+import { getChosenBase } from "../lib/base";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Rewritten } from "../lib/api";
 import { errorParts } from "../lib/errors";
@@ -71,8 +72,8 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
         if (!next.refs_key || next.refs_key !== refsKey.current) { refsKey.current = next.refs_key ?? null; setRefsTick((t) => t + 1); }
       };
       // First load: show branches and worktrees at once, then fill in changes.
-      if (!loadedRef.current) { show(await api.overview(root, true)); loadedRef.current = true; }
-      show(await api.overview(root)); setLoadError(null); setTick((t) => t + 1);
+      if (!loadedRef.current) { show(await api.overview(root, true, getChosenBase(root))); loadedRef.current = true; }
+      show(await api.overview(root, false, getChosenBase(root))); setLoadError(null); setTick((t) => t + 1);
     }
     catch (e) { setLoadError(String(e)); }
   }, [root]);

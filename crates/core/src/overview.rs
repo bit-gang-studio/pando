@@ -71,24 +71,49 @@ pub struct Overview {
 }
 
 pub fn load(repo: &Repo) -> Result<Overview> {
-    load_with(repo, true)
+    load_with(repo, true, None)
 }
 
 /// Everything except `git status`, which is the slow part on big repos.
 /// Lets a screen show branches and worktrees at once, then fill in changes.
 pub fn load_quick(repo: &Repo) -> Result<Overview> {
-    load_with(repo, false)
+    load_with(repo, false, None)
 }
 
-fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
+/// `load` or `load_quick`, compared against a base the user chose: any local
+/// or remote branch. One that no longer exists is ignored, and the usual base
+/// is used.
+pub fn load_against(repo: &Repo, quick: bool, base: Option<&str>) -> Result<Overview> {
+    load_with(repo, !quick, base)
+}
+
+/// `name` if it's a local or remote branch here.
+fn chosen_base(repo: &Repo, name: &str) -> Option<String> {
+    if name.is_empty() || name.starts_with('-') || name.contains("..") {
+        return None;
+    }
+    let exists = |r: String| {
+        crate::cmd::git_opt(&repo.common_git_dir, ["rev-parse", "--verify", "-q", &r]).is_some()
+    };
+    (exists(format!("refs/heads/{name}")) || exists(format!("refs/remotes/{name}")))
+        .then(|| name.to_string())
+}
+
+fn load_with(repo: &Repo, with_status: bool, chosen: Option<&str>) -> Result<Overview> {
+    let chosen = chosen.and_then(|c| chosen_base(repo, c));
+    // The local branch that goes with the base: `main` for `origin/main`.
     let base = merge::default_base(repo).ok();
-    let compare_base = merge::compare_base(repo);
+    let local_base = match &chosen {
+        Some(c) => Some(merge::local_name(repo, c)),
+        None => base.clone(),
+    };
+    let compare_base = chosen.or_else(|| merge::compare_base(repo));
     let g = repo.open_gix()?;
     let base_id = compare_base
         .as_deref()
         .and_then(|b| g.rev_parse_single(b).ok())
         .map(|id| id.detach());
-    let local_base_id = base
+    let local_base_id = local_base
         .as_deref()
         .and_then(|b| g.rev_parse_single(b).ok())
         .map(|id| id.detach());
@@ -161,7 +186,7 @@ fn load_with(repo: &Repo, with_status: bool) -> Result<Overview> {
         {
             compare_base.clone()
         } else if in_local() {
-            base.clone()
+            local_base.clone()
         } else {
             None
         };

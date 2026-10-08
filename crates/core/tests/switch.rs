@@ -223,3 +223,108 @@ fn behind_base_counts_against_origin_main_then_local_main() {
     assert_eq!(o.compare_base.as_deref(), Some("main"));
     assert_eq!(row(&o, "feat/a").behind_base, Some(3));
 }
+
+/// The user can pick what branches are compared to: any local or remote
+/// branch. One that's gone, or isn't a branch, falls back to the usual base.
+#[test]
+fn a_chosen_base_changes_what_ahead_behind_and_merged_are_measured_against() {
+    let r = repo();
+    // develop: one commit past main.
+    git(&r.root, &["switch", "-q", "-c", "develop"]);
+    commit(&r.root, "d.txt", "d\n");
+    // feat/in-dev: one commit, merged into develop. Already in develop, not in main.
+    let done = r.sibling("work-in-dev");
+    git(
+        &r.root,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "feat/in-dev",
+            done.to_str().unwrap(),
+            "develop",
+        ],
+    );
+    commit(&done, "i.txt", "i\n");
+    git(
+        &r.root,
+        &[
+            "merge",
+            "-q",
+            "--no-ff",
+            "-m",
+            "Merge feat/in-dev",
+            "feat/in-dev",
+        ],
+    );
+    git(&r.root, &["push", "-q", "-u", "origin", "develop"]);
+    git(&r.root, &["switch", "-q", "main"]);
+    // feat/a: branched from develop, one commit of its own.
+    let wt = r.sibling("work-feat-a");
+    git(
+        &r.root,
+        &[
+            "worktree",
+            "add",
+            "-q",
+            "-b",
+            "feat/a",
+            wt.to_str().unwrap(),
+            "develop",
+        ],
+    );
+    commit(&wt, "a.txt", "a\n");
+    let row = |o: &overview::Overview, n: &str| {
+        o.branches
+            .iter()
+            .find(|b| b.branch.name == n)
+            .unwrap()
+            .clone()
+    };
+    let core = r.core();
+
+    let usual = overview::load_against(&core, false, None).unwrap();
+    assert_eq!(usual.compare_base.as_deref(), Some("origin/main"));
+    assert_eq!(row(&usual, "feat/a").ahead_of_base, Some(4));
+    assert!(!row(&usual, "feat/in-dev").merged);
+
+    for base in ["origin/develop", "develop"] {
+        let o = overview::load_against(&core, false, Some(base)).unwrap();
+        assert_eq!(o.compare_base.as_deref(), Some(base));
+        // The default branch is still what it was.
+        assert_eq!(o.base.as_deref(), Some("main"));
+        assert_eq!(row(&o, "feat/a").ahead_of_base, Some(1), "{base}");
+        assert_eq!(row(&o, "feat/a").behind_base, Some(0), "{base}");
+        assert!(row(&o, "feat/in-dev").merged, "{base}");
+        assert_eq!(row(&o, "feat/in-dev").merged_in.as_deref(), Some(base));
+    }
+    // Develop moves on: feat/a is now behind it.
+    git(&r.root, &["switch", "-q", "develop"]);
+    commit(&r.root, "d2.txt", "d2\n");
+    git(&r.root, &["switch", "-q", "main"]);
+    let o = overview::load_against(&core, false, Some("develop")).unwrap();
+    assert_eq!(row(&o, "feat/a").behind_base, Some(1));
+    // The remote copy hasn't moved, so against it nothing is behind.
+    let o = overview::load_against(&core, false, Some("origin/develop")).unwrap();
+    assert_eq!(row(&o, "feat/a").behind_base, Some(0));
+
+    // Gone, nonsense, or an option in disguise: the usual base, never an error.
+    for bad in [
+        "origin/gone",
+        "nope",
+        "",
+        "--all",
+        "main..develop",
+        "refs/heads/main",
+        "HEAD",
+    ] {
+        let o = overview::load_against(&core, false, Some(bad)).unwrap();
+        assert_eq!(o.compare_base.as_deref(), Some("origin/main"), "{bad:?}");
+    }
+    // Quick load honours it too.
+    let q = overview::load_against(&core, true, Some("develop")).unwrap();
+    assert!(!q.status_loaded);
+    assert_eq!(q.compare_base.as_deref(), Some("develop"));
+    assert_eq!(row(&q, "feat/a").ahead_of_base, Some(1));
+}

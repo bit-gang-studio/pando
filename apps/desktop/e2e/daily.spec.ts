@@ -359,6 +359,48 @@ test("long text in the sidebar wraps and is never cut off", async ({ page }) => 
   }
 });
 
+test("Change base: pick any branch to compare against; it's remembered, and the usual base can come back", async ({ page }) => {
+  const branches = [row("main", { worktree: wt(ROOT, "main"), upstream: "origin/main" }), row("develop", { upstream: "origin/develop" }), row("feat/x", { worktree: wt(`${ROOT}-x`, "feat/x"), ahead: 2 })];
+  const usual = overview({ branches, compare_base: "origin/main" });
+  const onDevelop = overview({ branches: [branches[0], branches[1], row("feat/x", { worktree: wt(`${ROOT}-x`, "feat/x"), ahead: 1 })], compare_base: "origin/develop" });
+  await open(page, { overview_load: { $by: "base", cases: { "origin/develop": onDevelop }, otherwise: usual } });
+  const base = page.getByRole("region", { name: "Base" });
+  const x = sidebar(page).locator("div.group", { hasText: "proj-x" }).first().locator('[data-todo="branch"]');
+  await expect(x).toContainText("2 commits to merge into origin/main");
+  expect((await callsTo(page, "overview_load")).at(-1)).toEqual({ root: ROOT, quick: false, base: null });
+  await base.getByRole("button", { name: "Actions for the base" }).click();
+  await expect(page.getByRole("menuitem", { name: "Use the usual base again" })).toHaveCount(0);
+  await page.getByRole("menuitem", { name: "Change base…" }).click();
+  const list = page.getByRole("dialog", { name: "Change base" });
+  // Local branches and remote ones; the one in use can't be picked again.
+  await expect(list.getByRole("option")).toHaveText(["main", "develop", "feat/x", "origin/develop", "origin/mainthe base now"]);
+  await page.keyboard.type("origin dev");
+  await page.keyboard.press("Enter");
+  await expect(x).toContainText("1 commit to merge into origin/develop");
+  await expect(base).toContainText("origin/develop");
+  await expect(base).toContainText("The remote's develop, as of your last fetch. You chose it as the base.");
+  expect((await callsTo(page, "overview_load")).at(-1)).toEqual({ root: ROOT, quick: false, base: "origin/develop" });
+  // Remembered, from the very first load.
+  await page.reload();
+  await expect(x).toContainText("1 commit to merge into origin/develop");
+  expect((await callsTo(page, "overview_load")).map((c) => c.base)).toEqual(expect.arrayContaining(["origin/develop"]));
+  expect((await callsTo(page, "overview_load")).some((c) => c.base === null)).toBe(false);
+  // And back.
+  await base.getByRole("button", { name: "Actions for the base" }).click();
+  await page.getByRole("menuitem", { name: "Use the usual base again" }).click();
+  await expect(x).toContainText("2 commits to merge into origin/main");
+  await expect(base).not.toContainText("You chose it");
+});
+
+test("a chosen base that's gone falls back to the usual one without a fuss", async ({ page }) => {
+  await page.addInitScript((k) => { if (!localStorage.getItem(k)) localStorage.setItem(k, "origin/gone"); }, `pando.base:${ROOT}`);
+  await open(page, { overview_load: overview({ branches: [row("main", { worktree: wt(ROOT, "main"), upstream: "origin/main" })], compare_base: "origin/main" }) });
+  const base = page.getByRole("region", { name: "Base" });
+  await expect(base).toContainText("origin/main");
+  await expect(base).not.toContainText("You chose it");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
 test("a missing folder offers Repair worktree and sends where it is now", async ({ page }) => {
   const gone = wt(`${ROOT}-fix-typo`, "fix/typo", { prunable: "gitdir file points to non-existent location" });
   await open(page, { overview_load: overview({ branches: [row("main", { worktree: wt(ROOT, "main") }), row("fix/typo", { worktree: gone })] }), worktree_repair: { $seq: [{ $error: "/x/moved isn't a worktree of this repository." }, null] } });

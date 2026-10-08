@@ -67,15 +67,9 @@ async fn repos_remove(path: PathBuf) -> R<UserConfig> {
 // ---- the list --------------------------------------------------------------
 
 #[tauri::command]
-async fn overview_load(root: PathBuf, quick: Option<bool>) -> R<Overview> {
+async fn overview_load(root: PathBuf, quick: Option<bool>, base: Option<String>) -> R<Overview> {
     blocking(move || {
-        let r = repo(&root)?;
-        if quick == Some(true) {
-            overview::load_quick(&r)
-        } else {
-            overview::load(&r)
-        }
-        .map_err(err)
+        overview::load_against(&repo(&root)?, quick == Some(true), base.as_deref()).map_err(err)
     })
     .await
 }

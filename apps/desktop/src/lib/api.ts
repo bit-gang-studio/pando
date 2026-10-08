@@ -126,7 +126,8 @@ export const api = {
 
   watchRepo: (root: string, worktrees: string[]) => invoke<void>("watch_repo", { root, worktrees }),
   /// `quick` skips git status (fast on big repos); every status is then null.
-  overview: (root: string, quick = false) => invoke<Overview>("overview_load", { root, quick }),
+  /** `base`: the branch to compare against, when the user chose one. */
+  overview: (root: string, quick = false, base: string | null = null) => invoke<Overview>("overview_load", { root, quick, base }),
   fetchAll: (root: string) => invoke<void>("fetch_all", { root }),
   branchCreate: (root: string, name: string, base: string | null) => invoke<void>("branch_create", { root, name, base }),
   branchPush: (root: string, name: string) => invoke<void>("branch_push", { root, name }),

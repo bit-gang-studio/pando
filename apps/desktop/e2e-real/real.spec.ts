@@ -610,3 +610,24 @@ test("a real file's history and blame, from a commit and from a worktree's worki
   await page.locator("div.group", { hasText: "notes.txt" }).first().click({ button: "right" });
   await expect(page.getByRole("menuitem", { name: "File history" })).toHaveCount(0);
 });
+
+test("Change base for real: counts are measured against the branch you pick, then the usual one again", async ({ page }) => {
+  await repoPage(page);
+  const base = page.getByRole("region", { name: "Base" });
+  await expect(base).toContainText("origin/main", { timeout: 15_000 });
+  // Local main has moved past origin/main here, so feat/login is further behind it.
+  const behind = (b: string) => Number(git(ROOT, `rev-list --count feat/login..${b}`));
+  expect(behind("main")).toBeGreaterThan(behind("origin/main"));
+  const says = (b: string) => (behind(b) ? `${behind(b)} commit${behind(b) === 1 ? "" : "s"} behind ${b}` : "to merge into " + b);
+  const login = rowOf(page, "feat/login").locator('[data-todo="branch"]');
+  await expect(login).toContainText(says("origin/main"), { timeout: 15_000 });
+  await base.getByRole("button", { name: "Actions for the base" }).click();
+  await page.getByRole("menuitem", { name: "Change base…" }).click();
+  await page.getByRole("dialog", { name: "Change base" }).getByRole("option", { name: "main", exact: true }).click();
+  await expect(base).toContainText("You chose it as the base.");
+  await expect(login).toContainText(says("main"), { timeout: 15_000 });
+  await expect(login).not.toContainText("origin/main");
+  await base.getByRole("button", { name: "Actions for the base" }).click();
+  await page.getByRole("menuitem", { name: "Use the usual base again" }).click();
+  await expect(login).toContainText("to merge into origin/main", { timeout: 15_000 });
+});

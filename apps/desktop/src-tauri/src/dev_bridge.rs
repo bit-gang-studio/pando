@@ -29,7 +29,9 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
         "repos_list" => out(super::repos_list().await),
         "repos_add" => out(super::repos_add(arg(&a, "path")?).await),
         "repos_remove" => out(super::repos_remove(arg(&a, "path")?).await),
-        "overview_load" => out(super::overview_load(arg(&a, "root")?, arg(&a, "quick")?).await),
+        "overview_load" => {
+            out(super::overview_load(arg(&a, "root")?, arg(&a, "quick")?, arg(&a, "base")?).await)
+        }
         "fetch_all" => out(super::fetch_all(arg(&a, "root")?).await),
         "branch_create" => {
             out(super::branch_create(arg(&a, "root")?, arg(&a, "name")?, arg(&a, "base")?).await)

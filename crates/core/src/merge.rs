@@ -88,7 +88,7 @@ fn clash(branch: &str, base: &str) -> String {
     format!("{branch} and {base} change the same lines, so it was left as it was. Use Sync with {base} to resolve the conflicts, then merge.")
 }
 
-fn local_name(repo: &Repo, base: &str) -> String {
+pub(crate) fn local_name(repo: &Repo, base: &str) -> String {
     remote_of(repo, base)
         .map(|(_, b)| b)
         .unwrap_or_else(|| base.to_string())
