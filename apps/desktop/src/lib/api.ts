@@ -105,6 +105,10 @@ export type PullRequests = { state: "ok"; prs: PullRequest[] } | { state: "no_gh
 export type Overlap = { a: string; b: string; files: string[] };
 export type Removed = { path: string; branch: string | null; head: string | null; snapshot: string | null };
 export type FileCommit = { entry: LogEntry; path: string; change: string };
+export type FileEntry = { name: string; path: string; dir: boolean };
+/** `text` is missing for a binary file, a link, or one too large; `why` says which. */
+export type FileContents = { path: string; size: number; text: string | null; why: string | null };
+export type FilesFound = { paths: string[]; truncated: boolean };
 export type FileHistory = { commits: FileCommit[]; truncated: boolean };
 export type Blame = { path: string; lines: { commit: string; text: string }[]; commits: Record<string, { author: string; time: number; summary: string; path: string }> };
 export type Tag = { name: string; target: string; object: string; annotated: boolean; time: number; summary: string };
@@ -177,6 +181,9 @@ export const api = {
 
   log: (root: string, branch: string | null, skip: number, limit: number) => invoke<Log>("log_list", { root, branch, skip, limit }),
   fileHistory: (root: string, rev: string | null, path: string, skip: number, limit: number) => invoke<FileHistory>("file_history", { root, rev, path, skip, limit }),
+  fileList: (root: string, worktree: string | null, rev: string | null, dir: string) => invoke<FileEntry[]>("file_list", { root, worktree, rev, dir }),
+  fileRead: (root: string, worktree: string | null, rev: string | null, path: string) => invoke<FileContents>("file_read", { root, worktree, rev, path }),
+  fileFind: (root: string, worktree: string | null, rev: string | null, query: string, limit: number) => invoke<FilesFound>("file_find", { root, worktree, rev, query, limit }),
   fileBlame: (root: string, worktree: string | null, rev: string | null, path: string) => invoke<Blame>("file_blame", { root, worktree, rev, path }),
   logSearch: (root: string, branch: string | null, query: string, skip: number, limit: number) => invoke<Log>("log_search", { root, branch, query, skip, limit }),
   commitDiff: (root: string, id: string) => invoke<CommitDiff>("commit_diff", { root, id }),

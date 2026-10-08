@@ -4,6 +4,7 @@ import { DiffView } from "./DiffView";
 import { SplitHandle, useSplit } from "../ui/Split";
 import { ErrorState, Loading } from "../ui/State";
 import { useLayer } from "../lib/keys";
+import { highlightLines, langFor, type Tok } from "../lib/highlight";
 import { useArrowKeys } from "../lib/useArrowKeys";
 
 export type FileTarget = {
@@ -41,7 +42,7 @@ export function FileView({ root, target, onMode, onBack, onOpenCommit }: Props) 
   );
 }
 
-function History({ root, target, onOpenCommit }: { root: string; target: FileTarget; onOpenCommit: (id: string) => void }) {
+export function History({ root, target, onOpenCommit }: { root: string; target: FileTarget; onOpenCommit: (id: string) => void }) {
   const [commits, setCommits] = useState<FileCommit[] | null>(null);
   const [truncated, setTruncated] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
@@ -114,8 +115,10 @@ function History({ root, target, onOpenCommit }: { root: string; target: FileTar
 }
 
 const ROW = 20;
+/// Past this, colouring every line costs more than it's worth.
+const HIGHLIGHT_MAX = 3000;
 
-function BlameList({ root, target, onOpenCommit }: { root: string; target: FileTarget; onOpenCommit: (id: string) => void }) {
+export function BlameList({ root, target, onOpenCommit }: { root: string; target: FileTarget; onOpenCommit: (id: string) => void }) {
   const [b, setB] = useState<Blame | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attempt, setAttempt] = useState(0);
@@ -129,6 +132,15 @@ function BlameList({ root, target, onOpenCommit }: { root: string; target: FileT
     api.fileBlame(root, target.worktree, target.rev, target.path).then((x) => { if (live) setB(x); }).catch((e) => { if (live) setError(String(e)); });
     return () => { live = false; };
   }, [root, target.worktree, target.rev, target.path, attempt]);
+  // Coloured like the file itself. Plain text shows first; very long files stay plain.
+  const [tokens, setTokens] = useState<Tok[][] | null>(null);
+  useEffect(() => {
+    setTokens(null);
+    if (!b || b.lines.length === 0 || b.lines.length > HIGHLIGHT_MAX) return;
+    let live = true;
+    const t = setTimeout(() => { highlightLines(b.lines.map((l) => l.text), langFor(b.path)).then((x) => { if (live) setTokens(x); }); }, 30);
+    return () => { live = false; clearTimeout(t); };
+  }, [b]);
   useEffect(() => {
     const el = box.current;
     if (!el) return;
@@ -173,7 +185,7 @@ function BlameList({ root, target, onOpenCommit }: { root: string; target: FileT
                 ) : <span className="italic text-amber-700 dark:text-amber-400">Not committed yet</span>)}
               </button>
               <span className="w-12 shrink-0 select-none px-2 text-right text-stone-400" style={{ minWidth: `${digits + 2}ch` }}>{i + 1}</span>
-              <span className="selectable whitespace-pre pr-4">{l.text}</span>
+              <span className="selectable whitespace-pre pr-4 text-body">{tokens?.[i] ? tokens[i].map((t, j) => <span key={j} style={t.color ? { color: t.color } : undefined}>{t.content}</span>) : l.text}</span>
             </div>
           );
         })}

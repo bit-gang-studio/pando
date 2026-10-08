@@ -611,6 +611,35 @@ test("a real file's history and blame, from a commit and from a worktree's worki
   await expect(page.getByRole("menuitem", { name: "File history" })).toHaveCount(0);
 });
 
+test("Files shows a real worktree's folder: new files, not ignored ones, and the file as it is on disk", async ({ page }) => {
+  const wt = wtPath("feat/dirty");
+  execSync(`mkdir -p "${wt}/node_modules/x" && echo x > "${wt}/node_modules/x/i.js" && echo "node_modules/" > "${wt}/.gitignore"`);
+  await page.addInitScript(() => { if (!localStorage.getItem("pando.view")) localStorage.setItem("pando.view", "files"); });
+  await worktreePage(page, "feat/dirty");
+  const tree = page.getByRole("tree", { name: "Files" });
+  await expect(page.getByText("in shop-feat-dirty, as they are on disk")).toBeVisible({ timeout: 15_000 });
+  // wip.txt was never committed; node_modules is ignored; .git is never shown.
+  await expect(tree.getByRole("treeitem", { name: "wip.txt" })).toBeVisible();
+  await expect(tree.getByRole("treeitem", { name: /node_modules/ })).toHaveCount(0);
+  await expect(tree.getByRole("treeitem", { name: ".git", exact: true })).toHaveCount(0);
+  await tree.getByRole("treeitem", { name: "wip.txt" }).click();
+  await expect(page.getByLabel("Contents of wip.txt")).toHaveText("1precious");
+  // The same file doesn't exist on the branch's last commit.
+  await page.getByRole("textbox", { name: "Find a file" }).fill("readme");
+  await tree.getByRole("treeitem", { name: /README\.md/ }).click();
+  await expect(page.getByLabel("Contents of README.md")).toContainText("edited");
+  // Both are marked as uncommitted, each in its own word.
+  await expect(tree.getByRole("treeitem", { name: /README\.md/ })).toContainText("edited");
+  const tabs = page.getByRole("group", { name: "What to show for this file" });
+  await tabs.getByRole("button", { name: /Changes/ }).click();
+  await expect(page.getByText("+edited", { exact: false }).or(page.locator("text=edited").last())).toBeVisible();
+  await tabs.getByRole("button", { name: "Blame" }).click();
+  await expect(page.getByRole("table", { name: "Blame for README.md" })).toContainText("Not committed yet");
+  await tabs.getByRole("button", { name: "History" }).click();
+  await expect(page.getByText(/commits? changed this file/)).toBeVisible();
+  expect(git(wt, "status --porcelain")).toContain("wip.txt");
+});
+
 test("Change base for real: counts are measured against the branch you pick, then the usual one again", async ({ page }) => {
   await repoPage(page);
   const base = page.getByRole("region", { name: "Base" });

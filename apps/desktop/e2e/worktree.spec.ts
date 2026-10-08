@@ -17,7 +17,7 @@ test("a failed commit keeps the message you typed", async ({ page }) => {
   await open(page, { detail_load: d, commit_create: { $error: "git commit failed: error: gpg failed to sign the data" } });
   const box = page.getByLabel("Summary", { exact: true });
   await box.fill("Fix the login redirect");
-  await page.getByRole("button", { name: /Commit/ }).click();
+  await page.getByRole("button", { name: /^Commit(?!s$)/ }).click();
   await expect(page.getByText("Gpg failed to sign the data")).toBeVisible();
   await expect(box).toHaveValue("Fix the login redirect");
 });
@@ -34,7 +34,7 @@ test("a good commit clears the message and sends it trimmed", async ({ page }) =
 
 test("commit is off with nothing staged or no message", async ({ page }) => {
   await open(page, { detail_load: detail(WT, "feat/login", [file("a.ts")]) });
-  const commit = page.getByRole("button", { name: /Commit/ });
+  const commit = page.getByRole("button", { name: /^Commit(?!s$)/ });
   await expect(commit).toBeDisabled();
   await page.getByLabel("Summary", { exact: true }).fill("message but nothing staged");
   await expect(commit).toBeDisabled();

@@ -467,6 +467,56 @@ async fn file_history(
         .await
 }
 
+/// One folder of the tree: at `rev`, or as it is on disk in `worktree`.
+#[tauri::command]
+async fn file_list(
+    root: PathBuf,
+    worktree: Option<PathBuf>,
+    rev: Option<String>,
+    dir: String,
+) -> R<Vec<file::Entry>> {
+    blocking(move || {
+        file::list(&repo(&root)?, worktree.as_deref(), rev.as_deref(), &dir).map_err(err)
+    })
+    .await
+}
+
+/// A file's contents: at `rev`, or as it is on disk in `worktree`.
+#[tauri::command]
+async fn file_read(
+    root: PathBuf,
+    worktree: Option<PathBuf>,
+    rev: Option<String>,
+    path: String,
+) -> R<file::Contents> {
+    blocking(move || {
+        file::read(&repo(&root)?, worktree.as_deref(), rev.as_deref(), &path).map_err(err)
+    })
+    .await
+}
+
+/// Files found by name: at `rev`, or on disk in `worktree`.
+#[tauri::command]
+async fn file_find(
+    root: PathBuf,
+    worktree: Option<PathBuf>,
+    rev: Option<String>,
+    query: String,
+    limit: usize,
+) -> R<file::Found> {
+    blocking(move || {
+        file::find(
+            &repo(&root)?,
+            worktree.as_deref(),
+            rev.as_deref(),
+            &query,
+            limit,
+        )
+        .map_err(err)
+    })
+    .await
+}
+
 /// Who last changed each line of a file: at `rev`, or the working copy in `worktree`.
 #[tauri::command]
 async fn file_blame(
@@ -754,6 +804,9 @@ pub fn run() {
             log_search,
             file_history,
             file_blame,
+            file_list,
+            file_read,
+            file_find,
             commit_diff,
             commit_file_diff,
             compare,

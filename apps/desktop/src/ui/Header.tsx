@@ -4,6 +4,7 @@ import { openInNewWindow } from "../lib/windows";
 import { useState } from "react";
 import { NewWindowIcon, ThemeIcon } from "./icons";
 import { getTheme, setTheme, THEMES, type Theme } from "../lib/theme";
+import { setCenterView, useCenterView, type CenterView } from "../lib/view";
 
 export function Header({ route, right }: { route: Route; right?: React.ReactNode }) {
   const crumb = "text-stone-500 hover:text-stone-800 dark:hover:text-stone-200";
@@ -27,12 +28,22 @@ export function Header({ route, right }: { route: Route; right?: React.ReactNode
       )}
       <div className="grow" />
       {right}
+      {route.kind !== "repos" && <ViewToggle />}
       <ThemeButton />
       <button onClick={() => openInNewWindow(route).catch(() => {})} title="Open this screen in a new window" aria-label="Open in new window" className="flex items-center rounded-md px-2.5 py-1.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-200">
         <NewWindowIcon />
       </button>
     </header>
   );
+}
+
+/// What the centre of the window shows: the commit graph, or the files.
+function ViewToggle() {
+  const view = useCenterView();
+  const tab = (v: CenterView, label: string) => (
+    <button onClick={() => setCenterView(v)} aria-pressed={view === v} className={`h-6 rounded px-2.5 text-label ${view === v ? "bg-stone-200 font-medium dark:bg-stone-600" : "text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-700"}`}>{label}</button>
+  );
+  return <div role="group" aria-label="View" className="mr-1 flex shrink-0 gap-0.5 rounded-md border border-stone-300 p-0.5 dark:border-stone-600">{tab("commits", "Commits")}{tab("files", "Files")}</div>;
 }
 
 const LABEL: Record<Theme, string> = { light: "Light", dark: "Dark", system: "Auto" };

@@ -16,6 +16,8 @@ import { toastDone, toastError, withToast } from "../ui/Toast";
 import { MessageDialog } from "../dialogs/MessageDialog";
 import { PullRequestDialog } from "../dialogs/PullRequestDialog";
 import { FileView, type FileTarget } from "./FileView";
+import { FilesPage, type FilesTarget } from "./FilesPage";
+import { setCenterView, useCenterView } from "../lib/view";
 import { getChosenBase } from "../lib/base";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { Rewritten } from "../lib/api";
@@ -302,6 +304,17 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   const selected = worktree ? wtCommit : commit ?? firstId;
 
   const shown = worktree ? null : commit ?? firstId;
+  const view = useCenterView();
+  // Whose files the Files view shows: what's picked in the sidebar. With
+  // nothing picked, the main worktree's folder.
+  const filesTarget = useMemo<FilesTarget>(() => {
+    const folder = (p: string) => p.split(/[\\/]/).filter(Boolean).pop() ?? p;
+    const headOf = (p: string) => data?.branches.find((b) => b.worktree?.path === p)?.worktree?.head ?? data?.detached.find((d) => d.worktree.path === p)?.worktree.head ?? null;
+    if (worktree) return { worktree, rev: null, head: headOf(worktree), label: `in ${folder(worktree)}, as they are on disk` };
+    if (branch) return { worktree: null, rev: branch, label: `in ${branch}, as of its last commit` };
+    if (commit) return { worktree: null, rev: commit, label: `as of commit ${commit.slice(0, 7)}` };
+    return { worktree: root, rev: null, head: headOf(root), label: `in ${folder(root)} (the main worktree), as they are on disk` };
+  }, [root, worktree, branch, commit, data]);
   if (!data && loadError) return <ErrorState title="Couldn't open this repository" error={loadError} onRetry={refresh} />;
   if (!data) return <Loading />;
   return (
@@ -329,6 +342,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
           <button onClick={refresh} className="underline">Retry</button>
         </div>
       )}
+      {view === "files" ? <FilesPage root={root} target={filesTarget} tick={tick} onOpenCommit={(id) => { setCenterView("commits"); navigate({ kind: "commit", root, id }); }} /> : <>
       <div style={{ height: split.size, flex: "0 0 auto" }} className="flex min-h-0 flex-col">
         <CommitLog
           root={root}
@@ -380,6 +394,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
           <div className="flex grow items-center justify-center text-body text-stone-500">No commits yet.</div>
         )}
       </div>
+      </>}
     </div>
     </div>
   );

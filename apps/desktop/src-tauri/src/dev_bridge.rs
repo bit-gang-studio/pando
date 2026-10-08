@@ -154,6 +154,28 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
             arg(&a, "limit")?,
         )
         .await),
+        "file_list" => out(super::file_list(
+            arg(&a, "root")?,
+            arg(&a, "worktree")?,
+            arg(&a, "rev")?,
+            arg(&a, "dir")?,
+        )
+        .await),
+        "file_read" => out(super::file_read(
+            arg(&a, "root")?,
+            arg(&a, "worktree")?,
+            arg(&a, "rev")?,
+            arg(&a, "path")?,
+        )
+        .await),
+        "file_find" => out(super::file_find(
+            arg(&a, "root")?,
+            arg(&a, "worktree")?,
+            arg(&a, "rev")?,
+            arg(&a, "query")?,
+            arg(&a, "limit")?,
+        )
+        .await),
         "file_blame" => out(super::file_blame(
             arg(&a, "root")?,
             arg(&a, "worktree")?,

@@ -226,3 +226,262 @@ pub fn blame(repo: &Repo, worktree: Option<&Path>, rev: Option<&str>, path: &str
         commits,
     })
 }
+
+/// A file or folder in one folder of the tree.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Entry {
+    pub name: String,
+    /// From the top of the repository, with `/` between parts.
+    pub path: String,
+    pub dir: bool,
+}
+
+/// One folder is listed at a time, so a huge repository costs no more than
+/// the folders you open. Past this many entries the rest are left out.
+const MAX_ENTRIES: usize = 5000;
+
+/// What's in `dir` ("" for the top). With `rev`, as of that commit. Without,
+/// what's on disk in `worktree`: tracked and new files, not ignored ones.
+/// Folders first, then by name.
+pub fn list(
+    repo: &Repo,
+    worktree: Option<&Path>,
+    rev: Option<&str>,
+    dir: &str,
+) -> Result<Vec<Entry>> {
+    if !dir.is_empty() {
+        check_path(dir)?;
+    }
+    let dir = dir.trim_end_matches('/');
+    let under = |name: &str| {
+        if dir.is_empty() {
+            name.to_string()
+        } else {
+            format!("{dir}/{name}")
+        }
+    };
+    let mut out: Vec<Entry> = Vec::new();
+    match rev {
+        Some(r) => {
+            check_rev(r)?;
+            let tree = format!("{r}:{dir}");
+            let bytes = git_bytes(&repo.common_git_dir, ["ls-tree", "-z", &tree])
+                .map_err(|_| Error::Msg(format!("{} doesn't exist at {r}.", shown(dir))))?;
+            for item in String::from_utf8_lossy(&bytes).split('\0') {
+                // "<mode> <type> <id>\t<name>"
+                let Some((meta, name)) = item.split_once('\t') else {
+                    continue;
+                };
+                out.push(Entry {
+                    name: name.to_string(),
+                    path: under(name),
+                    dir: meta.split(' ').nth(1) == Some("tree"),
+                });
+            }
+        }
+        None => {
+            let top = worktree.unwrap_or(&repo.root);
+            let read = std::fs::read_dir(top.join(dir))
+                .map_err(|_| Error::Msg(format!("{} doesn't exist here.", shown(dir))))?;
+            for e in read.flatten() {
+                let name = e.file_name().to_string_lossy().into_owned();
+                // Git's own folder (a file, in a linked worktree) isn't part of the tree.
+                if dir.is_empty() && name == ".git" {
+                    continue;
+                }
+                let is_dir = e.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                out.push(Entry {
+                    path: under(&name),
+                    name,
+                    dir: is_dir,
+                });
+            }
+            let ignored = ignored(top, &out);
+            out.retain(|e| !ignored.contains(&e.path));
+        }
+    }
+    out.sort_by(|a, b| {
+        b.dir
+            .cmp(&a.dir)
+            .then_with(|| a.name.to_lowercase().cmp(&b.name.to_lowercase()))
+            .then_with(|| a.name.cmp(&b.name))
+    });
+    out.truncate(MAX_ENTRIES);
+    Ok(out)
+}
+
+fn shown(dir: &str) -> &str {
+    if dir.is_empty() {
+        "That folder"
+    } else {
+        dir
+    }
+}
+
+/// Which of `entries` git ignores. If git can't say, nothing is hidden.
+fn ignored(top: &Path, entries: &[Entry]) -> std::collections::HashSet<String> {
+    if entries.is_empty() {
+        return Default::default();
+    }
+    let input = entries
+        .iter()
+        .map(|e| e.path.as_str())
+        .collect::<Vec<_>>()
+        .join("\0");
+    match crate::cmd::git_stdin(top, ["check-ignore", "-z", "--stdin"], input.as_bytes()) {
+        Ok((_, out, _)) => String::from_utf8_lossy(&out)
+            .split('\0')
+            .filter(|p| !p.is_empty())
+            .map(str::to_string)
+            .collect(),
+        Err(_) => Default::default(),
+    }
+}
+
+/// A file's contents, or why they aren't shown.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Contents {
+    pub path: String,
+    pub size: u64,
+    /// Missing for a binary file, a link, or one too large to show.
+    pub text: Option<String>,
+    /// Why there's no text, in plain words.
+    pub why: Option<String>,
+}
+
+/// Past this a file is too much to read on a screen, or to send to it.
+const MAX_READ_BYTES: u64 = 1_000_000;
+
+/// `path` as of `rev`, or as it is on disk in `worktree`.
+pub fn read(
+    repo: &Repo,
+    worktree: Option<&Path>,
+    rev: Option<&str>,
+    path: &str,
+) -> Result<Contents> {
+    check_path(path)?;
+    let none = |size: u64, why: String| {
+        Ok(Contents {
+            path: path.to_string(),
+            size,
+            text: None,
+            why: Some(why),
+        })
+    };
+    let bytes = match rev {
+        Some(r) => {
+            check_rev(r)?;
+            let at = format!("{r}:{path}");
+            let Some(size) = git_opt(&repo.common_git_dir, ["cat-file", "-s", &at])
+                .and_then(|s| s.parse::<u64>().ok())
+            else {
+                return msg(format!("{path} doesn't exist at {r}."));
+            };
+            if size > MAX_READ_BYTES {
+                return none(size, "This file is too large to show.".into());
+            }
+            git_bytes(&repo.common_git_dir, ["cat-file", "blob", &at])
+                .map_err(|_| Error::Msg(format!("{path} isn't a file.")))?
+        }
+        None => {
+            let full = worktree.unwrap_or(&repo.root).join(path);
+            let Ok(meta) = std::fs::symlink_metadata(&full) else {
+                return msg(format!("{path} doesn't exist here."));
+            };
+            // Never followed: a link can point anywhere on the disk.
+            if meta.file_type().is_symlink() {
+                let to = std::fs::read_link(&full)
+                    .map(|t| t.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                return none(0, format!("A link to {to}."));
+            }
+            if !meta.is_file() {
+                return msg(format!("{path} isn't a file."));
+            }
+            if meta.len() > MAX_READ_BYTES {
+                return none(meta.len(), "This file is too large to show.".into());
+            }
+            std::fs::read(&full).map_err(|e| Error::Msg(format!("Couldn't read {path}: {e}")))?
+        }
+    };
+    let size = bytes.len() as u64;
+    if bytes.iter().take(8000).any(|b| *b == 0) {
+        return none(size, "This is a binary file.".into());
+    }
+    Ok(Contents {
+        path: path.to_string(),
+        size,
+        text: Some(String::from_utf8_lossy(&bytes).into_owned()),
+        why: None,
+    })
+}
+
+/// Files found by name.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Found {
+    pub paths: Vec<String>,
+    /// There were more than the limit.
+    pub truncated: bool,
+}
+
+/// Files whose path has every word of `query`, in any case. A match in the
+/// file's own name comes before a match in a folder's.
+pub fn find(
+    repo: &Repo,
+    worktree: Option<&Path>,
+    rev: Option<&str>,
+    query: &str,
+    limit: usize,
+) -> Result<Found> {
+    let words: Vec<String> = query.split_whitespace().map(str::to_lowercase).collect();
+    if words.is_empty() {
+        return Ok(Found {
+            paths: Vec::new(),
+            truncated: false,
+        });
+    }
+    let bytes = match rev {
+        Some(r) => {
+            check_rev(r)?;
+            git_bytes(
+                &repo.common_git_dir,
+                ["ls-tree", "-r", "-z", "--name-only", r],
+            )?
+        }
+        None => git_bytes(
+            worktree.unwrap_or(&repo.root),
+            [
+                "ls-files",
+                "-z",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+            ],
+        )?,
+    };
+    let all = String::from_utf8_lossy(&bytes);
+    let (mut by_name, mut by_folder) = (Vec::new(), Vec::new());
+    for p in all.split('\0').filter(|p| !p.is_empty()) {
+        let low = p.to_lowercase();
+        if !words.iter().all(|w| low.contains(w.as_str())) {
+            continue;
+        }
+        let name = low.rsplit('/').next().unwrap_or(&low);
+        if words.iter().all(|w| name.contains(w.as_str())) {
+            by_name.push(p.to_string());
+        } else {
+            by_folder.push(p.to_string());
+        }
+    }
+    by_name.sort();
+    by_name.dedup();
+    by_folder.sort();
+    by_folder.dedup();
+    by_name.append(&mut by_folder);
+    let truncated = by_name.len() > limit;
+    by_name.truncate(limit);
+    Ok(Found {
+        paths: by_name,
+        truncated,
+    })
+}

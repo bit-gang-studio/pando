@@ -295,3 +295,203 @@ fn crlf_and_no_final_newline() {
         ["one", "two", "last without newline"]
     );
 }
+
+// ---- The files as they are: list, read, find --------------------------------
+
+fn names(v: &[file::Entry]) -> Vec<String> {
+    v.iter()
+        .map(|e| format!("{}{}", e.name, if e.dir { "/" } else { "" }))
+        .collect()
+}
+
+/// src/app.rs and "docs/my notes ü.txt" committed; then on disk: a new file,
+/// an edit, an ignored folder and an ignored file.
+fn tree_fixture() -> (Repo, String) {
+    let r = repo();
+    write(&r.root, "src/app.rs", "fn main() {}\n");
+    write(&r.root, "docs/my notes ü.txt", "one\n");
+    write(&r.root, ".gitignore", "node_modules/\n*.log\n");
+    git(&r.root, &["add", "-A"]);
+    git(&r.root, &["commit", "-q", "-m", "tree"]);
+    let at = r.tip("HEAD");
+    write(&r.root, "src/new.rs", "// new\n");
+    write(&r.root, "src/app.rs", "fn main() { edited(); }\n");
+    write(&r.root, "node_modules/x/index.js", "x\n");
+    write(&r.root, "debug.log", "noise\n");
+    (r, at)
+}
+
+#[test]
+fn list_on_disk_shows_new_files_hides_ignored_and_git_itself() {
+    let (r, _) = tree_fixture();
+    let core = r.core();
+    let top = file::list(&core, None, None, "").unwrap();
+    // Folders first, then names without regard to case. No .git, nothing ignored.
+    assert_eq!(names(&top), ["docs/", "src/", ".gitignore", "README.md"]);
+    let src = file::list(&core, None, None, "src").unwrap();
+    assert_eq!(names(&src), ["app.rs", "new.rs"]);
+    assert_eq!(src[1].path, "src/new.rs");
+    let docs = file::list(&core, None, None, "docs/").unwrap();
+    assert_eq!(docs[0].path, "docs/my notes ü.txt");
+}
+
+#[test]
+fn list_at_a_commit_shows_that_commit_not_the_disk() {
+    let (r, at) = tree_fixture();
+    let core = r.core();
+    assert_eq!(
+        names(&file::list(&core, None, Some(&at), "").unwrap()),
+        ["docs/", "src/", ".gitignore", "README.md"]
+    );
+    assert_eq!(
+        names(&file::list(&core, None, Some(&at), "src").unwrap()),
+        ["app.rs"]
+    );
+    assert_eq!(
+        names(&file::list(&core, None, Some("main"), "docs").unwrap()),
+        ["my notes ü.txt"]
+    );
+}
+
+#[test]
+fn list_in_a_linked_worktree_is_that_folder_not_the_main_one() {
+    let (r, _) = tree_fixture();
+    let wt = add_worktree(&r, "feat/a", "work-feat-a");
+    write(&wt, "only-here.txt", "x\n");
+    let core = r.core();
+    let there = names(&file::list(&core, Some(&wt), None, "").unwrap());
+    assert!(there.contains(&"only-here.txt".to_string()));
+    // A linked worktree's .git is a file; still not part of the tree.
+    assert!(!there
+        .iter()
+        .any(|n| n.starts_with(".git") && n != ".gitignore"));
+    assert!(
+        !names(&file::list(&core, None, None, "").unwrap()).contains(&"only-here.txt".to_string())
+    );
+}
+
+#[test]
+fn list_refuses_paths_that_leave_the_repository_and_says_when_a_folder_is_missing() {
+    let (r, at) = tree_fixture();
+    let core = r.core();
+    for bad in ["..", "../x", "src/../..", "/etc"] {
+        assert!(file::list(&core, None, None, bad).is_err(), "{bad}");
+        assert!(file::list(&core, None, Some(&at), bad).is_err(), "{bad}");
+    }
+    let e = file::list(&core, None, None, "nope")
+        .unwrap_err()
+        .to_string();
+    assert_eq!(e, "nope doesn't exist here.");
+    let e = file::list(&core, None, Some(&at), "nope")
+        .unwrap_err()
+        .to_string();
+    assert!(e.starts_with("nope doesn't exist at "), "{e}");
+    assert!(file::list(&core, None, Some("--output=/tmp/x"), "").is_err());
+}
+
+#[test]
+fn read_gives_the_disk_or_the_commit() {
+    let (r, at) = tree_fixture();
+    let core = r.core();
+    let now = file::read(&core, None, None, "src/app.rs").unwrap();
+    assert_eq!(now.text.as_deref(), Some("fn main() { edited(); }\n"));
+    assert_eq!(now.why, None);
+    let then = file::read(&core, None, Some(&at), "src/app.rs").unwrap();
+    assert_eq!(then.text.as_deref(), Some("fn main() {}\n"));
+    assert_eq!(then.size, 13);
+    let odd = file::read(&core, None, Some("main"), "docs/my notes ü.txt").unwrap();
+    assert_eq!(odd.text.as_deref(), Some("one\n"));
+    // Not committed: on disk only.
+    assert!(file::read(&core, None, None, "src/new.rs").is_ok());
+    let e = file::read(&core, None, Some(&at), "src/new.rs")
+        .unwrap_err()
+        .to_string();
+    assert!(e.starts_with("src/new.rs doesn't exist at "), "{e}");
+    assert_eq!(
+        file::read(&core, None, None, "gone.txt")
+            .unwrap_err()
+            .to_string(),
+        "gone.txt doesn't exist here."
+    );
+}
+
+#[test]
+fn read_says_why_when_there_is_nothing_to_show() {
+    let (r, _) = tree_fixture();
+    std::fs::write(r.root.join("pic.bin"), [1u8, 0, 2, 0, 3]).unwrap();
+    std::fs::write(r.root.join("big.txt"), vec![b'a'; 1_000_001]).unwrap();
+    std::fs::write(r.root.join("empty.txt"), b"").unwrap();
+    git(&r.root, &["add", "-A"]);
+    git(&r.root, &["commit", "-q", "-m", "odd files"]);
+    let core = r.core();
+    for rev in [None, Some("HEAD")] {
+        let b = file::read(&core, None, rev, "pic.bin").unwrap();
+        assert_eq!(
+            (b.text, b.why.as_deref()),
+            (None, Some("This is a binary file."))
+        );
+        let big = file::read(&core, None, rev, "big.txt").unwrap();
+        assert_eq!(big.why.as_deref(), Some("This file is too large to show."));
+        assert_eq!(big.size, 1_000_001);
+        let empty = file::read(&core, None, rev, "empty.txt").unwrap();
+        assert_eq!(empty.text.as_deref(), Some(""));
+        // A folder isn't a file.
+        assert!(file::read(&core, None, rev, "src").is_err());
+        for bad in ["../x", "/etc/passwd", "src/../../x", ""] {
+            assert!(file::read(&core, None, rev, bad).is_err(), "{bad}");
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn read_never_follows_a_link_out_of_the_repository() {
+    let (r, _) = tree_fixture();
+    let secret = r.base.join("secret.txt");
+    std::fs::write(&secret, "do not show\n").unwrap();
+    std::os::unix::fs::symlink(&secret, r.root.join("link.txt")).unwrap();
+    let got = file::read(&r.core(), None, None, "link.txt").unwrap();
+    assert_eq!(got.text, None);
+    assert!(got.why.unwrap().starts_with("A link to "));
+}
+
+#[test]
+fn find_matches_every_word_names_first_and_respects_the_limit() {
+    let (r, at) = tree_fixture();
+    write(&r.root, "docs/app-guide.md", "g\n");
+    let core = r.core();
+    let on_disk = file::find(&core, None, None, "APP", 50).unwrap();
+    // New and edited files are found; the ignored ones aren't.
+    assert_eq!(on_disk.paths, ["docs/app-guide.md", "src/app.rs"]);
+    assert!(!on_disk.truncated);
+    // A word can match the folder, but a match in the name comes first.
+    let src = file::find(&core, None, None, "src rs", 50).unwrap();
+    assert_eq!(src.paths, ["src/app.rs", "src/new.rs"]);
+    assert!(file::find(&core, None, None, "node_modules", 50)
+        .unwrap()
+        .paths
+        .is_empty());
+    assert!(file::find(&core, None, None, "log", 50)
+        .unwrap()
+        .paths
+        .is_empty());
+    // At a commit: only what was committed.
+    assert_eq!(
+        file::find(&core, None, Some(&at), "rs", 50).unwrap().paths,
+        ["src/app.rs"]
+    );
+    assert_eq!(
+        file::find(&core, None, Some(&at), "notes ü", 50)
+            .unwrap()
+            .paths,
+        ["docs/my notes ü.txt"]
+    );
+    let one = file::find(&core, None, None, "s", 1).unwrap();
+    assert_eq!(one.paths.len(), 1);
+    assert!(one.truncated);
+    assert!(file::find(&core, None, None, "   ", 50)
+        .unwrap()
+        .paths
+        .is_empty());
+    assert!(file::find(&core, None, Some("--all"), "x", 50).is_err());
+}
