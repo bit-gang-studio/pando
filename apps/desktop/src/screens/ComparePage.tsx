@@ -74,9 +74,21 @@ export function ComparePage({ root, data, worktree, branch, commit, refsTick }: 
   const [first, setFirst] = useState<string | null>(null);
   const [span, setSpan] = useState<Span | null>(null);
   const [spanIds, setSpanIds] = useState<string[] | null>(null);
-  const [whole, setWhole] = useState<"mine" | "theirs" | null>(null);
+  /// The branch whose whole set of changes since the split is shown.
+  const [whole, setWhole] = useState<string | null>(null);
+  // How many commits each one has made since they all split.
+  const [since, setSince] = useState<Record<string, number>>({});
+  useEffect(() => {
+    setSince({});
+    if (!fork) return;
+    let live = true;
+    Promise.all(all.map(async (b) => [b, (await api.compare(root, fork, b)).ahead] as const))
+      .then((n) => { if (live) setSince(Object.fromEntries(n)); })
+      .catch(() => { /* the rows just show no count */ });
+    return () => { live = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [root, allKey, fork, refsTick]);
   useEffect(() => { setSel(null); setFirst(null); setSpan(null); setSpanIds(null); setWhole(null); }, [root, allKey]);
-  useEffect(() => { setWhole(null); }, [other]);
   const onLoaded = useCallback((id: string | null) => setFirst(id), []);
   const picked = useMemo(() => (span ? new Set(spanIds ?? [span.older, span.newer]) : undefined), [span, spanIds]);
   const pickSpan = (s: Span | null) => { setSpan(s); setSpanIds(null); setWhole(null); };
@@ -134,12 +146,17 @@ export function ComparePage({ root, data, worktree, branch, commit, refsTick }: 
   const theirFiles = new Set(cmp.theirs.files.map((f) => f.path));
   const both = cmp.mine.files.map((f) => f.path).filter((p) => theirFiles.has(p));
   const shown = sel ?? first;
-  const pickWhole = (which: "mine" | "theirs") => { pickSpan(null); setWhole(which); };
-  /// One row per side that has commits: everything it changed since the split, as one diff.
-  const totals = [
-    ...(ahead ? [{ key: "mine", label: <>All changes on <span className="font-mono">{label(mine)}</span></>, detail: `since they split · ${count(ahead, "commit")}`, selected: whole === "mine", onClick: () => pickWhole("mine") }] : []),
-    ...(behind ? [{ key: "theirs", label: <>All changes on <span className="font-mono">{label(other)}</span></>, detail: `since they split · ${count(behind, "commit")}`, selected: whole === "theirs", onClick: () => pickWhole("theirs") }] : []),
-  ];
+  /// One row per branch, the picked one first: everything it changed since they
+  /// split, as one diff. One that hasn't moved still gets its row, and says so.
+  const totals = fork ? [mine, ...others].filter((b) => b in since).map((b) => ({
+    key: b,
+    tip: b,
+    empty: since[b] === 0,
+    label: <>All changes on <span className="font-mono">{label(b)}</span></>,
+    detail: since[b] === 0 ? `none since they ${many ? "all " : ""}split` : `since they ${many ? "all " : ""}split · ${count(since[b], "commit")}`,
+    selected: whole === b,
+    onClick: () => { pickSpan(null); setWhole(b); },
+  })) : [];
   /// A side with nothing new has no line in the graph. Say so, so nobody looks for it.
   const still = ahead > 0 && behind === 0 ? other : behind > 0 && ahead === 0 ? mine : null;
 
@@ -173,7 +190,7 @@ export function ComparePage({ root, data, worktree, branch, commit, refsTick }: 
       </div>
       <SplitHandle axis="y" onMouseDown={split.start} handleRef={split.handle} />
       <div className="flex min-h-0 min-w-0 grow">
-        {whole ? <CommitDetail key={`whole-${whole}-${mine}-${other}`} root={root} compare={whole === "mine" ? { base: other, head: mine } : { base: mine, head: other }} onBack={() => setWhole(null)} />
+        {whole && fork ? <CommitDetail key={`whole-${whole}-${fork}`} root={root} compare={{ base: fork, head: whole }} onBack={() => setWhole(null)} />
           : span ? <CommitDetail key={`span-${span.older}-${span.newer}`} root={root} span={span} onRange={setSpanIds} onBack={() => pickSpan(null)} />
           : shown ? <CommitDetail root={root} id={shown} />
           : <div className="flex grow items-center justify-center text-body text-stone-500">Nothing has been committed on either one since they split.</div>}

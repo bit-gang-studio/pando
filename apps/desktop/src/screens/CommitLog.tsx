@@ -19,7 +19,9 @@ type Props = {
   title?: React.ReactNode;
   /// Rows above the commits that stand for many at once ("everything this side
   /// changed"). Drawn with a dashed outline: a sum, not a commit.
-  totals?: { key: string; label: React.ReactNode; detail: string; selected: boolean; onClick: () => void }[];
+  /// `tip`: the branch it sums up. Its dot sits above that branch's line in the
+  /// graph, joined to it by a dashed line. `empty`: nothing to sum; it has no line.
+  totals?: { key: string; label: React.ReactNode; detail: string; selected: boolean; onClick: () => void; tip?: string; empty?: boolean }[];
   dirtyWorktrees: number;
   uncommittedLabel?: string;
   uncommittedSelected?: boolean;
@@ -184,8 +186,20 @@ export function CommitLog({ root, scope, title, totals, dirtyWorktrees, uncommit
   // A history with many branches side by side can be dozens of lanes wide.
   // Cap the graph so the commit text always stays on screen; lanes past the
   // cap are cut off, and a commit out there gets its dot at the edge.
-  const maxLanes = Math.min(MAX_LANES, Math.max(1, ...graph.map((g) => g.lanes)));
+  // Each total sits above its branch's line. One with nothing in it has no line,
+  // so it takes the next free lane to the right.
+  const totalAt = useMemo(() => {
+    let free = Math.max(0, ...graph.map((g) => g.lanes));
+    return (totals ?? []).map((t) => {
+      const row = t.tip && !t.empty ? rows.findIndex((e) => e.id === t.tip || e.refs.includes(t.tip!)) : -1;
+      return row >= 0 ? { lane: graph[row].lane, row } : { lane: free++, row: -1 };
+    });
+  }, [totals, rows, graph]);
+  const maxLanes = Math.min(MAX_LANES, Math.max(1, ...graph.map((g) => g.lanes), ...(searching ? [] : totalAt.map((t) => t.lane + 1))));
   const graphW = maxLanes * LANE_W + 6;
+  /// Lanes a total's dashed line runs down through at `row` (-1 - k for the k-th
+  /// totals row itself), on its way to the branch's newest commit.
+  const lead = (row: number) => totalAt.filter((t, k) => t.row >= 0 && (row < 0 ? k < -1 - row : t.row >= row)).map((t) => ({ lane: t.lane, ends: t.row === row }));
 
   return (
     <div className="flex min-h-0 flex-col">
@@ -224,10 +238,10 @@ export function CommitLog({ root, scope, title, totals, dirtyWorktrees, uncommit
             <span className="text-body text-stone-500">{uncommittedLabel ?? `in ${dirtyWorktrees} ${dirtyWorktrees === 1 ? "worktree" : "worktrees"}`}</span>
           </button>
         )}
-        {!searching && totals?.map((t) => (
-          <button key={t.key} data-total={t.key} onClick={t.onClick} aria-pressed={t.selected} className={`flex w-full items-center gap-3 px-4 py-1.5 text-left ${t.selected ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
-            <span className="h-3 w-3 shrink-0 rounded-full border-2 border-dashed border-stone-400" />
-            <span className="min-w-0 truncate font-medium">{t.label}</span>
+        {!searching && totals?.map((t, k) => (
+          <button key={t.key} data-total={t.key} data-lane={totalAt[k]?.lane} onClick={t.onClick} disabled={t.empty} aria-pressed={t.selected} style={{ height: ROW_H }} className={`flex w-full items-center gap-3 pl-2 pr-4 text-left ${t.selected ? "bg-teal-50 dark:bg-teal-900/30" : t.empty ? "" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
+            <TotalCell lane={totalAt[k]?.lane ?? 0} width={graphW} joined={(totalAt[k]?.row ?? -1) >= 0} through={lead(-1 - k).map((l) => l.lane)} />
+            <span className={`min-w-0 truncate font-medium ${t.empty ? "text-stone-500" : ""}`}>{t.label}</span>
             <span className="shrink-0 text-body text-stone-500">{t.detail}</span>
           </button>
         ))}
@@ -261,7 +275,7 @@ export function CommitLog({ root, scope, title, totals, dirtyWorktrees, uncommit
             onContextMenu={(ev) => { if (onCommitMenu) { ev.preventDefault(); onCommitMenu(ev, e); } }}
             className={`flex cursor-pointer items-center gap-3 pl-2 pr-4 ${(picked?.size ? picked.has(e.id) : selected === e.id) ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}
           >
-            {searching ? <span className="w-2 shrink-0" /> : <GraphCell row={graph[i]} width={graphW} head={heads ? heads.has(e.id) : e.is_head} />}
+            {searching ? <span className="w-2 shrink-0" /> : <GraphCell row={graph[i]} width={graphW} head={heads ? heads.has(e.id) : e.is_head} lead={totals ? lead(i) : undefined} />}
             {/* Earlier history is dimmed, but not the graph: see-through lane lines that
                 overlap row to row would draw as dots at every row boundary. */}
             <div data-dim={!searching && ownCount != null && i >= ownCount && selected !== e.id && !picked?.has(e.id)} className={`flex min-w-0 grow items-center gap-3 ${!searching && ownCount != null && i >= ownCount && selected !== e.id && !picked?.has(e.id) ? "opacity-60" : ""}`}>
@@ -309,7 +323,22 @@ function RefChip({ name, dot }: { name: string; dot?: string }) {
   );
 }
 
-function GraphCell({ row, width, head }: { row: GraphRow; width: number; head: boolean }) {
+/// A total's dot: dashed, in its branch's lane and colour, with a dashed line
+/// leaving downwards when there's a branch below to join.
+function TotalCell({ lane, width, joined, through }: { lane: number; width: number; joined: boolean; through: number[] }) {
+  const x = (l: number) => l * LANE_W + LANE_W / 2 + 2;
+  const mid = ROW_H / 2;
+  const dash = { strokeDasharray: "3 3" };
+  return (
+    <svg width={width} height={ROW_H + 2} viewBox={`0 -1 ${width} ${ROW_H + 2}`} className="-my-px shrink-0" aria-hidden="true">
+      {through.filter((l) => l !== lane).map((l) => <line key={l} x1={x(l)} y1={-1} x2={x(l)} y2={ROW_H + 1} style={{ stroke: colorFor(l), ...dash }} strokeWidth={2} />)}
+      {joined && <line x1={x(lane)} y1={mid} x2={x(lane)} y2={ROW_H + 1} style={{ stroke: colorFor(lane), ...dash }} strokeWidth={2} />}
+      <circle cx={x(lane)} cy={mid} r={5} style={{ fill: "var(--graph-bg)", stroke: joined ? colorFor(lane) : "#a8a29e", ...dash }} strokeWidth={2} />
+    </svg>
+  );
+}
+
+function GraphCell({ row, width, head, lead }: { row: GraphRow; width: number; head: boolean; lead?: { lane: number; ends: boolean }[] }) {
   const x = (lane: number) => lane * LANE_W + LANE_W / 2 + 2;
   // This commit's dot never leaves the visible lanes.
   const dotX = Math.min(x(row.lane), width - LANE_W / 2);
@@ -319,6 +348,8 @@ function GraphCell({ row, width, head }: { row: GraphRow; width: number; head: b
   const B = ROW_H + 1;
   return (
     <svg width={width} height={ROW_H + 2} viewBox={`0 -1 ${width} ${ROW_H + 2}`} className="-my-px shrink-0" data-lane={row.lane} aria-hidden="true">
+      {/* A total's dashed line, on its way down to the branch it sums up. Never over a real line. */}
+      {lead?.filter((l) => (l.ends ? !row.top : l.lane !== row.lane && !row.through.includes(l.lane))).map((l) => <line key={`l${l.lane}`} x1={x(l.lane)} y1={T} x2={x(l.lane)} y2={l.ends ? mid : B} style={{ stroke: colorFor(l.lane), strokeDasharray: "3 3" }} strokeWidth={2} />)}
       {row.through.map((l) => <line key={`t${l}`} x1={x(l)} y1={T} x2={x(l)} y2={B} style={{ stroke: colorFor(l) }} strokeWidth={2} />)}
       {row.into.map((l) => <path key={`i${l}`} d={`M ${x(l)} ${T} C ${x(l)} ${mid} ${x(row.lane)} ${mid} ${x(row.lane)} ${mid}`} fill="none" style={{ stroke: colorFor(l) }} strokeWidth={2} />)}
       {row.top && <line x1={x(row.lane)} y1={T} x2={x(row.lane)} y2={mid} style={{ stroke: colorFor(row.lane) }} strokeWidth={2} />}

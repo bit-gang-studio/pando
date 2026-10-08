@@ -54,7 +54,8 @@ test("Compare is the last choice in the toggle, and it's remembered", async ({ p
 test("the picked branch against the base: one graph of what each has since they split, then where they split", async ({ page }) => {
   await open(page, wtUrl(W));
   // Both ways round: what mine changed, and what theirs did.
-  expect([...new Set((await callsTo(page, "compare")).map((c) => `${c.base}>${c.head}`))].sort()).toEqual(["feat/step-3>origin/main", "origin/main>feat/step-3"]);
+  // Both ways round for the pair, then each one against where they split.
+  await expect.poll(async () => [...new Set((await callsTo(page, "compare")).map((c) => `${String(c.base).slice(0, 12)}>${c.head}`))].sort()).toEqual(["feat/step-3>origin/main", "ffffffffffff>feat/step-3", "ffffffffffff>origin/main", "origin/main>feat/step-3"]);
   await expect(page.getByText("proj-spaces · feat/step-3")).toBeVisible();
   await expect(withChips(page)).toHaveText(["origin/main×"]);
   await expect(summary(page)).toContainText("3 commits only on feat/step-3");
@@ -84,20 +85,24 @@ test("click a commit for its diff; shift-click for several as one; a side's coun
   await expect.poll(async () => (await callsTo(page, "commit_diff")).at(-1)).toEqual({ root: ROOT, id: id("b") });
   await rows(page).nth(4).click({ modifiers: ["Shift"] });
   await expect.poll(async () => (await callsTo(page, "commit_range")).length).toBeGreaterThan(0);
-  // Everything one side changed since the split, as one diff: a dashed row on top for each side.
+  // Everything one branch changed since the split, as one diff: a dashed row on top for each.
   const total = (k: string) => page.locator(`[data-total="${k}"]`);
-  await expect(total("mine")).toHaveText("All changes on feat/step-3since they split · 3 commits");
-  await expect(total("theirs")).toHaveText("All changes on origin/mainsince they split · 2 commits");
-  await expect(total("mine").locator("span").first()).toHaveClass(/border-dashed/);
-  await total("theirs").click();
-  await expect.poll(async () => (await callsTo(page, "compare")).at(-1)).toEqual({ root: ROOT, base: "feat/step-3", head: "origin/main" });
-  await expect(total("theirs")).toHaveAttribute("aria-pressed", "true");
-  await total("mine").click();
-  await expect(total("mine")).toHaveAttribute("aria-pressed", "true");
-  await expect(total("theirs")).toHaveAttribute("aria-pressed", "false");
+  await expect(page.locator("[data-total]")).toHaveText(["All changes on feat/step-3since they split · 3 commits", "All changes on origin/mainsince they split · 2 commits"]);
+  // Each sits in its own branch's lane, above that branch's line.
+  const laneOf = async (name: string) => rows(page).filter({ hasText: name }).first().locator("svg").getAttribute("data-lane");
+  expect(await total("feat/step-3").getAttribute("data-lane")).toBe(await laneOf("Space page layout"));
+  expect(await total("origin/main").getAttribute("data-lane")).toBe(await laneOf("Merge #547"));
+  expect(await total("feat/step-3").getAttribute("data-lane")).not.toBe(await total("origin/main").getAttribute("data-lane"));
+  await expect(total("origin/main").locator("svg circle")).toHaveAttribute("style", /dasharray/);
+  await total("origin/main").click();
+  await expect.poll(async () => (await callsTo(page, "compare")).at(-1)).toEqual({ root: ROOT, base: id("f"), head: "origin/main" });
+  await expect(total("origin/main")).toHaveAttribute("aria-pressed", "true");
+  await total("feat/step-3").click();
+  await expect(total("feat/step-3")).toHaveAttribute("aria-pressed", "true");
+  await expect(total("origin/main")).toHaveAttribute("aria-pressed", "false");
   // Picking a commit again leaves that.
   await rows(page).nth(0).click();
-  await expect(total("mine")).toHaveAttribute("aria-pressed", "false");
+  await expect(total("feat/step-3")).toHaveAttribute("aria-pressed", "false");
 });
 
 test("add up to five to compare with; one is focused for the counts; each can be removed", async ({ page }) => {
@@ -124,7 +129,8 @@ test("add up to five to compare with; one is focused for the counts; each can be
   expect((await callsTo(page, "compare")).some((c) => c.base === "feat/step-2" && c.head === "feat/step-3")).toBe(true);
   await withChips(page).nth(0).getByRole("button", { name: "origin/main", exact: true }).click();
   await expect(summary(page).locator("[data-against]")).toHaveText("Against origin/main:");
-  await expect(page.locator('[data-total="theirs"]')).toContainText("All changes on origin/main");
+  await expect(page.locator("[data-total]")).toHaveCount(3);
+  await expect(page.locator('[data-total="feat/step-2"]')).toContainText("since they all split");
   // Up to five; then there's no Add.
   for (const n of ["feat/a", "feat/b", "feat/c"]) {
     await page.getByRole("button", { name: "Compare with" }).click();
@@ -178,12 +184,14 @@ test("two branches with no shared history say so", async ({ page }) => {
   await expect(summary(page)).toContainText("These two share no history.");
 });
 
-test("a side with nothing new gets no row of its own, and the page says why there's one line", async ({ page }) => {
+test("a branch with nothing new still gets its row, saying so, and the page says why there's one line", async ({ page }) => {
   await open(page, wtUrl(W), { compare: { $by: "head", cases: { "feat/step-3": cmp("origin/main", "feat/step-3", 0, 4, []), "origin/main": cmp("feat/step-3", "origin/main", 4, 0, ["x.md"]) } } });
   await expect(summary(page)).toContainText("0 commits only on feat/step-3 · 4 commits only on origin/main");
   await expect(summary(page).locator("[data-still]")).toHaveText("feat/step-3 hasn't moved since they split, so it has no line of its own below. Its newest commit is where they split.");
-  await expect(page.locator("[data-total]")).toHaveCount(1);
-  await expect(page.locator('[data-total="theirs"]')).toBeVisible();
+  await expect(page.locator("[data-total]")).toHaveText(["All changes on feat/step-3none since they split", "All changes on origin/mainsince they split · 4 commits"]);
+  // Nothing to show for it, so it can't be picked.
+  await expect(page.locator('[data-total="feat/step-3"]')).toBeDisabled();
+  await expect(page.locator('[data-total="origin/main"]')).toBeEnabled();
   await expect(summary(page).locator("[data-both]")).toHaveCount(0);
 });
 
