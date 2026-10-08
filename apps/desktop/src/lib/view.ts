@@ -2,12 +2,12 @@ import { useEffect, useState } from "react";
 
 /// What the centre of a repository window shows. Chosen in the header,
 /// remembered, and shared by every screen of that window.
-export type CenterView = "commits" | "overview" | "files";
+export type CenterView = "commits" | "files" | "compare";
 const KEY = "pando.view";
 const listeners = new Set<(v: CenterView) => void>();
 
 export function getCenterView(): CenterView {
-  try { const v = localStorage.getItem(KEY); return v === "files" || v === "overview" ? v : "commits"; } catch { return "commits"; }
+  try { const v = localStorage.getItem(KEY); return v === "files" || v === "compare" ? v : "commits"; } catch { return "commits"; }
 }
 
 export function setCenterView(v: CenterView) {

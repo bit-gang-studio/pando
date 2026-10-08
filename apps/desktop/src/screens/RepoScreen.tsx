@@ -17,7 +17,7 @@ import { MessageDialog } from "../dialogs/MessageDialog";
 import { PullRequestDialog } from "../dialogs/PullRequestDialog";
 import { FileView, type FileTarget } from "./FileView";
 import { FilesPage, type FilesTarget } from "./FilesPage";
-import { OverviewPage } from "./OverviewPage";
+import { ComparePage } from "./ComparePage";
 import { setCenterView, useCenterView } from "../lib/view";
 import { getChosenBase } from "../lib/base";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -349,7 +349,7 @@ export function RepoScreen({ root, commit, worktree = null, branch = null, land 
           <button onClick={refresh} className="underline">Retry</button>
         </div>
       )}
-      {view === "overview" ? <OverviewPage root={root} data={data} worktree={worktree} branch={branch} commit={commit} prByBranch={prByBranch} overlaps={overlaps} refsTick={refsTick} /> : view === "files" ? <FilesPage root={root} target={filesTarget} tick={tick} onOpenCommit={(id) => { setCenterView("commits"); navigate({ kind: "commit", root, id }); }} /> : <>
+      {view === "compare" ? <ComparePage root={root} data={data} worktree={worktree} branch={branch} commit={commit} refsTick={refsTick} /> : view === "files" ? <FilesPage root={root} target={filesTarget} tick={tick} onOpenCommit={(id) => { setCenterView("commits"); navigate({ kind: "commit", root, id }); }} /> : <>
       <div style={{ height: split.size, flex: "0 0 auto" }} className="flex min-h-0 flex-col">
         <CommitLog
           root={root}

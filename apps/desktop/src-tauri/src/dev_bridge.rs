@@ -154,9 +154,6 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
             arg(&a, "limit")?,
         )
         .await),
-        "relate_load" => {
-            out(super::relate_load(arg(&a, "root")?, arg(&a, "target")?, arg(&a, "base")?).await)
-        }
         "file_list" => out(super::file_list(
             arg(&a, "root")?,
             arg(&a, "worktree")?,

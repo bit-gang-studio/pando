@@ -467,16 +467,6 @@ async fn file_history(
         .await
 }
 
-/// How a branch or commit stands next to the base and the branches around it.
-#[tauri::command]
-async fn relate_load(
-    root: PathBuf,
-    target: String,
-    base: String,
-) -> R<pando_core::relate::Relation> {
-    blocking(move || pando_core::relate::load(&repo(&root)?, &target, &base).map_err(err)).await
-}
-
 /// One folder of the tree: at `rev`, or as it is on disk in `worktree`.
 #[tauri::command]
 async fn file_list(
@@ -814,7 +804,6 @@ pub fn run() {
             log_search,
             file_history,
             file_blame,
-            relate_load,
             file_list,
             file_read,
             file_find,

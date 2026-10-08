@@ -15,6 +15,8 @@ type Props = {
   root: string;
   /// Branch to show. Empty means all branches.
   scope: string;
+  /// What the list is, when it isn't simply `scope`'s commits.
+  title?: React.ReactNode;
   dirtyWorktrees: number;
   uncommittedLabel?: string;
   uncommittedSelected?: boolean;
@@ -56,7 +58,7 @@ export type Span = { anchor: string; other: string; older: string; newer: string
 const PAGE = 200;
 const MAX_LANES = 12;
 
-export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, prByBranch = {}, detachedDots = {}, heads, compare, compareSelected, onCompare, range, picked, spanEnd, onSpan, onCommitMenu, onLoaded, refreshKey }: Props) {
+export function CommitLog({ root, scope, title, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, prByBranch = {}, detachedDots = {}, heads, compare, compareSelected, onCompare, range, picked, spanEnd, onSpan, onCommitMenu, onLoaded, refreshKey }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -183,7 +185,7 @@ export function CommitLog({ root, scope, dirtyWorktrees, uncommittedLabel, uncom
   return (
     <div className="flex min-h-0 flex-col">
       <div className="flex shrink-0 items-center gap-2 border-b border-stone-200 bg-white px-4 py-1.5 dark:border-stone-700 dark:bg-stone-800">
-        <span className="min-w-0 truncate text-body text-stone-500">{scope ? <span className="font-mono">{scope}</span> : "All branches"} · {ownCount != null ? `${ownCount} ${ownCount === 1 ? "commit" : "commits"} on this branch` : `${entries.length}${truncated ? "+" : ""} commits`}</span>
+        <span className="min-w-0 truncate text-body text-stone-500">{title ?? <>{scope ? <span className="font-mono">{scope}</span> : "All branches"} · {ownCount != null ? `${ownCount} ${ownCount === 1 ? "commit" : "commits"} on this branch` : `${entries.length}${truncated ? "+" : ""} commits`}</>}</span>
         <div className="grow" />
         <input
           ref={searchBox}

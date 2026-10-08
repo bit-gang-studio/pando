@@ -2,7 +2,8 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useLayer } from "../lib/keys";
 
 /// `where`: why it can't be picked ("in web-spaces", "checked out here").
-export type PickBranch = { name: string; where?: string };
+/// `note`: something worth knowing about it that doesn't stop it being picked ("in web-spaces").
+export type PickBranch = { name: string; where?: string; note?: string };
 
 /// A searchable list of branches, opened at a point. Branches that can't be
 /// picked stay in the list, greyed, saying where they are.
@@ -48,8 +49,8 @@ export function BranchPicker({ x, y, branches, hint, label = "Switch branch", on
               <span className="min-w-0 truncate font-mono">{b.name}</span><span className="ml-auto shrink-0 text-label">{b.where}</span>
             </div>
           ) : (
-            <button key={b.name} role="option" aria-selected={i === at} onMouseEnter={() => setAt(i)} onClick={() => pick(b.name)} className={`block w-full truncate rounded px-2.5 py-1.5 text-left font-mono ${i === at ? "bg-stone-100 dark:bg-stone-700" : ""}`}>
-              {b.name}
+            <button key={b.name} role="option" aria-selected={i === at} onMouseEnter={() => setAt(i)} onClick={() => pick(b.name)} className={`flex w-full items-center gap-2 rounded px-2.5 py-1.5 text-left ${i === at ? "bg-stone-100 dark:bg-stone-700" : ""}`}>
+              <span className="min-w-0 truncate font-mono">{b.name}</span>{b.note && <span className="ml-auto shrink-0 text-label text-stone-500">{b.note}</span>}
             </button>
           );
         })}
