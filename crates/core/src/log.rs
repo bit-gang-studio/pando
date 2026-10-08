@@ -51,6 +51,75 @@ pub fn list(repo: &Repo, branch: Option<&str>, skip: usize, limit: usize) -> Res
     Ok(Log { entries, truncated })
 }
 
+/// Comparing more branches than this at once is a tangle, not a picture.
+pub const MAX_AMONG: usize = 8;
+
+fn check_revs(revs: &[String]) -> Result<()> {
+    if revs.is_empty() || revs.len() > MAX_AMONG {
+        return Err(crate::Error::Msg(format!(
+            "Pick between 1 and {MAX_AMONG} branches."
+        )));
+    }
+    match revs
+        .iter()
+        .find(|r| r.is_empty() || r.starts_with('-') || r.contains(".."))
+    {
+        Some(bad) => Err(crate::Error::Msg(format!(
+            "{bad} isn't a commit or a branch."
+        ))),
+        None => Ok(()),
+    }
+}
+
+/// The last commit every one of `revs` has: where they all split. `None` when
+/// they share no history.
+pub fn fork_of(repo: &Repo, revs: &[String]) -> Result<Option<String>> {
+    check_revs(revs)?;
+    let dir = &repo.common_git_dir;
+    // Say which one is wrong, not just that git couldn't find a common commit.
+    for r in revs {
+        let commit = format!("{r}^{{commit}}");
+        if crate::cmd::git_opt(dir, ["rev-parse", "--verify", "-q", &commit]).is_none() {
+            return Err(crate::Error::Msg(format!(
+                "{r} isn't a commit or a branch here."
+            )));
+        }
+    }
+    let mut args = vec!["merge-base".to_string(), "--octopus".into()];
+    args.extend(revs.iter().cloned());
+    Ok(crate::cmd::git_opt(dir, args).filter(|s| !s.is_empty()))
+}
+
+/// Every commit any of `revs` has that `not` doesn't, newest first: several
+/// branches since they split, when `not` is where they split.
+pub fn among(repo: &Repo, revs: &[String], not: Option<&str>, limit: usize) -> Result<Log> {
+    check_revs(revs)?;
+    let mut args: Vec<String> = vec![
+        "log".into(),
+        "-z".into(),
+        "--date-order".into(),
+        format!("--max-count={}", limit + 1),
+        FORMAT.into(),
+    ];
+    args.extend(revs.iter().cloned());
+    if let Some(n) = not {
+        check_revs(&[n.to_string()])?;
+        args.push("--not".into());
+        args.push(n.to_string());
+    }
+    args.push("--".into());
+    let out = git_bytes(&repo.root, &args)?;
+    let text = String::from_utf8_lossy(&out);
+    let mut entries: Vec<LogEntry> = text
+        .split('\0')
+        .filter(|e| !e.is_empty())
+        .filter_map(parse_entry)
+        .collect();
+    let truncated = entries.len() > limit;
+    entries.truncate(limit);
+    Ok(Log { entries, truncated })
+}
+
 pub(crate) const FORMAT: &str = "--format=%H%x1f%P%x1f%an%x1f%ct%x1f%s%x1f%D";
 
 /// Commits whose message or author contains `query` (any case, taken

@@ -122,3 +122,124 @@ fn bad_ids_fail_and_run_nothing() {
     }
     assert!(!r.root.join("pwned").exists());
 }
+
+// ---- Several branches since they split ---------------------------------------
+
+mod among {
+    use super::common::*;
+    use pando_core::log;
+
+    fn revs(names: &[&str]) -> Vec<String> {
+        names.iter().map(|s| s.to_string()).collect()
+    }
+    fn subjects(l: &log::Log) -> Vec<String> {
+        let mut s: Vec<String> = l.entries.iter().map(|e| e.summary.clone()).collect();
+        s.sort();
+        s
+    }
+
+    /// main: m1. a (off m1): a1, a2. b (off m1): b1. c (off a1): c1. Then main: m2.
+    fn three() -> Repo {
+        let r = repo();
+        commit(&r.root, "m1.txt", "1\n");
+        for (branch, from, files) in [("a", "main", vec!["a1", "a2"]), ("b", "main", vec!["b1"])] {
+            git(&r.root, &["switch", "-q", "-c", branch, from]);
+            for f in files {
+                commit(&r.root, &format!("{f}.txt"), "x\n");
+            }
+        }
+        git(&r.root, &["switch", "-q", "-c", "c", "a~1"]);
+        commit(&r.root, "c1.txt", "x\n");
+        git(&r.root, &["switch", "-q", "main"]);
+        commit(&r.root, "m2.txt", "2\n");
+        r
+    }
+
+    #[test]
+    fn the_fork_is_the_last_commit_they_all_share() {
+        let r = three();
+        let core = r.core();
+        let m1 = r.tip("main~1");
+        assert_eq!(
+            log::fork_of(&core, &revs(&["a", "b"])).unwrap(),
+            Some(m1.clone())
+        );
+        assert_eq!(
+            log::fork_of(&core, &revs(&["a", "b", "c", "main"])).unwrap(),
+            Some(m1)
+        );
+        // a and c share a1, which is later than where either left main.
+        assert_eq!(
+            log::fork_of(&core, &revs(&["a", "c"])).unwrap(),
+            Some(r.tip("a~1"))
+        );
+        // One on its own forks from itself.
+        assert_eq!(
+            log::fork_of(&core, &revs(&["a"])).unwrap(),
+            Some(r.tip("a"))
+        );
+    }
+
+    #[test]
+    fn among_lists_what_any_of_them_has_since_the_fork_and_nothing_before() {
+        let r = three();
+        let core = r.core();
+        let all = revs(&["a", "b", "c", "main"]);
+        let fork = log::fork_of(&core, &all).unwrap().unwrap();
+        let got = log::among(&core, &all, Some(&fork), 100).unwrap();
+        assert_eq!(
+            subjects(&got),
+            [
+                "edit a1.txt",
+                "edit a2.txt",
+                "edit b1.txt",
+                "edit c1.txt",
+                "edit m2.txt"
+            ]
+        );
+        assert!(!got.truncated);
+        // Just two of them: only theirs.
+        let two = revs(&["a", "b"]);
+        let fork = log::fork_of(&core, &two).unwrap().unwrap();
+        assert_eq!(
+            subjects(&log::among(&core, &two, Some(&fork), 100).unwrap()),
+            ["edit a1.txt", "edit a2.txt", "edit b1.txt"]
+        );
+        // The limit holds, and says there's more.
+        let cut = log::among(&core, &all, Some(&fork), 2).unwrap();
+        assert_eq!(cut.entries.len(), 2);
+        assert!(cut.truncated);
+    }
+
+    #[test]
+    fn no_shared_history_has_no_fork_and_nonsense_is_refused() {
+        let r = three();
+        git(&r.root, &["switch", "-q", "--orphan", "island"]);
+        commit(&r.root, "i.txt", "i\n");
+        git(&r.root, &["switch", "-q", "main"]);
+        let core = r.core();
+        assert_eq!(
+            log::fork_of(&core, &revs(&["island", "main"])).unwrap(),
+            None
+        );
+        // With nothing to stop at, each one's whole history is listed.
+        let got = log::among(&core, &revs(&["island", "a"]), None, 100).unwrap();
+        assert!(subjects(&got).contains(&"edit i.txt".to_string()));
+        assert!(subjects(&got).contains(&"edit a2.txt".to_string()));
+
+        let e = log::fork_of(&core, &revs(&["a", "nope"]))
+            .unwrap_err()
+            .to_string();
+        assert_eq!(e, "nope isn't a commit or a branch here.");
+        for bad in [vec![], vec!["--all"], vec!["a..b"], vec![""], vec!["a"; 9]] {
+            assert!(log::fork_of(&core, &revs(&bad)).is_err(), "{bad:?}");
+            assert!(log::among(&core, &revs(&bad), None, 10).is_err(), "{bad:?}");
+        }
+        assert!(log::among(&core, &revs(&["a"]), Some("--all"), 10).is_err());
+        // A name with a slash and odd letters.
+        git(&r.root, &["branch", "fix/ünï", "a"]);
+        assert!(log::fork_of(&core, &revs(&["fix/ünï", "b"]))
+            .unwrap()
+            .is_some());
+    }
+}

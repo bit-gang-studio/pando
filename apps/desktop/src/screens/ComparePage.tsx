@@ -23,7 +23,9 @@ const count = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
 /// A commit id reads better short.
 const label = (rev: string) => (/^[0-9a-f]{40}$/.test(rev) ? `commit ${rev.slice(0, 7)}` : rev);
 /// What to compare with, remembered while the window is open, per repository.
-const lastWith: Record<string, string> = {};
+const lastWith: Record<string, string[]> = {};
+/// More lines than this in one graph is a tangle, not a picture.
+const MAX_WITH = 5;
 
 /// Two branches since they split: the commits only one of them has, in one
 /// graph, with the commit where they split underneath.
@@ -33,9 +35,25 @@ export function ComparePage({ root, data, worktree, branch, commit, refsTick }: 
   const detached = worktree ? data.detached.find((d) => d.worktree.path === worktree) ?? null : null;
   /// The picked side: a branch, or the commit a worktree with no branch sits on.
   const mine = wtRow?.branch.name ?? branch ?? detached?.worktree.head ?? commit ?? null;
-  const [chosen, setChosen] = useState<string | null>(() => lastWith[root] ?? null);
-  // The base is the usual thing to compare with. Not with itself.
-  const other = chosen && chosen !== mine ? chosen : data.compare_base && data.compare_base !== mine ? data.compare_base : null;
+  const [chosen, setChosen] = useState<string[] | null>(() => lastWith[root] ?? null);
+  const [focused, setFocused] = useState<string | null>(null);
+  // The base is the usual thing to compare with. Never with itself.
+  const others = useMemo(() => (chosen ?? (data.compare_base ? [data.compare_base] : [])).filter((o) => o !== mine), [chosen, data.compare_base, mine]);
+  /// Counts, the "all changes" rows and the both-sides warning are about two
+  /// branches: the picked one and this one of the others.
+  const other = focused && others.includes(focused) ? focused : others[0] ?? null;
+  const all = useMemo(() => (mine ? [...others, mine] : []), [others, mine]);
+  const allKey = all.join("\n");
+  // Where every one of them split: the graph shows what each has since then.
+  const [fork, setFork] = useState<string | null | undefined>(undefined);
+  useEffect(() => {
+    setFork(undefined);
+    if (all.length < 2) return;
+    let live = true;
+    api.logFork(root, all).then((f) => { if (live) setFork(f); }).catch((e) => { if (live) setError(String(e)); });
+    return () => { live = false; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [root, allKey, refsTick]);
 
   const [cmp, setCmp] = useState<{ mine: Compare; theirs: Compare } | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -57,7 +75,8 @@ export function ComparePage({ root, data, worktree, branch, commit, refsTick }: 
   const [span, setSpan] = useState<Span | null>(null);
   const [spanIds, setSpanIds] = useState<string[] | null>(null);
   const [whole, setWhole] = useState<"mine" | "theirs" | null>(null);
-  useEffect(() => { setSel(null); setFirst(null); setSpan(null); setSpanIds(null); setWhole(null); }, [root, mine, other]);
+  useEffect(() => { setSel(null); setFirst(null); setSpan(null); setSpanIds(null); setWhole(null); }, [root, allKey]);
+  useEffect(() => { setWhole(null); }, [other]);
   const onLoaded = useCallback((id: string | null) => setFirst(id), []);
   const picked = useMemo(() => (span ? new Set(spanIds ?? [span.older, span.newer]) : undefined), [span, spanIds]);
   const pickSpan = (s: Span | null) => { setSpan(s); setSpanIds(null); setWhole(null); };
@@ -66,14 +85,17 @@ export function ComparePage({ root, data, worktree, branch, commit, refsTick }: 
   const choices = useMemo<PickBranch[]>(() => {
     const local = data.branches.map((b) => ({ name: b.branch.name, note: b.worktree ? `in ${folderName(b.worktree.path)}` : undefined }));
     const remote = [...new Set([...data.branches.flatMap((b) => (b.branch.upstream ? [b.branch.upstream] : [])), ...data.remote_only.map((r) => r.name)])].map((name) => ({ name }));
-    return [...local, ...remote].map((c) => ({ ...c, where: c.name === mine ? "picked in the sidebar" : undefined }));
-  }, [data, mine]);
-  const choose = (name: string) => { lastWith[root] = name; setChosen(name); };
+    return [...local, ...remote].map((c) => ({ ...c, where: c.name === mine ? "picked in the sidebar" : others.includes(c.name) ? "already compared" : undefined }));
+  }, [data, mine, others]);
+  const setOthers = (next: string[]) => { lastWith[root] = next; setChosen(next); };
+  const add = (name: string) => { setOthers([...others, name].slice(0, MAX_WITH)); setFocused(name); };
+  const remove = (name: string) => setOthers(others.filter((o) => o !== name));
   /// The other side becomes the picked one, and this one what it's compared with.
   const swap = () => {
     if (!mine || !other) return;
     const r = data.branches.find((b) => b.branch.name === other);
-    choose(mine);
+    setOthers(others.map((o) => (o === other ? mine : o)));
+    setFocused(mine);
     navigate(r?.worktree ? { kind: "worktree", root, path: r.worktree.path } : { kind: "branch", root, name: other });
   };
 
@@ -84,12 +106,18 @@ export function ComparePage({ root, data, worktree, branch, commit, refsTick }: 
       {mine ? <span className={`${side} bg-teal-50 dark:bg-teal-900/40`} title="Picked in the sidebar">{worktree ? `${folderName(worktree)} · ` : ""}{label(mine)}</span> : <span className="text-stone-500">pick a worktree or a branch in the sidebar</span>}
       {mine && <>
         <span className="text-stone-500">with</span>
-        <button onClick={(e) => { const at = e.currentTarget.getBoundingClientRect(); setPicking({ x: at.left, y: at.bottom + 2 }); }} aria-haspopup="dialog" aria-label="Compare with" className={`${side} flex items-center gap-1 border border-stone-300 hover:bg-stone-100 dark:border-stone-600 dark:hover:bg-stone-700`}>
-          {other ? label(other) : "choose a branch"}<span className="text-stone-400">▾</span>
-        </button>
+        <span role="group" aria-label="Compared with" className="flex flex-wrap items-center gap-1">
+          {others.map((o) => (
+            <span key={o} data-with={o} className={`flex items-center rounded border ${o === other ? "border-teal-600 bg-white dark:bg-stone-800" : "border-stone-300 dark:border-stone-600"}`}>
+              <button onClick={() => setFocused(o)} aria-pressed={o === other} title={o === other ? "The counts below are against this one" : `Show the counts against ${label(o)}`} className="rounded-l px-1.5 py-0.5 font-mono text-body font-medium hover:bg-stone-100 dark:hover:bg-stone-700">{label(o)}</button>
+              <button onClick={() => remove(o)} aria-label={`Stop comparing with ${label(o)}`} title="Remove" className="rounded-r px-1 py-0.5 text-stone-400 hover:bg-stone-100 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-200">×</button>
+            </span>
+          ))}
+          {others.length < MAX_WITH && <button onClick={(e) => { const at = e.currentTarget.getBoundingClientRect(); setPicking({ x: at.left, y: at.bottom + 2 }); }} aria-haspopup="dialog" aria-label="Compare with" className="rounded border border-dashed border-stone-300 px-1.5 py-0.5 text-body text-stone-600 hover:bg-stone-100 dark:border-stone-600 dark:text-stone-300 dark:hover:bg-stone-700">{others.length ? "+ Add" : "choose a branch ▾"}</button>}
+        </span>
         {other && <button onClick={swap} title={`Pick ${label(other)} and compare it with ${label(mine)}`} className="rounded px-1.5 py-0.5 text-stone-500 hover:bg-stone-100 hover:text-stone-800 dark:hover:bg-stone-700 dark:hover:text-stone-200">⇄ Swap</button>}
       </>}
-      {picking && <BranchPicker x={picking.x} y={picking.y} label="Compare with" branches={choices} hint="Shows the commits each one has that the other doesn't, since they split." onPick={choose} onClose={() => setPicking(null)} />}
+      {picking && <BranchPicker x={picking.x} y={picking.y} label="Compare with" branches={choices} hint={`Shows what each one has since they split. Up to ${MAX_WITH} at once.`} onPick={add} onClose={() => setPicking(null)} />}
     </div>
   );
   const wrap = (body: React.ReactNode) => <div className="flex min-h-0 min-w-0 grow flex-col bg-white dark:bg-stone-800">{head}{body}</div>;
@@ -98,9 +126,11 @@ export function ComparePage({ root, data, worktree, branch, commit, refsTick }: 
   if (!mine) return say("Pick a worktree or a branch in the sidebar, then choose what to compare it with.");
   if (!other) return say(<>Choose what to compare <span className="font-mono">{label(mine)}</span> with.</>);
   if (error) return wrap(<ErrorState title="Couldn't compare these" error={error} onRetry={() => setAttempt((a) => a + 1)} />);
-  if (!cmp) return wrap(<Loading />);
+  if (!cmp || fork === undefined) return wrap(<Loading />);
 
-  const { ahead, behind, merge_base: fork } = cmp.mine;
+  const { ahead, behind } = cmp.mine;
+  const pairFork = cmp.mine.merge_base;
+  const many = others.length > 1;
   const theirFiles = new Set(cmp.theirs.files.map((f) => f.path));
   const both = cmp.mine.files.map((f) => f.path).filter((p) => theirFiles.has(p));
   const shown = sel ?? first;
@@ -116,19 +146,20 @@ export function ComparePage({ root, data, worktree, branch, commit, refsTick }: 
   return wrap(
     <div ref={split.box} className="flex min-h-0 min-w-0 grow flex-col">
       <div data-summary className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-0.5 border-b border-stone-200 px-4 py-1.5 text-body text-stone-600 dark:border-stone-700 dark:text-stone-300">
-        {fork === null ? <span>These two share no history.</span>
+        {many && <span data-against className="text-stone-500">Against <span className="font-mono">{label(other)}</span>:</span>}
+        {pairFork === null ? <span>These two share no history.</span>
           : ahead === 0 && behind === 0 ? <span>These two are at the same commit. Nothing differs.</span>
           : <span>{count(ahead, "commit")} only on <span className="font-mono">{label(mine)}</span> <span className="text-stone-400">·</span> {count(behind, "commit")} only on <span className="font-mono">{label(other)}</span></span>}
-        {fork !== null && still && <span data-still className="basis-full text-stone-500"><span className="font-mono">{label(still)}</span> hasn't moved since they split, so it has no line of its own below. Its newest commit is where they split.</span>}
+        {pairFork !== null && still && !many && <span data-still className="basis-full text-stone-500"><span className="font-mono">{label(still)}</span> hasn't moved since they split, so it has no line of its own below. Its newest commit is where they split.</span>}
         {both.length > 0 && <span data-both className="basis-full text-amber-800 dark:text-amber-300" title={both.join("\n")}>⚠ {count(both.length, "file")} changed on both sides: <span className="font-mono text-label">{both.slice(0, 4).join(", ")}{both.length > 4 ? ` and ${both.length - 4} more` : ""}</span>. A merge may conflict there.</span>}
       </div>
       <div style={{ height: split.size, flex: "0 0 auto" }} className="flex min-h-0 flex-col">
         <CommitLog
           root={root}
           scope={mine}
-          title={<><span className="font-mono">{label(mine)}</span> and <span className="font-mono">{label(other)}</span> since they split</>}
+          title={many ? <><span className="font-mono">{label(mine)}</span> and {others.length} others since they all split</> : <><span className="font-mono">{label(mine)}</span> and <span className="font-mono">{label(other)}</span> since they split</>}
           totals={totals}
-          range={{ own: `${other}...${mine}`, rest: fork, restLabel: "Where they split, and the history they share" }}
+          range={{ own: allKey, revs: all, rest: fork, restLabel: many ? "Where they all split, and the history they all share" : "Where they split, and the history they share" }}
           dirtyWorktrees={0}
           selected={whole || span ? null : shown}
           picked={picked}

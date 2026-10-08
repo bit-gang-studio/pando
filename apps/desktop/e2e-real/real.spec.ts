@@ -669,17 +669,25 @@ test("Compare on real branches: what each has since they split, and the files bo
   const theirs = Number(git(ROOT, "rev-list --count feat/login..origin/main"));
   await expect(summary).toContainText(`${mine} commit${mine === 1 ? "" : "s"} only on feat/login`, { timeout: 15_000 });
   await expect(summary).toContainText(`${theirs} commit${theirs === 1 ? "" : "s"} only on origin/main`);
-  // Against feat/collide, which changes login.js too.
+  // Add feat/collide, which changes login.js too. It becomes what the counts are against.
   await page.getByRole("button", { name: "Compare with" }).click();
   await page.keyboard.type("collide");
   await page.keyboard.press("Enter");
+  await expect(page.getByRole("group", { name: "Compared with" }).locator("[data-with]")).toHaveText(["origin/main×", "feat/collide×"]);
+  await expect(summary.locator("[data-against]")).toHaveText("Against feat/collide:");
   const a = Number(git(ROOT, "rev-list --count feat/collide..feat/login"));
   const b = Number(git(ROOT, "rev-list --count feat/login..feat/collide"));
   await expect(summary).toContainText(`${a} commit${a === 1 ? "" : "s"} only on feat/login`, { timeout: 15_000 });
   await expect(summary).toContainText(`${b} commit${b === 1 ? "" : "s"} only on feat/collide`);
   await expect(summary.locator("[data-both]")).toContainText("login.js");
-  // The graph lists exactly those commits, then where they split.
+  // One graph for all three: every commit any of them has since they all split, then where that was.
+  await expect(page.getByText("Where they all split, and the history they all share")).toBeVisible();
+  const fork = git(ROOT, "merge-base --octopus origin/main feat/collide feat/login");
+  const want = git(ROOT, `log --format=%s origin/main feat/collide feat/login --not ${fork}`).split("\n").filter(Boolean);
+  const shown = await page.locator("[data-row]").evaluateAll((rows, n) => rows.slice(0, n).map((r) => r.textContent ?? ""), want.length);
+  for (const subject of want) expect(shown.some((t) => t.includes(subject)), subject).toBe(true);
+  // Down to two again: just those two since they split.
+  await page.getByRole("button", { name: "Stop comparing with origin/main" }).click();
   await expect(page.getByText("Where they split, and the history they share")).toBeVisible();
-  const own = await page.locator("[data-row]").evaluateAll((rows, n) => rows.slice(0, n).map((r) => r.textContent ?? ""), a + b);
-  for (const subject of git(ROOT, "log --format=%s feat/collide...feat/login").split("\n")) expect(own.some((t) => t.includes(subject)), subject).toBe(true);
+  await expect(summary.locator("[data-against]")).toHaveCount(0);
 });

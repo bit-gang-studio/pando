@@ -38,7 +38,9 @@ type Props = {
   compare?: { base: string; ahead: number | null };
   /// List the branch's own commits (`own`, e.g. "origin/main..feat/x") first,
   /// then the shared history from `rest` (where it left the base), dimmed.
-  range?: { own: string; rest: string | null; restLabel: string };
+  /// With `revs`, "own" is every commit any of those branches has that `rest`
+  /// doesn't (several branches since they split); `own` then only names it.
+  range?: { own: string; rest: string | null; restLabel: string; revs?: string[] };
   compareSelected?: boolean;
   onCompare?: () => void;
   /// Commits picked together with shift-click, highlighted with `selected`.
@@ -84,7 +86,7 @@ export function CommitLog({ root, scope, title, totals, dirtyWorktrees, uncommit
       if (own) {
         // The branch's own commits (all of them), then shared history, paged.
         if (skip === 0) {
-          const ownLog = await api.log(root, own, 0, 2000);
+          const ownLog = range?.revs ? await api.logAmong(root, range.revs, rest, 2000) : await api.log(root, own, 0, 2000);
           const earlier = rest ? await api.log(root, rest, 0, Math.max(PAGE, page - ownLog.entries.length)) : { entries: [], truncated: false };
           ownLen = ownLog.entries.length;
           l = { entries: [...ownLog.entries, ...earlier.entries], truncated: earlier.truncated };

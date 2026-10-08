@@ -440,6 +440,18 @@ async fn log_list(root: PathBuf, branch: Option<String>, skip: usize, limit: usi
     blocking(move || log::list(&repo(&root)?, branch.as_deref(), skip, limit).map_err(err)).await
 }
 
+/// Several branches since they split: every commit any of them has that `not` doesn't.
+#[tauri::command]
+async fn log_among(root: PathBuf, revs: Vec<String>, not: Option<String>, limit: usize) -> R<Log> {
+    blocking(move || log::among(&repo(&root)?, &revs, not.as_deref(), limit).map_err(err)).await
+}
+
+/// The last commit all of `revs` share: where they split.
+#[tauri::command]
+async fn log_fork(root: PathBuf, revs: Vec<String>) -> R<Option<String>> {
+    blocking(move || log::fork_of(&repo(&root)?, &revs).map_err(err)).await
+}
+
 #[tauri::command]
 async fn log_search(
     root: PathBuf,
@@ -801,6 +813,8 @@ pub fn run() {
             editor_names,
             open_editor,
             log_list,
+            log_among,
+            log_fork,
             log_search,
             file_history,
             file_blame,

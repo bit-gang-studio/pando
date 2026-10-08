@@ -19,8 +19,10 @@ const repo = () => overview({ branches: [
 ], compare_base: "origin/main" });
 const replies = {
   overview_load: repo(),
-  log_list: { $by: "branch", cases: { "origin/main...feat/step-3": { entries: both, truncated: false }, [id("f")]: { entries: shared, truncated: false } }, otherwise: { entries: [], truncated: false } },
-  compare: { $by: "head", cases: { "feat/step-3": cmp("origin/main", "feat/step-3", 3, 2, ["app/Rooms.php", "app/Importer.php", "views/manager.blade.php"]), "origin/main": cmp("feat/step-3", "origin/main", 2, 3, ["app/Importer.php", "views/manager.blade.php", "terms.md"]) } },
+  log_among: { entries: both, truncated: false },
+  log_fork: id("f"),
+  log_list: { $by: "branch", cases: { [id("f")]: { entries: shared, truncated: false } }, otherwise: { entries: [], truncated: false } },
+  compare: { $by: "head", cases: { "feat/step-3": cmp("origin/main", "feat/step-3", 3, 2, ["app/Rooms.php", "app/Importer.php", "views/manager.blade.php"]), "origin/main": cmp("feat/step-3", "origin/main", 2, 3, ["app/Importer.php", "views/manager.blade.php", "terms.md"]) }, otherwise: cmp("x", "y", 1, 1, ["other.php"]) },
   commit_diff: commitDiff(["app/Rooms.php"]),
   commit_file_diff: fileDiff("app/Rooms.php", 4),
   compare_file_diff: fileDiff("app/Rooms.php", 6),
@@ -29,6 +31,7 @@ const wtUrl = (p: string) => `/#/worktree?root=${encodeURIComponent(ROOT)}&path=
 const brUrl = (n: string) => `/#/branch?root=${encodeURIComponent(ROOT)}&name=${encodeURIComponent(n)}`;
 const rows = (page: Page) => page.locator("[data-row]");
 const summary = (page: Page) => page.locator("[data-summary]");
+const withChips = (page: Page) => page.getByRole("group", { name: "Compared with" }).locator("[data-with]");
 
 async function open(page: Page, url: string, extra: Record<string, unknown> = {}) {
   await page.addInitScript(() => { if (!localStorage.getItem("pando.view")) localStorage.setItem("pando.view", "compare"); });
@@ -53,12 +56,14 @@ test("the picked branch against the base: one graph of what each has since they 
   // Both ways round: what mine changed, and what theirs did.
   expect([...new Set((await callsTo(page, "compare")).map((c) => `${c.base}>${c.head}`))].sort()).toEqual(["feat/step-3>origin/main", "origin/main>feat/step-3"]);
   await expect(page.getByText("proj-spaces · feat/step-3")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Compare with" })).toHaveText("origin/main▾");
+  await expect(withChips(page)).toHaveText(["origin/main×"]);
   await expect(summary(page)).toContainText("3 commits only on feat/step-3");
   await expect(summary(page)).toContainText("2 commits only on origin/main");
   await expect(summary(page).locator("[data-both]")).toHaveText("⚠ 2 files changed on both sides: app/Importer.php, views/manager.blade.php. A merge may conflict there.");
   // Newest first, both sides mixed in time order, then the shared history.
-  expect((await callsTo(page, "log_list")).map((c) => c.branch)).toEqual(expect.arrayContaining(["origin/main...feat/step-3", id("f")]));
+  expect((await callsTo(page, "log_fork")).at(-1)).toEqual({ root: ROOT, revs: ["origin/main", "feat/step-3"] });
+  expect((await callsTo(page, "log_among")).at(-1)).toEqual({ root: ROOT, revs: ["origin/main", "feat/step-3"], not: id("f"), limit: 2000 });
+  expect((await callsTo(page, "log_list")).map((c) => c.branch)).toContain(id("f"));
   await expect(rows(page)).toHaveCount(7);
   await expect(rows(page).nth(0)).toContainText("Space page layout");
   await expect(rows(page).nth(1)).toContainText("Merge #547");
@@ -95,37 +100,69 @@ test("click a commit for its diff; shift-click for several as one; a side's coun
   await expect(total("mine")).toHaveAttribute("aria-pressed", "false");
 });
 
-test("choose what to compare with from a searchable list; the picked one can't be compared with itself", async ({ page }) => {
-  await open(page, wtUrl(W), { compare: cmp("feat/step-2", "feat/step-3", 1, 0, ["a.php"]) });
+test("add up to five to compare with; one is focused for the counts; each can be removed", async ({ page }) => {
+  const o = repo();
+  o.branches.push(row("feat/a"), row("feat/b"), row("feat/c"), row("feat/d"));
+  await open(page, wtUrl(W), { overview_load: o });
   await page.getByRole("button", { name: "Compare with" }).click();
   const list = page.getByRole("dialog", { name: "Compare with" });
-  await expect(list.getByRole("option")).toHaveText(["mainin proj", "feat/step-2", "origin/main", "origin/feat/step-2", "feat/step-3picked in the sidebar"]);
+  // What's picked and what's already there can't be added again.
+  await expect(list.getByRole("option", { name: /feat\/step-3/ })).toContainText("picked in the sidebar");
+  await expect(list.getByRole("option", { name: /^origin\/main/ })).toContainText("already compared");
+  await expect(list.getByRole("option", { name: /^main/ })).toContainText("in proj");
   await page.keyboard.type("step-2");
   await page.keyboard.press("Enter");
-  await expect(page.getByRole("button", { name: "Compare with" })).toHaveText("feat/step-2▾");
-  await expect.poll(async () => (await callsTo(page, "compare")).at(-1)?.root).toBe(ROOT);
+  await expect(withChips(page)).toHaveText(["origin/main×", "feat/step-2×"]);
+  // All of them go into one graph, from where they all split.
+  await expect.poll(async () => (await callsTo(page, "log_fork")).at(-1)).toEqual({ root: ROOT, revs: ["origin/main", "feat/step-2", "feat/step-3"] });
+  await expect.poll(async () => (await callsTo(page, "log_among")).at(-1)).toEqual({ root: ROOT, revs: ["origin/main", "feat/step-2", "feat/step-3"], not: id("f"), limit: 2000 });
+  await expect(page.getByText("feat/step-3 and 2 others since they all split")).toBeVisible();
+  await expect(page.getByText("Where they all split, and the history they all share")).toBeVisible();
+  // The one just added is the focus: the counts are against it, and say so.
+  await expect(withChips(page).nth(1).getByRole("button").first()).toHaveAttribute("aria-pressed", "true");
+  await expect(summary(page).locator("[data-against]")).toHaveText("Against feat/step-2:");
   expect((await callsTo(page, "compare")).some((c) => c.base === "feat/step-2" && c.head === "feat/step-3")).toBe(true);
-  expect((await callsTo(page, "log_list")).some((c) => c.branch === "feat/step-2...feat/step-3")).toBe(true);
-  // It's still what's compared with after picking something else in the sidebar.
+  await withChips(page).nth(0).getByRole("button", { name: "origin/main", exact: true }).click();
+  await expect(summary(page).locator("[data-against]")).toHaveText("Against origin/main:");
+  await expect(page.locator('[data-total="theirs"]')).toContainText("All changes on origin/main");
+  // Up to five; then there's no Add.
+  for (const n of ["feat/a", "feat/b", "feat/c"]) {
+    await page.getByRole("button", { name: "Compare with" }).click();
+    await page.keyboard.type(n);
+    await page.keyboard.press("Enter");
+  }
+  await expect(withChips(page)).toHaveCount(5);
+  await expect(page.getByRole("button", { name: "Compare with" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Stop comparing with feat/b" }).click();
+  await expect(withChips(page)).toHaveText(["origin/main×", "feat/step-2×", "feat/a×", "feat/c×"]);
+  await expect(page.getByRole("button", { name: "Compare with" })).toHaveText("+ Add");
+  // They stay as you pick something else in the sidebar.
   await page.locator("aside").first().locator("div.group", { hasText: "proj" }).first().click();
-  await expect(page.getByRole("button", { name: "Compare with" })).toHaveText("feat/step-2▾");
+  await expect(withChips(page)).toHaveCount(4);
+});
+
+test("removing the last one asks what to compare with", async ({ page }) => {
+  await open(page, wtUrl(W));
+  await page.getByRole("button", { name: "Stop comparing with origin/main" }).click();
+  await expect(page.getByText("Choose what to compare feat/step-3 with.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Compare with" })).toHaveText("choose a branch ▾");
 });
 
 test("Swap picks the other side and compares it with this one", async ({ page }) => {
   await open(page, wtUrl(W));
   await page.getByRole("button", { name: /Swap/ }).click();
   await expect(page).toHaveURL(/#\/branch\?.*name=origin%2Fmain/);
-  await expect(page.getByRole("button", { name: "Compare with" })).toHaveText("feat/step-3▾");
+  await expect(withChips(page)).toHaveText(["feat/step-3×"]);
   // And back: a branch with a worktree goes to that worktree.
   await page.getByRole("button", { name: /Swap/ }).click();
   await expect(page).toHaveURL(new RegExp(`#/worktree\\?.*path=${encodeURIComponent(W)}`));
-  await expect(page.getByRole("button", { name: "Compare with" })).toHaveText("origin/main▾");
+  await expect(withChips(page)).toHaveText(["origin/main×"]);
 });
 
 test("the base itself asks what to compare it with; nothing picked asks you to pick", async ({ page }) => {
   await open(page, brUrl("origin/main"));
   await expect(page.getByText("Choose what to compare origin/main with.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Compare with" })).toHaveText("choose a branch▾");
+  await expect(page.getByRole("button", { name: "Compare with" })).toHaveText("choose a branch ▾");
   expect(await callsTo(page, "compare")).toHaveLength(0);
   await page.goto(repoUrl());
   await expect(page.getByText("Pick a worktree or a branch in the sidebar, then choose what to compare it with.")).toBeVisible();

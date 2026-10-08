@@ -180,6 +180,10 @@ export const api = {
   openEditor: (name: string, path: string) => invoke<void>("open_editor", { name, path }),
 
   log: (root: string, branch: string | null, skip: number, limit: number) => invoke<Log>("log_list", { root, branch, skip, limit }),
+  /** Every commit any of `revs` has that `not` doesn't: several branches since they split. */
+  logAmong: (root: string, revs: string[], not: string | null, limit: number) => invoke<Log>("log_among", { root, revs, not, limit }),
+  /** The last commit all of `revs` share, or null when they share no history. */
+  logFork: (root: string, revs: string[]) => invoke<string | null>("log_fork", { root, revs }),
   fileHistory: (root: string, rev: string | null, path: string, skip: number, limit: number) => invoke<FileHistory>("file_history", { root, rev, path, skip, limit }),
   fileList: (root: string, worktree: string | null, rev: string | null, dir: string) => invoke<FileEntry[]>("file_list", { root, worktree, rev, dir }),
   fileRead: (root: string, worktree: string | null, rev: string | null, path: string) => invoke<FileContents>("file_read", { root, worktree, rev, path }),

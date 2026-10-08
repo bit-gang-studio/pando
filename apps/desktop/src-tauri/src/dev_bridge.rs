@@ -191,6 +191,14 @@ pub async fn dispatch(cmd: &str, a: Value) -> Result<Value, String> {
             arg(&a, "limit")?,
         )
         .await),
+        "log_among" => out(super::log_among(
+            arg(&a, "root")?,
+            arg(&a, "revs")?,
+            arg(&a, "not")?,
+            arg(&a, "limit")?,
+        )
+        .await),
+        "log_fork" => out(super::log_fork(arg(&a, "root")?, arg(&a, "revs")?).await),
         "log_list" => out(super::log_list(
             arg(&a, "root")?,
             arg(&a, "branch")?,
