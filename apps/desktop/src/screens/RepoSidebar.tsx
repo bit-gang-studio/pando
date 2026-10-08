@@ -91,7 +91,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   /// What a draggable thing needs: where it is, how it looks mid-drag, and its handle.
   const dragCls = (list: string, key: string) => `relative ${drag?.list === list && drag.over === key && drag.key !== key ? (drag.after ? "shadow-[inset_0_-2px_0_0_var(--color-teal-600)]" : "shadow-[inset_0_2px_0_0_var(--color-teal-600)]") : ""} ${drag?.list === list && drag.key === key ? "opacity-50" : ""}`;
   const grip = (list: string, key: string, name: string, cls: string, top: number) => (
-    <button onMouseDown={(e) => startDrag(e, list, key)} onKeyDown={(e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); nudge(list, key, e.key === "ArrowUp" ? -1 : 1); } }} onClick={(e) => e.stopPropagation()} title="Drag to move this. Or focus it and press ↑ or ↓." aria-label={`Move ${name}`} style={{ top }} className={`absolute left-0 z-[1] flex h-5 w-3 cursor-grab items-center justify-center text-label leading-none text-stone-300 hover:text-stone-600 focus:opacity-100 active:cursor-grabbing dark:text-stone-600 dark:hover:text-stone-300 ${cls}`}>⋮⋮</button>
+    <button onMouseDown={(e) => startDrag(e, list, key)} onKeyDown={(e) => { if (e.key === "ArrowUp" || e.key === "ArrowDown") { e.preventDefault(); e.stopPropagation(); nudge(list, key, e.key === "ArrowUp" ? -1 : 1); } }} onClick={(e) => e.stopPropagation()} title="Drag to move this. Or focus it and press ↑ or ↓." aria-label={`Move ${name}`} style={{ top }} className={`absolute left-0 z-[1] flex h-5 w-3 cursor-grab items-center justify-center text-body leading-none text-stone-300 hover:text-stone-600 focus:opacity-100 active:cursor-grabbing dark:text-stone-600 dark:hover:text-stone-300 ${cls}`}>⋮⋮</button>
   );
   /// `items` in the user's order: the ones they've placed first, new ones after, as they came.
   const inOrder = <T,>(list: string, items: T[], keyOf: (t: T) => string): T[] => {
@@ -410,20 +410,20 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
 
   const head = (key: string, title: string, count: string) => (
     <button onClick={() => toggle(key)} className="mt-2 flex w-full items-baseline gap-2 border-t border-stone-200 px-3 pb-1 pt-2.5 text-left dark:border-stone-700">
-      <span className="w-2.5 text-label text-stone-400">{open[key] ? "▾" : "▸"}</span>
-      <span className="text-label font-semibold tracking-wider text-stone-500">{title}</span>
-      <span className="truncate text-label text-stone-400">{count}</span>
+      <span className="w-2 text-body text-stone-400">{open[key] ? "▾" : "▸"}</span>
+      <span className="text-body font-semibold tracking-wider text-stone-500">{title}</span>
+      <span className="truncate text-body text-stone-400">{count}</span>
     </button>
   );
 
   // Each section, by key. The order they show in is the user's: see `order`.
   const parts: Record<SectionKey, React.ReactNode> = {
     all: true ? (<>
-          <button onClick={onOpenRepo} className={`mt-1 flex w-full items-start gap-2 whitespace-normal! border-t border-stone-200 px-3 py-2 text-left dark:border-stone-700 ${current === null && currentBranch === null ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
+          <button onClick={onOpenRepo} className={`mt-2 flex w-full items-start gap-2 whitespace-normal! border-t border-stone-200 px-3 pb-1.5 pt-2.5 text-left dark:border-stone-700 ${current === null && currentBranch === null ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
             <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full border-2 border-stone-400" />
             <span className="min-w-0 grow">
               <span className="block text-body font-medium">All branches</span>
-              <span className="block text-label font-normal text-stone-500">every branch in this repository, checked out or not, local and remote</span>
+              <span className="block text-body font-normal text-stone-500">every branch in this repository, checked out or not, local and remote</span>
             </span>
           </button>
     </>) : null,
@@ -431,9 +431,9 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
           {data?.compare_base && (
             <section aria-label="Base">
               {head("base", "BASE", open.base ? "" : base)}
-              {open.base && <div onContextMenu={baseMenu} className="flex items-start gap-2 pr-3"><button onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: base }) : onOpenBranch(base))} title={`Show ${base}'s commits`} className={`block min-w-0 shrink! grow whitespace-normal! px-3 py-1.5 pl-[30px] text-left ${currentBranch === base ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
+              {open.base && <div onContextMenu={baseMenu} className="flex items-start gap-2 pr-3"><button onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: base }) : onOpenBranch(base))} title={`Show ${base}'s commits`} className={`block min-w-0 shrink! grow whitespace-normal! px-3 py-1.5 pl-7 text-left ${currentBranch === base ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
                 <span className="block truncate font-mono text-body font-medium">{base}</span>
-                <span className="block text-label text-stone-500">
+                <span className="block text-body text-stone-500">
                   {chosen
                     ? <>{remoteBase ? <>The remote's <span className="font-mono">{baseLocal}</span>, as of your last fetch.</> : <>Your local <span className="font-mono">{base}</span> branch.</>} You chose it as the base. Every branch here is compared to it.</>
                     : remoteBase
@@ -456,18 +456,18 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
                 {grip("worktrees", r.worktree.path, folderName(r.worktree.path), "opacity-0 group-hover:opacity-100", 6)}
                 <span title={dotTip} className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dotCls}`} />
                 <div className="min-w-0 grow">
-                  <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body font-medium">{folderName(r.worktree.path)}</span>{r.isMain && <span title={MAIN_WORKTREE} className="shrink-0 cursor-help rounded border border-stone-300 px-1 text-label text-stone-600 dark:border-stone-600 dark:text-stone-300">main worktree</span>}<OverlapMark path={r.worktree.path} overlaps={overlaps} labelFor={labelFor} /></div>
-                  <div data-path className="truncate font-mono text-label text-stone-500">{tilde(r.worktree.path, home)}</div>
+                  <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body font-medium">{folderName(r.worktree.path)}</span>{r.isMain && <span title={MAIN_WORKTREE} className="shrink-0 cursor-help rounded border border-stone-300 px-1 text-body text-stone-600 dark:border-stone-600 dark:text-stone-300">main worktree</span>}<OverlapMark path={r.worktree.path} overlaps={overlaps} labelFor={labelFor} /></div>
+                  <div data-path className="truncate font-mono text-body text-stone-500">{tilde(r.worktree.path, home)}</div>
                   <Todo about="folder" items={[
                     pending ? { text: "checking…" } : r.worktree.prunable ? { text: "folder missing", tone: "bad" } : conflicts ? { text: count(conflicts, "file", "with conflicts"), tone: "bad", tip: "A merge or rebase stopped here. Open the worktree to resolve them." } : n > 0 ? { text: count(n, "file", "to commit"), tip: `${count(n, "file")} edited in this folder and not committed yet.` } : null,
                   ]} />
-                  <div className="flex items-center gap-1.5 text-label text-stone-500">
+                  <div className="flex items-center gap-1.5 text-body text-stone-500">
                     {r.worktree.prunable
                       ? <span className="truncate">{r.branch ? <>on <span className="font-mono text-stone-800 dark:text-stone-100">{r.label}</span></> : <span title={NO_BRANCH}>no branch · commit <span className="font-mono">{r.worktree.head?.slice(0, 7) ?? "?"}</span> checked out</span>}</span>
                       : <button onClick={(e) => { e.stopPropagation(); const at = e.currentTarget.getBoundingClientRect(); setPicking({ x: at.left, y: at.bottom + 2, row: r }); }} disabled={!!busy} aria-haspopup="dialog" aria-label={`Switch branch in ${folderName(r.worktree.path)}`} title="Switch this worktree to another branch" className="flex min-w-0 items-center gap-1 rounded hover:text-stone-900 dark:hover:text-white">
-                          <span className="truncate">{r.branch ? <>on <span className="font-mono text-stone-800 dark:text-stone-100">{r.label}</span></> : <span title={NO_BRANCH}>no branch · commit <span className="font-mono">{r.worktree.head?.slice(0, 7) ?? "?"}</span> checked out</span>}</span><span className="shrink-0 text-label text-stone-400">▾</span>
+                          <span className="truncate">{r.branch ? <>on <span className="font-mono text-stone-800 dark:text-stone-100">{r.label}</span></> : <span title={NO_BRANCH}>no branch · commit <span className="font-mono">{r.worktree.head?.slice(0, 7) ?? "?"}</span> checked out</span>}</span><span className="shrink-0 text-body text-stone-400">▾</span>
                         </button>}
-                    {prByBranch[r.label] && <PrBadge pr={prByBranch[r.label]} />}
+                    {prByBranch[r.label] && <PrBadge pr={prByBranch[r.label]} size="body" />}
                   </div>
                   <Todo about="branch" items={r.branch ? [
                     ...syncTodo(r.branch.branch, hasRemote),
@@ -482,20 +482,20 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     branches: true ? (<>
           {head("branches", "BRANCHES", data ? `${without.length} without a worktree` : "")}
           {open.branches && without.map((r) => (
-            <div key={r.branch.name} ref={(el) => { els.current[`branches:${r.branch.name}`] = el; }} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.branch.name }) : onOpenBranch(r.branch.name))} onContextMenu={(e) => branchMenu(e, r)} title={r.branch.last_commit?.summary} className={`group flex cursor-pointer items-start gap-2 px-3 py-1.5 ${dragCls("branches", r.branch.name)} ${currentBranch === r.branch.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
+            <div key={r.branch.name} ref={(el) => { els.current[`branches:${r.branch.name}`] = el; }} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.branch.name }) : onOpenBranch(r.branch.name))} onContextMenu={(e) => branchMenu(e, r)} title={r.branch.last_commit?.summary} className={`group flex cursor-pointer items-start gap-2 pl-7 pr-3 py-1.5 ${dragCls("branches", r.branch.name)} ${currentBranch === r.branch.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
               {grip("branches", r.branch.name, r.branch.name, "opacity-0 group-hover:opacity-100", 6)}
               <div className="min-w-0 grow">
-                <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body font-medium">{r.branch.name}</span>{prByBranch[r.branch.name] && <PrBadge pr={prByBranch[r.branch.name]} />}</div>
+                <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body font-medium">{r.branch.name}</span>{prByBranch[r.branch.name] && <PrBadge pr={prByBranch[r.branch.name]} size="body" />}</div>
                 <Todo about="branch" items={[...syncTodo(r.branch, hasRemote), ...(r.branch.name === baseLocal ? [] : baseTodo(r, base))]} />
               </div>
               <MoreButton onOpen={(e) => branchMenu(e, r)} label={`Actions for ${r.branch.name}`} />
             </div>
           ))}
-          {open.branches && data && without.length === 0 && <div className="px-3 py-1 text-label text-stone-500">Every local branch has a worktree.</div>}
+          {open.branches && data && without.length === 0 && <div className="py-1 pl-7 pr-3 text-body text-stone-500">Every local branch has a worktree.</div>}
     </>) : null,
     prs: !!prs ? (<>
           {prs && head("prs", "PULL REQUESTS", String(prs.length))}
-          {prs && open.prs && prs.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No open pull requests.</div>}
+          {prs && open.prs && prs.length === 0 && <div className="py-1 pl-7 pr-3 text-body text-stone-500">No open pull requests.</div>}
           {prs && open.prs && prs.map((pr) => {
             const wtRow = rows.find((w) => w.branch?.branch.name === prBranch(pr));
             const see = (e: React.MouseEvent) => {
@@ -505,11 +505,11 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
             };
             return (
               <div key={pr.number} onClick={see} onContextMenu={(e) => prMenu(e, pr, wtRow?.worktree.path)} title={`${pr.title}\n${pr.url}`} className="group flex cursor-pointer items-start gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
-                {wtRow ? <span title="Has a worktree" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot({ status: wtRow.status, missing: !!wtRow.worktree.prunable, isMain: wtRow.isMain, loaded: !!data?.status_loaded }).cls}`} /> : null}
+                {wtRow ? <span title="Has a worktree" className={`mt-1.5 h-2 w-2 shrink-0 rounded-full ${dot({ status: wtRow.status, missing: !!wtRow.worktree.prunable, isMain: wtRow.isMain, loaded: !!data?.status_loaded }).cls}`} /> : <span className="w-2 shrink-0" />}
                 <div className="min-w-0 grow">
-                  <div className="flex items-baseline gap-1.5"><span className="shrink-0 font-mono text-label text-stone-500">#{pr.number}</span><span className="min-w-0 break-words font-medium">{pr.title}</span></div>
-                  <div className="flex items-center gap-1 truncate text-label text-stone-500">
-                    <ChecksMark checks={pr.checks} />
+                  <div className="flex items-baseline gap-1.5"><span className="shrink-0 font-mono text-body text-stone-500">#{pr.number}</span><span className="min-w-0 break-words font-medium">{pr.title}</span></div>
+                  <div className="flex items-center gap-1 truncate text-body text-stone-500">
+                    <ChecksMark checks={pr.checks} size="body" />
                     <span className="truncate">{pr.author}{pr.draft ? " · draft" : ""}{REVIEW[pr.review] ? ` · ${REVIEW[pr.review]}` : ""}{pr.from_fork ? " · from a fork" : ""}</span>
                   </div>
                 </div>
@@ -521,10 +521,10 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
     stashes: stashes.length > 0 ? (<>
           {stashes.length > 0 && head("stashes", "STASHES", String(stashes.length))}
           {open.stashes && stashes.map((st) => (
-            <div key={st.index} onContextMenu={(e) => stashMenu(e, st)} title={st.message} className="group flex items-start gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+            <div key={st.index} onContextMenu={(e) => stashMenu(e, st)} title={st.message} className="group flex items-start gap-2 pl-7 pr-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
               <div className="min-w-0 grow">
                 <div className="truncate font-medium">{st.message.replace(/^On [^:]+: /, "").replace(/^WIP on [^:]+: /, "")}</div>
-                <div className="truncate text-label text-stone-500">{st.branch ? `from ${st.branch} · ` : ""}{ago(st.time)}</div>
+                <div className="truncate text-body text-stone-500">{st.branch ? `from ${st.branch} · ` : ""}{ago(st.time)}</div>
               </div>
               <MoreButton onOpen={(e) => stashMenu(e, st)} label="Stash actions" />
             </div>
@@ -535,19 +535,19 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
           {open.remote && (
             <>
               <div className="px-3 pb-1">
-                <input value={remoteQuery} onChange={(e) => setRemoteQuery(e.target.value)} placeholder="Search" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-label dark:border-stone-600 dark:bg-stone-700" />
+                <input value={remoteQuery} onChange={(e) => setRemoteQuery(e.target.value)} placeholder="Search" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-body dark:border-stone-600 dark:bg-stone-700" />
               </div>
               {remoteShown.map((r: RemoteBranch) => (
-                <div key={r.name} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.name }) : onOpenBranch(r.name))} onContextMenu={(e) => remoteMenu(e, r)} title={r.last_commit?.summary} className={`group flex cursor-pointer items-start gap-2 px-3 py-1.5 ${currentBranch === r.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
+                <div key={r.name} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.name }) : onOpenBranch(r.name))} onContextMenu={(e) => remoteMenu(e, r)} title={r.last_commit?.summary} className={`group flex cursor-pointer items-start gap-2 pl-7 pr-3 py-1.5 ${currentBranch === r.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
                   <div className="min-w-0 grow">
                     <div className="truncate font-mono text-body font-medium">{r.name}</div>
-                    <div className="truncate text-label text-stone-500">{r.last_commit ? `${r.last_commit.author} · ${ago(r.last_commit.time)}` : ""}</div>
+                    <div className="truncate text-body text-stone-500">{r.last_commit ? `${r.last_commit.author} · ${ago(r.last_commit.time)}` : ""}</div>
                   </div>
                   <MoreButton onOpen={(e) => remoteMenu(e, r)} label={`Actions for ${r.name}`} />
                 </div>
               ))}
-              {!q && remote.length > 8 && <div className="px-3 py-1 text-label text-stone-500">Showing 8 of {remote.length}. Type to search.</div>}
-              {q && remoteShown.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No match.</div>}
+              {!q && remote.length > 8 && <div className="py-1 pl-7 pr-3 text-body text-stone-500">Showing 8 of {remote.length}. Type to search.</div>}
+              {q && remoteShown.length === 0 && <div className="py-1 pl-7 pr-3 text-body text-stone-500">No match.</div>}
             </>
           )}
     </>) : null,
@@ -557,30 +557,30 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
             <>
               {tags.length > 8 && (
                 <div className="px-3 pb-1">
-                  <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder="Search" aria-label="Search tags" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-label dark:border-stone-600 dark:bg-stone-700" />
+                  <input value={tagQuery} onChange={(e) => setTagQuery(e.target.value)} placeholder="Search" aria-label="Search tags" className="h-6 w-full rounded border border-stone-300 bg-white px-1.5 text-body dark:border-stone-600 dark:bg-stone-700" />
                 </div>
               )}
               {tagsShown.map((t) => (
-                <div key={t.name} onClick={() => showTag(t)} onContextMenu={(e) => tagMenu(e, t)} title={t.summary} className="group flex cursor-pointer items-start gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+                <div key={t.name} onClick={() => showTag(t)} onContextMenu={(e) => tagMenu(e, t)} title={t.summary} className="group flex cursor-pointer items-start gap-2 pl-7 pr-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
                   <div className="min-w-0 grow">
                     <div className="truncate font-mono text-body font-medium">{t.name}</div>
-                    <div className="truncate text-label text-stone-500">{t.target.slice(0, 7)}{t.time ? ` · ${ago(t.time)}` : ""}{t.summary ? ` · ${t.summary}` : ""}</div>
+                    <div className="truncate text-body text-stone-500">{t.target.slice(0, 7)}{t.time ? ` · ${ago(t.time)}` : ""}{t.summary ? ` · ${t.summary}` : ""}</div>
                   </div>
                   <MoreButton onOpen={(e) => tagMenu(e, t)} label={`Actions for tag ${t.name}`} />
                 </div>
               ))}
-              {!tq && tags.length > 8 && <div className="px-3 py-1 text-label text-stone-500">Showing the newest 8 of {tags.length}. Type to search.</div>}
-              {tq && tagsShown.length === 0 && <div className="px-3 py-1 text-label text-stone-500">No match.</div>}
+              {!tq && tags.length > 8 && <div className="py-1 pl-7 pr-3 text-body text-stone-500">Showing the newest 8 of {tags.length}. Type to search.</div>}
+              {tq && tagsShown.length === 0 && <div className="py-1 pl-7 pr-3 text-body text-stone-500">No match.</div>}
             </>
           )}
     </>) : null,
     backups: backups.length > 0 ? (<>
           {backups.length > 0 && head("backups", "BACKUPS", String(backups.length))}
           {open.backups && backups.map((b) => (
-            <div key={b.refname} onContextMenu={(e) => backupMenu(e, b)} title={b.files.join("\n") || b.id} className="group flex items-start gap-2 px-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
+            <div key={b.refname} onContextMenu={(e) => backupMenu(e, b)} title={b.files.join("\n") || b.id} className="group flex items-start gap-2 pl-7 pr-3 py-1.5 hover:bg-white dark:hover:bg-stone-800">
               <div className="min-w-0 grow">
                 <div className={`truncate font-medium ${b.kind === "branch" ? "font-mono" : ""}`}>{b.kind === "branch" ? b.branch : backupTitle(b)}</div>
-                <div className="truncate text-label text-stone-500">
+                <div className="truncate text-body text-stone-500">
                   {b.kind === "branch" ? (b.branch_exists ? "branch before a change" : "deleted branch") : `${b.files.length} ${b.files.length === 1 ? "file" : "files"}`} · {ago(b.time)}
                 </div>
               </div>
@@ -593,7 +593,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
   const shownSections = order.filter((k) => parts[k]);
   shownKeys.current.sections = shownSections;
   return (
-    <aside className="flex min-h-0 flex-col overflow-y-auto bg-stone-50 text-body dark:bg-stone-900">
+    <aside className="flex min-h-0 flex-col overflow-y-auto bg-stone-50 text-body leading-5 dark:bg-stone-900">
       {menu && <ContextMenu {...menu} onClose={() => setMenu(null)} />}
       {picking && <BranchPicker x={picking.x} y={picking.y} branches={pickable(picking.row)} hint="Uncommitted changes come along if they don't clash." onPick={(name) => switchTo(picking.row, name)} onClose={() => setPicking(null)} />}
       {basePick && <BranchPicker x={basePick.x} y={basePick.y} label="Change base" branches={baseChoices()} hint="Every branch is compared to the base: what's ahead of it, behind it, or already in it." onPick={(name) => { void setBase(name); }} onClose={() => setBasePick(null)} />}
@@ -609,7 +609,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
           <button onClick={() => setCreating({})} className="h-7 grow rounded-md bg-teal-700 px-2.5 text-body font-medium text-white hover:bg-teal-800">New branch<span className="ml-1.5 opacity-70">⌘N</span></button>
           <button onClick={() => run("Fetching…", "Fetched", () => api.fetchAll(root))} disabled={!!busy} className="h-7 rounded-md border border-stone-300 bg-white px-2.5 text-body hover:bg-stone-100 disabled:opacity-40 dark:border-stone-600 dark:bg-stone-700">{busy === "Fetching…" ? "Fetching…" : "Fetch"}</button>
         </div>
-        <span className="self-end text-label text-stone-500" title={data?.fetched_at ? new Date(data.fetched_at * 1000).toLocaleString() : undefined}>
+        <span className="self-end text-body text-stone-500" title={data?.fetched_at ? new Date(data.fetched_at * 1000).toLocaleString() : undefined}>
           {busy === "Fetching…" ? "Fetching…" : data?.fetched_at ? `Fetched ${ago(data.fetched_at)}` : data ? "Not fetched yet" : ""}
         </span>
       </div>
@@ -631,7 +631,7 @@ type SectionKey = "base" | "worktrees" | "branches" | "all" | "prs" | "remote" |
 const SECTIONS: SectionKey[] = ["base", "worktrees", "branches", "all", "prs", "remote", "tags", "stashes", "backups"];
 const SECTION_NAME: Record<SectionKey, string> = { base: "Base", worktrees: "Worktrees", branches: "Branches", all: "All branches", prs: "Pull requests", remote: "Remote branches", tags: "Tags", stashes: "Stashes", backups: "Backups" };
 /// Where the handle sits, so it lines up with each section's first line.
-const GRIP_TOP: Record<SectionKey, number> = { base: 16, all: 8, worktrees: 16, branches: 16, prs: 16, remote: 16, tags: 16, stashes: 16, backups: 16 };
+const GRIP_TOP: Record<SectionKey, number> = { base: 16, all: 16, worktrees: 16, branches: 16, prs: 16, remote: 16, tags: 16, stashes: 16, backups: 16 };
 const ORDER_KEY = "pando.sidebar.order";
 const ROWS_KEY = "pando.sidebar.rows";
 /// The saved order, with any section it doesn't know put at the end.
@@ -659,15 +659,15 @@ function detachedRow(d: DetachedRow): WtRow {
 type TodoItem = { text: string; tip?: string; tone?: "bad" | "done" | "quiet" } | null;
 const count = (n: number, one: string, then = "") => `${n} ${n === 1 ? one : `${one}s`}${then ? ` ${then}` : ""}`;
 
-/// What's left to do, each piece saying what it counts. Nothing to do: nothing shown.
+/// What's left to do, one fact per line, each saying what it counts. Nothing to do: nothing shown.
 /// `about` says what the facts describe: the folder, or the branch checked out in it.
 function Todo({ items, about }: { items: TodoItem[]; about: "folder" | "branch" }) {
   const shown = items.filter((x): x is NonNullable<TodoItem> => !!x);
   if (shown.length === 0) return null;
   const tone = { bad: "text-red-700 dark:text-red-400", done: "text-teal-700 dark:text-teal-400", quiet: "text-stone-400" };
   return (
-    <div data-todo={about} className="text-label text-stone-500">
-      {shown.map((x, i) => <span key={x.text}>{i > 0 ? " · " : ""}<span title={x.tip} className={`whitespace-nowrap ${x.tone ? tone[x.tone] : ""}`}>{x.text}</span></span>)}
+    <div data-todo={about} className="text-body text-stone-500">
+      {shown.map((x) => <div key={x.text} title={x.tip} className={x.tone ? tone[x.tone] : ""}>{x.text}</div>)}
     </div>
   );
 }
@@ -702,7 +702,7 @@ function OverlapMark({ path, overlaps, labelFor }: { path: string; overlaps: Ove
   });
   const count = new Set(mine.flatMap((o) => o.files)).size;
   return (
-    <span title={lines.join("\n")} aria-label={`${count} ${count === 1 ? "file" : "files"} also changed in another worktree`} className="shrink-0 cursor-help text-label text-amber-700">
+    <span title={lines.join("\n")} aria-label={`${count} ${count === 1 ? "file" : "files"} also changed in another worktree`} className="shrink-0 cursor-help text-body text-amber-700">
       ⚠ {count} {count === 1 ? "file overlaps" : "files overlap"}
     </span>
   );

@@ -133,7 +133,9 @@ test("the sidebar says what's left to do, each piece naming what it counts; noth
   await open(page, { overview_load: o });
   const todo = (text: string, about: "folder" | "branch") => sidebar(page).locator("div.group", { hasText: text }).first().locator(`[data-todo="${about}"]`);
   // Facts about the folder sit under the folder; facts about the branch under the branch.
-  await expect(sidebar(page).locator("div.group", { hasText: "proj-x" }).first().locator("div.min-w-0 > div")).toHaveText(["proj-x", /proj-x$/, "1 file to commit", "on feat/x▾", "2 commits to push · 1 commit to pull · 3 commits to merge into origin/main · 14 commits behind origin/main"]);
+  await expect(sidebar(page).locator("div.group", { hasText: "proj-x" }).first().locator("div.min-w-0 > div")).toHaveText(["proj-x", /proj-x$/, "1 file to commit", "on feat/x▾", "2 commits to push1 commit to pull3 commits to merge into origin/main14 commits behind origin/main"]);
+  // One fact per line.
+  await expect(todo("proj-x", "branch").locator("> div")).toHaveText(["2 commits to push", "1 commit to pull", "3 commits to merge into origin/main", "14 commits behind origin/main"]);
   await expect(todo("proj-x", "branch").getByText("2 commits to push")).toHaveAttribute("title", "2 commits here that origin/feat/x doesn't have.");
   await expect(todo("proj-x", "branch").getByText("14 commits behind origin/main")).toHaveAttribute("title", "origin/main has 14 commits that this branch doesn't have.");
   await expect(todo("proj-x", "folder").getByText("1 file to commit")).toHaveAttribute("title", "1 file edited in this folder and not committed yet.");
@@ -141,8 +143,8 @@ test("the sidebar says what's left to do, each piece naming what it counts; noth
   await expect(sidebar(page).locator("div.group", { hasText: "proj-idle" }).first().locator("[data-todo]")).toHaveCount(0);
   await expect(sidebar(page).getByText("clean")).toHaveCount(0);
   // Never pushed says so. Already in the base names which base.
-  await expect(todo("proj-new", "branch")).toHaveText("not pushed yet · 1 commit to merge into origin/main");
-  await expect(todo("proj-done", "branch")).toHaveText("already in origin/main · 5 commits behind origin/main");
+  await expect(todo("proj-new", "branch").locator("> div")).toHaveText(["not pushed yet", "1 commit to merge into origin/main"]);
+  await expect(todo("proj-done", "branch").locator("> div")).toHaveText(["already in origin/main", "5 commits behind origin/main"]);
   await expect(todo("proj-local", "branch")).toHaveText("already in main");
   await expect(todo("spike/loose", "branch")).toHaveText("1 commit to merge into origin/main");
   await expect(sidebar(page).getByText(/[↑↓]/)).toHaveCount(0);
@@ -552,4 +554,32 @@ test("with every branch in a worktree there's nothing to switch to, and a missin
   await sidebar(page).locator("div.group", { hasText: "fix/typo" }).first().click({ button: "right" });
   await expect(page.getByRole("menuitem", { name: "Repair worktree…" })).toBeVisible();
   await expect(page.getByRole("menuitem", { name: "Switch branch…" })).toHaveCount(0);
+});
+
+test("the sidebar is one text size, and every row's text starts on the same left edge", async ({ page }) => {
+  const pr = { number: 9, title: "A change", url: "https://x/9", head: "feat/none", base: "main", author: "Sam", draft: false, checks: "passing", review: "", from_fork: false };
+  const o = overview({ branches: [row("main", { worktree: wt(ROOT, "main"), upstream: "origin/main" }), row("feat/x", { worktree: wt(`${ROOT}-x`, "feat/x"), upstream: "origin/feat/x", up: [2, 1], ahead: 3, status: { staged: 1, unstaged: 0, untracked: 0, conflicts: 0 } }), row("spike/old", { ahead: 1 })], compare_base: "origin/main" });
+  await open(page, { overview_load: o, prs_list: { state: "ok", prs: [pr, { ...pr, number: 10, head: "feat/x" }] }, tag_list: [{ name: "v1", target: "a".repeat(40), time: 1, summary: "one", annotated: false }] });
+  for (const name of [/REMOTE BRANCHES/, /TAGS/]) {
+    const h = sidebar(page).getByRole("button", { name }).first();
+    if ((await h.textContent())?.includes("▸")) await h.click();
+  }
+  // Every piece of text in the list, below the New branch and Fetch buttons.
+  const sizes = await sidebar(page).locator("[data-section]").evaluateAll((secs) => {
+    const out = new Set<string>();
+    for (const sec of secs) {
+      const walk = document.createTreeWalker(sec, NodeFilter.SHOW_TEXT);
+      for (let n = walk.nextNode(); n; n = walk.nextNode()) if (n.textContent?.trim() && !(n.parentElement as HTMLElement).closest("input")) out.add(getComputedStyle(n.parentElement!).fontSize);
+    }
+    return [...out];
+  });
+  expect(sizes).toEqual(["13px"]);
+  // The first line of every row, and every section's title, start at one x.
+  const lefts = await sidebar(page).evaluate((el) => {
+    const x = (e: Element) => Math.round(e.getBoundingClientRect().left - el.getBoundingClientRect().left);
+    const rows = [...el.querySelectorAll("div.group")].map((r) => x(r.querySelector(".min-w-0")!));
+    const titles = [...el.querySelectorAll("span.tracking-wider")].map(x);
+    return [...new Set([...rows, ...titles])];
+  });
+  expect(lefts).toEqual([28]);
 });
