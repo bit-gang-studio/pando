@@ -104,18 +104,22 @@ export function ComparePage({ root, data, worktree, branch, commit, refsTick }: 
   const theirFiles = new Set(cmp.theirs.files.map((f) => f.path));
   const both = cmp.mine.files.map((f) => f.path).filter((p) => theirFiles.has(p));
   const shown = sel ?? first;
-  const pill = (which: "mine" | "theirs", n: number, name: string) => (
-    <button onClick={() => { pickSpan(null); setWhole(which); }} disabled={n === 0} aria-pressed={whole === which} title={n ? `Show everything ${name} changed since they split, as one diff` : undefined} className={`rounded px-1.5 py-0.5 ${whole === which ? "bg-stone-200 font-medium dark:bg-stone-600" : n ? "underline decoration-dotted underline-offset-2 hover:bg-stone-100 dark:hover:bg-stone-700" : ""}`}>
-      {count(n, "commit")} only on <span className="font-mono">{name}</span>
-    </button>
-  );
+  const pickWhole = (which: "mine" | "theirs") => { pickSpan(null); setWhole(which); };
+  /// One row per side that has commits: everything it changed since the split, as one diff.
+  const totals = [
+    ...(ahead ? [{ key: "mine", label: <>All changes on <span className="font-mono">{label(mine)}</span></>, detail: `since they split · ${count(ahead, "commit")}`, selected: whole === "mine", onClick: () => pickWhole("mine") }] : []),
+    ...(behind ? [{ key: "theirs", label: <>All changes on <span className="font-mono">{label(other)}</span></>, detail: `since they split · ${count(behind, "commit")}`, selected: whole === "theirs", onClick: () => pickWhole("theirs") }] : []),
+  ];
+  /// A side with nothing new has no line in the graph. Say so, so nobody looks for it.
+  const still = ahead > 0 && behind === 0 ? other : behind > 0 && ahead === 0 ? mine : null;
 
   return wrap(
     <div ref={split.box} className="flex min-h-0 min-w-0 grow flex-col">
       <div data-summary className="flex shrink-0 flex-wrap items-center gap-x-1 gap-y-0.5 border-b border-stone-200 px-4 py-1.5 text-body text-stone-600 dark:border-stone-700 dark:text-stone-300">
         {fork === null ? <span>These two share no history.</span>
           : ahead === 0 && behind === 0 ? <span>These two are at the same commit. Nothing differs.</span>
-          : <>{pill("mine", ahead, label(mine))}<span className="text-stone-400">·</span>{pill("theirs", behind, label(other))}</>}
+          : <span>{count(ahead, "commit")} only on <span className="font-mono">{label(mine)}</span> <span className="text-stone-400">·</span> {count(behind, "commit")} only on <span className="font-mono">{label(other)}</span></span>}
+        {fork !== null && still && <span data-still className="basis-full text-stone-500"><span className="font-mono">{label(still)}</span> hasn't moved since they split, so it has no line of its own below. Its newest commit is where they split.</span>}
         {both.length > 0 && <span data-both className="basis-full text-amber-800 dark:text-amber-300" title={both.join("\n")}>⚠ {count(both.length, "file")} changed on both sides: <span className="font-mono text-label">{both.slice(0, 4).join(", ")}{both.length > 4 ? ` and ${both.length - 4} more` : ""}</span>. A merge may conflict there.</span>}
       </div>
       <div style={{ height: split.size, flex: "0 0 auto" }} className="flex min-h-0 flex-col">
@@ -123,6 +127,7 @@ export function ComparePage({ root, data, worktree, branch, commit, refsTick }: 
           root={root}
           scope={mine}
           title={<><span className="font-mono">{label(mine)}</span> and <span className="font-mono">{label(other)}</span> since they split</>}
+          totals={totals}
           range={{ own: `${other}...${mine}`, rest: fork, restLabel: "Where they split, and the history they share" }}
           dirtyWorktrees={0}
           selected={whole || span ? null : shown}

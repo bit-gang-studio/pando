@@ -17,6 +17,9 @@ type Props = {
   scope: string;
   /// What the list is, when it isn't simply `scope`'s commits.
   title?: React.ReactNode;
+  /// Rows above the commits that stand for many at once ("everything this side
+  /// changed"). Drawn with a dashed outline: a sum, not a commit.
+  totals?: { key: string; label: React.ReactNode; detail: string; selected: boolean; onClick: () => void }[];
   dirtyWorktrees: number;
   uncommittedLabel?: string;
   uncommittedSelected?: boolean;
@@ -58,7 +61,7 @@ export type Span = { anchor: string; other: string; older: string; newer: string
 const PAGE = 200;
 const MAX_LANES = 12;
 
-export function CommitLog({ root, scope, title, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, prByBranch = {}, detachedDots = {}, heads, compare, compareSelected, onCompare, range, picked, spanEnd, onSpan, onCommitMenu, onLoaded, refreshKey }: Props) {
+export function CommitLog({ root, scope, title, totals, dirtyWorktrees, uncommittedLabel, uncommittedSelected, selected, onSelect, onUncommitted, branchDots = {}, prByBranch = {}, detachedDots = {}, heads, compare, compareSelected, onCompare, range, picked, spanEnd, onSpan, onCommitMenu, onLoaded, refreshKey }: Props) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [truncated, setTruncated] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -219,6 +222,13 @@ export function CommitLog({ root, scope, title, dirtyWorktrees, uncommittedLabel
             <span className="text-body text-stone-500">{uncommittedLabel ?? `in ${dirtyWorktrees} ${dirtyWorktrees === 1 ? "worktree" : "worktrees"}`}</span>
           </button>
         )}
+        {!searching && totals?.map((t) => (
+          <button key={t.key} data-total={t.key} onClick={t.onClick} aria-pressed={t.selected} className={`flex w-full items-center gap-3 px-4 py-1.5 text-left ${t.selected ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
+            <span className="h-3 w-3 shrink-0 rounded-full border-2 border-dashed border-stone-400" />
+            <span className="min-w-0 truncate font-medium">{t.label}</span>
+            <span className="shrink-0 text-body text-stone-500">{t.detail}</span>
+          </button>
+        ))}
         {!searching && compare && (
           <button onClick={onCompare} className={`flex w-full items-center gap-3 px-4 py-1.5 text-left ${compareSelected ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-stone-50 dark:hover:bg-stone-700/50"}`}>
             <span className="h-2.5 w-2.5 shrink-0 rounded-sm border-2 border-stone-400" />

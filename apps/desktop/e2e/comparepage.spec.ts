@@ -79,15 +79,20 @@ test("click a commit for its diff; shift-click for several as one; a side's coun
   await expect.poll(async () => (await callsTo(page, "commit_diff")).at(-1)).toEqual({ root: ROOT, id: id("b") });
   await rows(page).nth(4).click({ modifiers: ["Shift"] });
   await expect.poll(async () => (await callsTo(page, "commit_range")).length).toBeGreaterThan(0);
-  // Everything one side changed since the split, as one diff.
-  await summary(page).getByRole("button", { name: /2 commits only on origin\/main/ }).click();
+  // Everything one side changed since the split, as one diff: a dashed row on top for each side.
+  const total = (k: string) => page.locator(`[data-total="${k}"]`);
+  await expect(total("mine")).toHaveText("All changes on feat/step-3since they split · 3 commits");
+  await expect(total("theirs")).toHaveText("All changes on origin/mainsince they split · 2 commits");
+  await expect(total("mine").locator("span").first()).toHaveClass(/border-dashed/);
+  await total("theirs").click();
   await expect.poll(async () => (await callsTo(page, "compare")).at(-1)).toEqual({ root: ROOT, base: "feat/step-3", head: "origin/main" });
-  await expect(summary(page).getByRole("button", { name: /2 commits only on origin\/main/ })).toHaveAttribute("aria-pressed", "true");
-  await summary(page).getByRole("button", { name: /3 commits only on feat\/step-3/ }).click();
-  await expect(summary(page).getByRole("button", { name: /3 commits only on feat\/step-3/ })).toHaveAttribute("aria-pressed", "true");
+  await expect(total("theirs")).toHaveAttribute("aria-pressed", "true");
+  await total("mine").click();
+  await expect(total("mine")).toHaveAttribute("aria-pressed", "true");
+  await expect(total("theirs")).toHaveAttribute("aria-pressed", "false");
   // Picking a commit again leaves that.
   await rows(page).nth(0).click();
-  await expect(summary(page).getByRole("button", { name: /3 commits only on feat\/step-3/ })).toHaveAttribute("aria-pressed", "false");
+  await expect(total("mine")).toHaveAttribute("aria-pressed", "false");
 });
 
 test("choose what to compare with from a searchable list; the picked one can't be compared with itself", async ({ page }) => {
@@ -136,10 +141,12 @@ test("two branches with no shared history say so", async ({ page }) => {
   await expect(summary(page)).toContainText("These two share no history.");
 });
 
-test("a side with nothing new: its count isn't a button, and there's no warning", async ({ page }) => {
+test("a side with nothing new gets no row of its own, and the page says why there's one line", async ({ page }) => {
   await open(page, wtUrl(W), { compare: { $by: "head", cases: { "feat/step-3": cmp("origin/main", "feat/step-3", 0, 4, []), "origin/main": cmp("feat/step-3", "origin/main", 4, 0, ["x.md"]) } } });
-  await expect(summary(page).getByRole("button", { name: /0 commits only on feat\/step-3/ })).toBeDisabled();
-  await expect(summary(page).getByRole("button", { name: /4 commits only on origin\/main/ })).toBeEnabled();
+  await expect(summary(page)).toContainText("0 commits only on feat/step-3 · 4 commits only on origin/main");
+  await expect(summary(page).locator("[data-still]")).toHaveText("feat/step-3 hasn't moved since they split, so it has no line of its own below. Its newest commit is where they split.");
+  await expect(page.locator("[data-total]")).toHaveCount(1);
+  await expect(page.locator('[data-total="theirs"]')).toBeVisible();
   await expect(summary(page).locator("[data-both]")).toHaveCount(0);
 });
 
