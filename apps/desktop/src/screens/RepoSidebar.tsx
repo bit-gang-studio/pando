@@ -355,7 +355,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
                 {r.isMain ? "main worktree" : null}
                 {r.isMain && (pending || r.worktree.prunable || conflicts || n > 0) ? " · " : ""}
                 {pending ? "checking…" : r.worktree.prunable ? "folder missing" : conflicts ? `${conflicts} conflicts` : n > 0 ? `${n} changed` : r.isMain ? "" : "clean"}
-                {!r.isMain && r.branch?.merged ? <> · <span className="text-teal-700" title={`Everything on this branch is in ${data?.base ?? "the base"}`}>merged</span></> : !r.isMain && r.ahead ? ` · ${r.ahead} ahead` : ""}
+                {!r.isMain && r.branch?.merged ? <> · <span className="text-teal-700" title={`Everything on this branch is already in ${data?.base ?? "the base"}. The worktree can be removed.`}>merged into {data?.base ?? "the base"}</span></> : !r.isMain && r.ahead ? <> · <span title={`${r.ahead} ${r.ahead === 1 ? "commit" : "commits"} on this branch that ${data?.base ?? "the base"} doesn't have`}>{r.ahead} not in {data?.base ?? "base"}</span></> : ""}
                 <SyncCounts b={r.branch?.branch} />
                 {r.stale ? " · stale" : ""}
                 {r.time ? ` · ${ago(r.time)}` : ""}
@@ -378,7 +378,7 @@ export function RepoSidebar({ root, data, current = null, currentBranch = null, 
         <div key={r.branch.name} onClick={(e) => (wantsNewWindow(e) ? openInNewWindow({ kind: "branch", root, name: r.branch.name }) : onOpenBranch(r.branch.name))} onContextMenu={(e) => branchMenu(e, r)} title={r.branch.last_commit?.summary} className={`group flex cursor-pointer items-center gap-2 px-3 py-1.5 ${currentBranch === r.branch.name ? "bg-teal-50 dark:bg-teal-900/30" : "hover:bg-white dark:hover:bg-stone-800"}`}>
           <div className="min-w-0 grow">
             <div className="flex items-center gap-1.5"><span className="truncate font-mono text-body">{r.branch.name}</span>{prByBranch[r.branch.name] && <PrBadge pr={prByBranch[r.branch.name]} />}</div>
-            <div className="truncate text-label text-stone-500">{r.ahead_of_base ? `${r.ahead_of_base} ahead` : "0 ahead"}<SyncCounts b={r.branch} />{r.branch.last_commit ? ` · ${ago(r.branch.last_commit.time)}` : ""}</div>
+            <div className="truncate text-label text-stone-500">{r.branch.name === data?.base ? "the base" : r.ahead_of_base ? `${r.ahead_of_base} not in ${data?.base ?? "base"}` : `nothing new`}<SyncCounts b={r.branch} />{r.branch.last_commit ? ` · ${ago(r.branch.last_commit.time)}` : ""}</div>
           </div>
           <button onClick={(e) => { e.stopPropagation(); setCreating({ branch: r.branch.name }); }} disabled={!!busy} className={`${small} hidden group-hover:block`}>Add worktree</button>
           <MoreButton onOpen={(e) => branchMenu(e, r)} label={`Actions for ${r.branch.name}`} />
@@ -496,15 +496,14 @@ function detachedRow(d: DetachedRow): WtRow {
   return { key: d.worktree.path, label: `detached at ${d.worktree.head?.slice(0, 7) ?? "?"}`, worktree: d.worktree, status: d.status, branch: null, isMain: d.is_main_worktree, ahead: null, stale: false, time: null };
 }
 
-/// " · ↑2 ↓1": commits to push and to pull, against the branch's upstream.
+/// " · 2 to push · 1 to pull": against the branch's own copy on the remote.
 function SyncCounts({ b }: { b?: import("../lib/api").Branch }) {
   if (!b?.upstream) return null;
   const up = b.ahead ?? 0, down = b.behind ?? 0;
   if (!up && !down) return null;
-  const tip = b.upstream_rewritten
-    ? `Rewritten here. Force push to update ${b.upstream}.`
-    : [up && `${up} to push`, down && `${down} to pull`].filter(Boolean).join(", ") + ` (${b.upstream})`;
-  return <span title={tip}>{" · "}{up ? `↑${up}` : ""}{up && down ? " " : ""}{down ? `↓${down}` : ""}</span>;
+  if (b.upstream_rewritten) return <span title={`You rewrote commits that are on ${b.upstream}. Force push to update it.`}>{" · "}needs a force push</span>;
+  const tip = [up && `${up} ${up === 1 ? "commit" : "commits"} here that ${b.upstream} doesn't have`, down && `${down} on ${b.upstream} that you don't have here`].filter(Boolean).join("; ");
+  return <span title={tip}>{up ? ` · ${up} to push` : ""}{down ? ` · ${down} to pull` : ""}</span>;
 }
 
 /// ⚠ when another worktree changes the same files; hover lists them.
@@ -519,7 +518,7 @@ function OverlapMark({ path, overlaps, labelFor }: { path: string; overlaps: Ove
   const count = new Set(mine.flatMap((o) => o.files)).size;
   return (
     <span title={lines.join("\n")} aria-label={`${count} ${count === 1 ? "file" : "files"} also changed in another worktree`} className="shrink-0 cursor-help text-label text-amber-700">
-      ⚠ {count}
+      ⚠ {count} {count === 1 ? "file overlaps" : "files overlap"}
     </span>
   );
 }

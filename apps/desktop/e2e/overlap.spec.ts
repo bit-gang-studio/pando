@@ -21,21 +21,21 @@ test("⚠ on both worktrees, naming the other and the files", async ({ page }) =
   await open(page, [{ a: A, b: B, files: ["src/login.ts", "README.md"] }]);
   const a = sidebar(page).locator("div.group", { hasText: "feat/a" }).first();
   const b = sidebar(page).locator("div.group", { hasText: "feat/b" }).first();
-  await expect(a.getByText("⚠ 2")).toBeVisible();
-  await expect(a.getByText("⚠ 2")).toHaveAttribute("title", "Also changed in feat/b: src/login.ts, README.md");
-  await expect(b.getByText("⚠ 2")).toHaveAttribute("title", "Also changed in feat/a: src/login.ts, README.md");
+  await expect(a.getByText("⚠ 2 files overlap")).toBeVisible();
+  await expect(a.getByText("⚠ 2 files overlap")).toHaveAttribute("title", "Also changed in feat/b: src/login.ts, README.md");
+  await expect(b.getByText("⚠ 2 files overlap")).toHaveAttribute("title", "Also changed in feat/a: src/login.ts, README.md");
   await expect(sidebar(page).locator("div.group", { hasText: "feat/c" }).first().getByText(/⚠/)).toHaveCount(0);
 });
 
 test("one worktree overlapping two others lists both, counts files once", async ({ page }) => {
   await open(page, [{ a: A, b: B, files: ["x.ts"] }, { a: A, b: C, files: ["x.ts", "y.ts"] }]);
   const a = sidebar(page).locator("div.group", { hasText: "feat/a" }).first();
-  await expect(a.getByText("⚠ 2")).toHaveAttribute("title", "Also changed in feat/b: x.ts\nAlso changed in feat/c: x.ts, y.ts");
+  await expect(a.getByText("⚠ 2 files overlap")).toHaveAttribute("title", "Also changed in feat/b: x.ts\nAlso changed in feat/c: x.ts, y.ts");
 });
 
 test("long file lists are cut short", async ({ page }) => {
   await open(page, [{ a: A, b: B, files: Array.from({ length: 9 }, (_, i) => `f${i}.ts`) }]);
-  await expect(sidebar(page).getByText("⚠ 9").first()).toHaveAttribute("title", /and 4 more$/);
+  await expect(sidebar(page).getByText("⚠ 9 files overlap").first()).toHaveAttribute("title", /and 4 more$/);
 });
 
 test("no overlaps, or a failed check, shows nothing", async ({ page }) => {

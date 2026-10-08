@@ -116,6 +116,6 @@ test("the main worktree's line has no stray separator", async ({ page }) => {
   const main = row("main", { worktree: wt(ROOT, "main"), upstream: "origin/main", up: [6, 0], ahead: 6 });
   await open(page, { overview_load: { ...overview({ branches: [main] }), refs_key: "a" }, log_list: page1 });
   const line = page.locator("aside").first().locator("div.group", { hasText: "main worktree" }).first();
-  await expect(line).toContainText("main worktree · ↑6");
+  await expect(line).toContainText("main worktree · 6 to push");
   await expect(line).not.toContainText("· ·");
 });

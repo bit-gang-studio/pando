@@ -69,14 +69,14 @@ test.beforeEach(async () => {
   catch (e) { throw new Error(`setup.sh failed:\n${(e as { stderr?: string }).stderr}`); }
 });
 
-test("the repo page shows real state: merged, ↑2, and after Fetch ↓1", async ({ page }) => {
+test("the repo page shows real state: merged, 2 to push, and after Fetch 1 to pull", async ({ page }) => {
   await repoPage(page);
   await expect(rowOf(page, "feat/done").getByText("merged")).toBeVisible({ timeout: 15_000 });
   await expect(rowOf(page, "feat/dirty").getByText("merged")).toHaveCount(0);
-  await expect(rowOf(page, "feat/login").getByTitle(/2 to push/)).toBeVisible();
+  await expect(rowOf(page, "feat/login").getByText("2 to push")).toBeVisible();
   await sidebar(page).getByRole("button", { name: "Fetch" }).click();
   await expect(toast(page, "Fetched")).toBeVisible();
-  await expect(rowOf(page, "feat/behind").getByTitle(/1 to pull/)).toBeVisible();
+  await expect(rowOf(page, "feat/behind").getByText("1 to pull")).toBeVisible();
 });
 
 test("Pull ↓1 on the worktree page really pulls", async ({ page }) => {

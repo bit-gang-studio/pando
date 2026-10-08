@@ -120,10 +120,12 @@ test("in sync says Up to date, with no button", async ({ page }) => {
   await expect(page.getByRole("button", { name: /^(Push|Pull)/ })).toHaveCount(0);
 });
 
-test("sidebar shows ↑↓ against the remote", async ({ page }) => {
+test("sidebar says what there is to push and to pull, in words", async ({ page }) => {
   const o = overview({ branches: [row("main", { worktree: wt(ROOT, "main") }), row("feat/x", { worktree: wt(`${ROOT}-x`, "feat/x"), upstream: "origin/feat/x", up: [2, 1] })] });
   await open(page, { overview_load: o });
-  await expect(sidebar(page).getByTitle("2 to push, 1 to pull (origin/feat/x)")).toHaveText(/↑2 ↓1/);
+  const sync = sidebar(page).getByTitle("2 commits here that origin/feat/x doesn't have; 1 on origin/feat/x that you don't have here");
+  await expect(sync).toHaveText("· 2 to push · 1 to pull");
+  await expect(sidebar(page).getByText(/[↑↓]/)).toHaveCount(0);
 });
 
 // ---- Merged ---------------------------------------------------------------------
