@@ -205,3 +205,45 @@ test("each commit shows its short hash, with the full one on hover", async ({ pa
   const box = await hash.boundingBox();
   expect(box!.height).toBeLessThan(22);
 });
+
+// ---- Something is always picked in the sidebar ------------------------------
+
+const picked = (page: Page) => page.locator("aside").first().locator(".bg-teal-50");
+
+test("opening a repository lands on its base, so something is always picked; Back still goes to Repositories", async ({ page }) => {
+  await mockTauri(page, { ...typical(), overview_load: overview({ branches: [row("main", { worktree: wt(ROOT, "main"), upstream: "origin/main" }), row("spike/old")], compare_base: "origin/main" }) });
+  await page.goto("/#/repos");
+  await page.getByRole("row", { name: /proj/ }).click();
+  await expect(page).toHaveURL(/#\/branch\?.*name=origin%2Fmain/);
+  await expect(picked(page)).toHaveCount(1);
+  await expect(picked(page)).toContainText("origin/main");
+  await page.goBack();
+  await expect(page).toHaveURL(/#\/repos/);
+});
+
+test("All branches stays picked when you choose it, and after a reload", async ({ page }) => {
+  await mockTauri(page, { ...typical(), overview_load: overview({ branches: [row("main", { worktree: wt(ROOT, "main"), upstream: "origin/main" })], compare_base: "origin/main" }) });
+  await page.goto("/#/repos");
+  await page.getByRole("row", { name: /proj/ }).click();
+  await expect(page).toHaveURL(/#\/branch/);
+  await page.locator("aside").first().getByRole("button", { name: /^All branches/ }).click();
+  await expect(page).toHaveURL(/#\/repo\?root=[^&]+$/);
+  await expect(picked(page)).toContainText("All branches");
+  await page.reload();
+  await expect(picked(page)).toContainText("All branches");
+  await expect(page).toHaveURL(/#\/repo\?root=[^&]+$/);
+});
+
+test("with no base yet (an empty repository) it lands on All branches; a worktree and a commit each keep one thing picked", async ({ page }) => {
+  await mockTauri(page, { ...typical(), overview_load: { ...overview({ branches: [] }), base: null, compare_base: null } });
+  await page.goto(`/#/repo?root=${encodeURIComponent(ROOT)}&land=1`);
+  await expect(picked(page)).toContainText("All branches");
+  await expect(page).toHaveURL(/#\/repo\?root=[^&]+$/);
+  await setReply(page, "overview_load", typical().overview_load);
+  await page.goto(`/#/worktree?root=${encodeURIComponent(ROOT)}&path=${encodeURIComponent(`${ROOT}-feat-login`)}`);
+  await expect(picked(page)).toHaveCount(1);
+  await expect(picked(page)).toContainText("proj-feat-login");
+  await page.goto(`/#/commit?root=${encodeURIComponent(ROOT)}&id=${"a".repeat(40)}`);
+  await expect(picked(page)).toHaveCount(1);
+  await expect(picked(page)).toContainText("All branches");
+});

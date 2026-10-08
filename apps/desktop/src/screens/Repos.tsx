@@ -69,7 +69,7 @@ export function Repos() {
   const repoMenu = (e: React.MouseEvent, root: string) => {
     e.preventDefault();
     setMenu({ x: e.clientX, y: e.clientY, items: [
-      { label: "Open in new window", onClick: () => openInNewWindow({ kind: "repo", root }).catch(toastError) },
+      { label: "Open in new window", onClick: () => openInNewWindow({ kind: "repo", root, land: true }).catch(toastError) },
       { label: "Copy path", onClick: () => navigator.clipboard.writeText(root) },
       { label: REVEAL_LABEL, onClick: () => reveal(root).catch(toastError) },
       ...(term ? [{ label: `Open in ${term}`, onClick: () => openTerminal(root) }] : []),
@@ -116,7 +116,7 @@ export function Repos() {
           </thead>
           <tbody>
             {cfg.repos.map((root) => {
-              const route = { kind: "repo" as const, root };
+              const route = { kind: "repo" as const, root, land: true };
               const o = summaries[root];
               const wts = o ? o.branches.filter((b) => b.worktree).length + o.detached.length : null;
               const dirty = o ? o.branches.reduce((n, b) => n + changed(b.status), 0) + o.detached.reduce((n, d) => n + changed(d.status), 0) : null;

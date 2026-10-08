@@ -48,6 +48,7 @@ export default function App() {
           <RepoScreen
             key={route.root}
             root={route.root}
+            land={route.kind === "repo" && !!route.land}
             commit={route.kind === "commit" ? route.id : null}
             worktree={route.kind === "worktree" ? route.path : null}
             branch={route.kind === "branch" ? route.name : null}

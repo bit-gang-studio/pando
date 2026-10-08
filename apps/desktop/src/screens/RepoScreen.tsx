@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { api, changed, type Overview as OverviewData } from "../lib/api";
-import { navigate } from "../lib/routes";
+import { navigate, toHash } from "../lib/routes";
 import { CommitDetail } from "./CommitDetail";
 import { CommitLog, type Span } from "./CommitLog";
 import { RepoSidebar } from "./RepoSidebar";
@@ -27,9 +27,9 @@ import { dot, worktreeOptions } from "../lib/worktrees";
 import { usePullRequests } from "../lib/prs";
 import type { Overlap } from "../lib/api";
 
-type Props = { root: string; commit: string | null; worktree?: string | null; branch?: string | null };
+type Props = { root: string; commit: string | null; worktree?: string | null; branch?: string | null; /** Just opened: start on the base. */ land?: boolean };
 
-export function RepoScreen({ root, commit, worktree = null, branch = null }: Props) {
+export function RepoScreen({ root, commit, worktree = null, branch = null, land = false }: Props) {
   const [data, setData] = useState<OverviewData | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const loadedRef = useRef(false);
@@ -304,6 +304,12 @@ export function RepoScreen({ root, commit, worktree = null, branch = null }: Pro
   const selected = worktree ? wtCommit : commit ?? firstId;
 
   const shown = worktree ? null : commit ?? firstId;
+  // A repository opens on its base branch, so something is always picked in
+  // the sidebar. Replaced, not pushed: Back still goes to Repositories.
+  useEffect(() => {
+    if (!land || !data) return;
+    window.location.replace(toHash(data.compare_base ? { kind: "branch", root, name: data.compare_base } : { kind: "repo", root }));
+  }, [land, data, root]);
   const view = useCenterView();
   // Whose files the Files view shows: what's picked in the sidebar. With
   // nothing picked, the main worktree's folder.
