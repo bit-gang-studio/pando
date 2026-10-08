@@ -20,7 +20,7 @@ Read `docs/architecture.md` first. The plan and status are the Crunchy board (pr
 - Keep docs minimal. Plain language. No filler.
 - Use git's words in the UI and CLI: "add worktree", "remove worktree", "merge", "branch". Never invent verbs (no land, open, close, workspace).
 - Layout is Chris's call: Repositories table → repo page (sidebar of worktrees/branches/remote branches, commit graph on top, details below) → worktree page (same sidebar, graph scoped to its branch, staging below). Don't add screens, filters, or rails without Chris asking.
-- The header's `Commits | Overview | Files` toggle picks what the centre shows for whatever is picked in the sidebar (`src/lib/view.ts`). Commits is the default. Files is read-only. Overview shows what one branch is built on (`relate.rs`).
+- The header's `Commits | Files | Overview` toggle picks what the centre shows for whatever is picked in the sidebar (`src/lib/view.ts`). Commits is the default. Files is read-only. Overview shows what one branch is built on (`relate.rs`).
 - Sidebar rows have no buttons: every action is in the row's ⋯ menu. Status says what it counts ("3 files to commit"), and names the base it compares to (`origin/main`, or one the user chose: `src/lib/base.ts`).
 - No settings, no config file, no ports, no hooks. Pando adds nothing to a repo. New worktrees go next to the repo as `<repo>-<branch>`. Chris removed all of this on 27 Sep 2026; don't bring it back.
 

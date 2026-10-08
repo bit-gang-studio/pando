@@ -29,11 +29,11 @@ async function open(page: Page, url: string, extra: Record<string, unknown> = {}
   await expect(page.locator("aside").first().getByText("WORKTREES", { exact: true })).toBeVisible();
 }
 
-test("Overview is the middle choice in the toggle, and it's remembered", async ({ page }) => {
+test("Overview is the last choice in the toggle, and it's remembered", async ({ page }) => {
   await mockTauri(page, { ...typical(), overview_load: repo(), relate_load: stacked });
   await page.goto(wtUrl(W));
   const toggle = page.getByRole("group", { name: "View" });
-  await expect(toggle.getByRole("button")).toHaveText(["Commits", "Overview", "Files"]);
+  await expect(toggle.getByRole("button")).toHaveText(["Commits", "Files", "Overview"]);
   await toggle.getByRole("button", { name: "Overview" }).click();
   await expect(line(page)).toBeVisible();
   await page.reload();

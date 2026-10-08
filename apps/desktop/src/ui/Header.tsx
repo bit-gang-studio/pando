@@ -37,14 +37,14 @@ export function Header({ route, right }: { route: Route; right?: React.ReactNode
   );
 }
 
-/// What the centre of the window shows: the commit graph, how the picked
-/// branch stands next to the others, or the files.
+/// What the centre of the window shows: the commit graph, the files, or how
+/// the picked branch stands next to the others.
 function ViewToggle() {
   const view = useCenterView();
   const tab = (v: CenterView, label: string) => (
     <button onClick={() => setCenterView(v)} aria-pressed={view === v} className={`h-6 rounded px-2.5 text-label ${view === v ? "bg-stone-200 font-medium dark:bg-stone-600" : "text-stone-600 hover:bg-stone-100 dark:text-stone-300 dark:hover:bg-stone-700"}`}>{label}</button>
   );
-  return <div role="group" aria-label="View" className="mr-1 flex shrink-0 gap-0.5 rounded-md border border-stone-300 p-0.5 dark:border-stone-600">{tab("commits", "Commits")}{tab("overview", "Overview")}{tab("files", "Files")}</div>;
+  return <div role="group" aria-label="View" className="mr-1 flex shrink-0 gap-0.5 rounded-md border border-stone-300 p-0.5 dark:border-stone-600">{tab("commits", "Commits")}{tab("files", "Files")}{tab("overview", "Overview")}</div>;
 }
 
 const LABEL: Record<Theme, string> = { light: "Light", dark: "Dark", system: "Auto" };
