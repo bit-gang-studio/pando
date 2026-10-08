@@ -21,6 +21,7 @@ pub mod merge;
 pub mod operation;
 pub mod overlap;
 pub mod overview;
+pub mod relate;
 pub mod repo;
 pub mod rewrite;
 pub mod stash;

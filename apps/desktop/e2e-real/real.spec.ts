@@ -660,3 +660,23 @@ test("Change base for real: counts are measured against the branch you pick, the
   await page.getByRole("menuitem", { name: "Use the usual base again" }).click();
   await expect(login).toContainText("to merge into origin/main", { timeout: 15_000 });
 });
+
+test("Overview on real branches: built straight on the base, then a branch stacked on another", async ({ page }) => {
+  const stacked = `${BASE}/shop-stacked`;
+  git(ROOT, `worktree add -q -b feat/stacked "${stacked}" feat/login`);
+  execSync(`cd "${stacked}" && echo x > stacked.txt && git add stacked.txt && git -c user.name=T -c user.email=t@e -c commit.gpgsign=false commit -q -m "Stacked work"`);
+  await page.addInitScript(() => { if (!localStorage.getItem("pando.view")) localStorage.setItem("pando.view", "overview"); });
+  await worktreePage(page, "feat/login");
+  const line = page.getByRole("list", { name: /^What .* is built on$/ });
+  await expect(page.locator("[data-summary]")).toContainText("feat/login is built straight on origin/main.", { timeout: 15_000 });
+  const own = Number(git(ROOT, "rev-list --count origin/main..feat/login"));
+  await expect(line.locator('[data-link="feat/login"]')).toContainText(`${own} commits of its own`);
+  await expect(line.locator('[data-link="feat/login"]')).toContainText("Folder: shop-feat-login");
+  // feat/stacked sits on top of it, and going there shows feat/login underneath.
+  await expect(line.locator('[data-link="feat/stacked"]')).toContainText("1 commit · in shop-stacked");
+  await line.locator('[data-link="feat/stacked"]').getByRole("button", { name: "feat/stacked" }).click();
+  await expect(page.locator("[data-summary]")).toContainText("feat/stacked is built on feat/login, which leads back to origin/main.", { timeout: 15_000 });
+  await expect(line.locator('[data-link="feat/stacked"]')).toContainText("1 commit of its own");
+  await expect(line.locator('[data-link="feat/login"]')).toContainText(`${own} commits`);
+  await expect(page.locator('[data-note="below"]')).toHaveText("If feat/login changes, feat/stacked has to follow it.");
+});

@@ -105,6 +105,9 @@ export type PullRequests = { state: "ok"; prs: PullRequest[] } | { state: "no_gh
 export type Overlap = { a: string; b: string; files: string[] };
 export type Removed = { path: string; branch: string | null; head: string | null; snapshot: string | null };
 export type FileCommit = { entry: LogEntry; path: string; change: string };
+/** Another branch on the same line of history. `commits`: its own, past the one under it. */
+export type RelLink = { name: string; remote: boolean; commits: number };
+export type Relation = { target: string; base: string; fork: CommitInfo | null; ahead: number; behind: number; below: RelLink[]; own: number; above: RelLink[] };
 export type FileEntry = { name: string; path: string; dir: boolean };
 /** `text` is missing for a binary file, a link, or one too large; `why` says which. */
 export type FileContents = { path: string; size: number; text: string | null; why: string | null };
@@ -181,6 +184,7 @@ export const api = {
 
   log: (root: string, branch: string | null, skip: number, limit: number) => invoke<Log>("log_list", { root, branch, skip, limit }),
   fileHistory: (root: string, rev: string | null, path: string, skip: number, limit: number) => invoke<FileHistory>("file_history", { root, rev, path, skip, limit }),
+  relate: (root: string, target: string, base: string) => invoke<Relation>("relate_load", { root, target, base }),
   fileList: (root: string, worktree: string | null, rev: string | null, dir: string) => invoke<FileEntry[]>("file_list", { root, worktree, rev, dir }),
   fileRead: (root: string, worktree: string | null, rev: string | null, path: string) => invoke<FileContents>("file_read", { root, worktree, rev, path }),
   fileFind: (root: string, worktree: string | null, rev: string | null, query: string, limit: number) => invoke<FilesFound>("file_find", { root, worktree, rev, query, limit }),
